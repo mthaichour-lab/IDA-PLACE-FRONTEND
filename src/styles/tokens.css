@@ -1,0 +1,114 @@
+/*
+ * Design tokens — IDA Place, Partie A.2 du dossier technique.
+ * Source unique de vérité visuelle. Valeurs EXACTES, ne pas modifier sans
+ * mettre à jour le dossier technique en conséquence.
+ */
+
+:root {
+  /* --- Couleurs — thème clair --- */
+  --k-head: #000e08;
+  --k-head-ink: #ffffff;
+  --k-head-line: #363f3b;
+  --k-pri: #24786d;
+  --k-pri-2: #20a090;
+  --k-acc: #5ebaae;
+  --k-acc-2: #81cbc2;
+  --k-grad: linear-gradient(135deg, #208d7f 0%, #0fe16d 100%);
+  --k-soft: #f2f7fb;
+  --k-soft-2: #f3f6f6;
+  --k-mint: #eefaf8;
+  --k-line: #cdd1d0;
+  --k-line-2: #e6ebea;
+  --k-red: #ea3736;
+  --k-red-2: #f04a4c;
+  --k-yellow: #ffc746;
+  --k-canvas: #e7ecea;
+
+  --paper: #ffffff;
+  --paper-2: #f3f6f6;
+  --sheet: #f2f7fb;
+  --ink: #000e08;
+  --ink-2: #6a6e6d;
+  --ink-3: #8c908f;
+  --rule: #e6ebea;
+  --rule-strong: #cdd1d0;
+  --ok: #1d8a57;
+  --ok-soft: #e3f5ec;
+  --ko: #d92f2e;
+  --ko-soft: #fdecec;
+  --warn: #b35c00;
+  --warn-soft: #fff3e0;
+  --neutral: #6a6e6d;
+  --neutral-soft: #f3f6f6;
+  --focus: #24786d;
+
+  /* Parties A/B d'un accident (hérité du socle) */
+  --party-a: #1f4fa3;
+  --party-a-soft: #e3ecfa;
+  --party-b: #c99a06;
+  --party-b-fill: #f6c90e;
+  --party-b-soft: #fdf4cf;
+
+  /* --- Typographie --- */
+  --f-display: 'Urbanist', 'IBM Plex Sans Arabic', 'Readex Pro', system-ui, sans-serif;
+  --f-text: 'DM Sans', 'IBM Plex Sans Arabic', 'Readex Pro', system-ui, sans-serif;
+  --f-mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+
+  --k-fs-xs: 0.74rem;
+  --k-fs-s: 0.82rem;
+  --k-fs-m: 0.92rem;
+  --k-fs-b: 1rem;
+  --k-fs-l: 1.12rem;
+  --k-fs-xl: 1.4rem;
+  --k-fs-2xl: 1.8rem;
+
+  /* --- Rayons, espacements, ombres --- */
+  --k-r-xs: 5px;
+  --k-r-s: 12px;
+  --k-r-m: 16px;
+  --k-r-l: 20px;
+  --k-r-xl: 40px;
+  --k-r-pill: 100px;
+
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+
+  --shadow-sheet: none;
+}
+
+/* --- Couleurs — thème sombre : préférence système --- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --paper: #0f1524;
+    --paper-2: #151d30;
+    --sheet: #1a2338;
+    --ink: #e6eaf2;
+    --ink-2: #aeb7ca;
+    --ink-3: #7d88a0;
+    --rule: #2a3550;
+    --rule-strong: #3b4866;
+    --ok: #4cc38a;
+    --ko: #f2766b;
+    --warn: #f0a050;
+  }
+}
+
+/* --- Couleurs — thème sombre : forcé explicitement --- */
+:root[data-theme='dark'] {
+  --paper: #0f1524;
+  --paper-2: #151d30;
+  --sheet: #1a2338;
+  --ink: #e6eaf2;
+  --ink-2: #aeb7ca;
+  --ink-3: #7d88a0;
+  --rule: #2a3550;
+  --rule-strong: #3b4866;
+  --ok: #4cc38a;
+  --ko: #f2766b;
+  --warn: #f0a050;
+}
