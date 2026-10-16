@@ -64,3 +64,16 @@ export async function apiPut<T>(path: string, body?: unknown): Promise<T> {
   });
   return handle<T>(res);
 }
+
+/**
+ * POST multipart/form-data (ex: `POST /claims/import`, champ `file`) — pas
+ * de `Content-Type` manuel : le navigateur fixe le boundary lui-même.
+ */
+export async function apiPostForm<T>(path: string, form: FormData): Promise<T> {
+  const res = await fetch(buildUrl(path), {
+    method: 'POST',
+    headers: devHeaders(),
+    body: form,
+  });
+  return handle<T>(res);
+}

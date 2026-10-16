@@ -82,10 +82,15 @@ du choix et comment migrer vers `next-intl` si besoin plus tard.
   `hasPrivilege(privilege)` et le composant `RequirePrivilege`. Toujours
   piloter l'affichage conditionnel par privilège de cette façon (jamais de
   logique de rôle recodée en dur).
-- **Client HTTP** : toujours via `apiGet`/`apiPost`/`apiPut`
+- **Client HTTP** : toujours via `apiGet`/`apiPost`/`apiPut`/`apiPostForm`
+  (ce dernier pour l'upload multipart, ex: `/claims/import`)
   (`src/lib/api-client.ts`), jamais de `fetch` direct dans une page — ça
   centralise l'en-tête dev, le préfixe `/api/v1` et la normalisation
   d'erreur (`ApiError`, forme `{code,message,details}`).
+- **Temps réel** : `useRealtime(events, onEvent)` (`src/lib/realtime.ts`,
+  Socket.IO) pour s'abonner au `RealtimeModule` back — toujours combiné à
+  un `refetchInterval` TanStack de repli, jamais comme seul mécanisme de
+  rafraîchissement (voir `/cockpit`).
 
 ## Scripts
 

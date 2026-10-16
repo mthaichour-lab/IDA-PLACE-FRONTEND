@@ -7,3 +7,5 @@
 .DS_Store
 next-env.d.ts
 *.tsbuildinfo
+# Régénéré automatiquement par `next dev` à chaque lancement — pas du contenu projet.
+AGENTS.md

@@ -65,3 +65,102 @@ export interface ExpertView {
   companies: string[];
   status: ExpertStatus;
 }
+
+/* ===================== Cockpit (écran 1, Module I) — B.11/HANDOFF ===================== */
+
+export interface CockpitSummary {
+  kpis: {
+    dossiersDuJour: number;
+    aApparier: number;
+    enRetard: number;
+    compensationAVenir: number;
+  };
+  sparklineDeclarations: number[];
+  barresNettes: { company: string; net: number }[];
+  updatedAt: string;
+}
+
+/* ===================== Matching (écran 2, Module A §6.3) — B.5/B.11 ===================== */
+
+export type MatchLevel = 'AUTO' | 'MANUEL' | 'NON';
+export type MatchStatus = 'A_CONFIRMER' | 'AUTO_CONFIRME' | 'CONFIRME_MANUEL' | 'REJETE' | 'COMPLEMENT';
+export type MatchFilter = 'TOUS' | 'AUTO' | 'A_CONFIRMER' | 'NON_APPARIES';
+export type MatchDecisionAction = 'confirm' | 'reject' | 'complement' | 'link';
+
+export interface MatchCriteria {
+  econstatPartage: boolean;
+  plaquesCroisees: boolean;
+  policeCroisee: boolean;
+  dateHeure: boolean;
+  compagniesCroisees: boolean;
+  gps: boolean;
+}
+
+export interface MatchQueueItem {
+  id: string;
+  refA: string;
+  companyA: string;
+  plateA: string;
+  refB?: string;
+  companyB?: string;
+  plateB?: string;
+  score: number;
+  level: MatchLevel;
+  status: MatchStatus;
+  econstatShared: boolean;
+  criteria: MatchCriteria;
+  confirmedBy?: string;
+  confirmedAt?: string;
+  rejectReason?: string;
+  at: string;
+}
+
+export interface MatchCounters {
+  TOUS: number;
+  AUTO: number;
+  A_CONFIRMER: number;
+  NON_APPARIES: number;
+}
+
+export interface MatchThresholds {
+  autoThreshold: number;
+  confirmThreshold: number;
+}
+
+export interface MatchDecisionResult {
+  id: string;
+  status: MatchStatus;
+  decidedAt: string;
+  decidedBy: string;
+}
+
+/* ===================== Import des dossiers (écran 3, Module XII) — B.4/B.11 ===================== */
+
+export type ClaimColumnGroup = 'IDENTIFICATION' | 'ELIGIBILITE';
+
+export interface ClaimColumnDef {
+  index: number;
+  key: string;
+  label: string;
+  group: ClaimColumnGroup;
+  type: string;
+  enumValues?: string[];
+}
+
+export type ClaimImportVerdict = 'ELIGIBLE_IDA' | 'HORS_IDA';
+
+export interface ClaimImportRowResult {
+  rowNumber: number;
+  verdict: ClaimImportVerdict;
+  reasons: string[];
+  data: Record<string, unknown>;
+}
+
+export interface ClaimImportReport {
+  fileName: string;
+  importedAt: string;
+  totalRows: number;
+  eligibleCount: number;
+  ineligibleCount: number;
+  rows: ClaimImportRowResult[];
+}
