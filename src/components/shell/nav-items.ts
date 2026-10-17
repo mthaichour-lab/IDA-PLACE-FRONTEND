@@ -12,7 +12,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/matching', labelKey: 'nav.matching', mono: 'MA' },
   { href: '/import', labelKey: 'nav.import', mono: 'IM' },
   { href: '/exchanges', labelKey: 'nav.exchanges', mono: 'EX' },
-  { href: '/monthly', labelKey: 'nav.monthly', mono: 'CM' },
+  { href: '/monthly', labelKey: 'nav.monthly', mono: 'CY' },
   { href: '/quarter', labelKey: 'nav.quarter', mono: 'CT' },
   { href: '/commission', labelKey: 'nav.commission', mono: 'CM' },
   { href: '/monitoring', labelKey: 'nav.monitoring', mono: 'MO' },
