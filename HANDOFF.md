@@ -51,7 +51,7 @@ avec `Tag` Éligible IDA/Hors IDA + motifs. Journal d'import limité à la
 session courante (l'API n'exposant pas d'historique des imports — voir
 limite ci-dessous).
 
-### 4. Les 10 autres écrans (priorité normale)
+### 4. Les 6 écrans restants (priorité normale)
 
 Pour chacun, consulter `ida-place-backend/ARCHITECTURE.md` (tableau état
 par module) et les routes déjà exposées (toutes documentées sur
@@ -59,6 +59,158 @@ par module) et les routes déjà exposées (toutes documentées sur
 libre" côté back (pas de contrat figé) : coordonner avec l'agent Backend
 avant de s'y brancher en profondeur, pour éviter de construire un écran
 contre une forme qui va changer.
+
+## Vague 2 — `/exchanges`, `/monthly`, `/quarter`, `/commission` (fait)
+
+Les 4 écrans ciblés par cette vague sont maintenant réellement
+implémentés et branchés sur l'API réelle (back démarré avec
+`npm run start:dev`, `x-dev-user: OPERATEUR_PLACE`), en parallèle d'un
+agent Backend qui travaille sur les mêmes modules
+(`RecoursModule`/`SettlementModule`/`CommissionModule`, toujours
+"squelette libre" côté mock au moment de cette vague — voir
+`ida-place-backend/HANDOFF.md`). Tous les appels ont été vérifiés
+manuellement via `curl` contre le back réel avant d'écrire l'écran
+(formes exactes confirmées, voir détail par écran).
+
+### 5. `/exchanges` (Module B · §6.4, écran 4) — FAIT
+
+`src/app/exchanges/page.tsx`. Onglets `Tous/En attente/Opposition/
+Contestation/Commission/Forclos` (`Tabs`), registre paginé 6/p
+(`GET /recours?state&page&pageSize`), nouveau composant transverse
+**`CountdownBar`** (`src/components/ui/CountdownBar.tsx`), fiche détail en
+`Modal` (historique de transitions + actions), transitions
+(`POST /recours/{id}/transition`) gérées par `hasPrivilege('exchange')`.
+
+- **`CountdownBar`** est **purement présentationnel** (règle d'or C.1) :
+  `RecoursController` ne renvoie que deux dates brutes
+  (`requestSentAt`/`conventionalDeadlineAt`), pas un pourcentage/temps
+  restant précalculé. Le composant ne fait qu'un calcul d'affichage (écart
+  de dates, comme un "il y a 3 jours") pour positionner la barre et
+  formater le libellé — **aucune règle Art. 10/12/19 n'est tranchée côté
+  front** : l'état affiché (`Tag`) vient toujours de `state`, jamais déduit
+  du timer. Idéalement l'API renverrait directement
+  `remainingPercent`/`remainingLabel` précalculés une fois
+  `RecoursModule` réel — à revoir avec l'agent Backend.
+- **État `ENVOYE` sans onglet dédié** : l'inventaire d'écran A.4 ne liste
+  que 5 onglets d'état (en attente/opposition/contestation/commission/
+  forclos) + "Tous", alors que le mock back expose aussi `ENVOYE`
+  (`i % 6` sur 6 états). Les dossiers `ENVOYE` restent donc visibles
+  uniquement sous "Tous" — comportement documenté, pas un bug.
+- **Pas de `GET /recours/counters`** (contrairement à
+  `/matching/queue/counters`) : les compteurs par onglet sont obtenus en
+  lisant `.total` de 6 requêtes paginées `pageSize=1` (une par filtre) —
+  aucun calcul métier, juste une lecture de compteur déjà renvoyé par
+  l'API, mais 6 requêtes réseau au lieu d'une (à remplacer par un vrai
+  endpoint de compteurs si le Backend en ajoute un).
+- **Transitions sans état-machine front** : `POST /recours/{id}/transition`
+  accepte aujourd'hui n'importe quelle chaîne `toState` sans validation
+  côté back (mock). Plutôt que de coder une logique de transitions valides
+  (ce qui serait une règle métier Art. 10/12/19 côté front, interdit par
+  C.1), l'écran propose les 6 états possibles comme boutons et laisse le
+  back valider — donc **aucun retour d'erreur n'est à attendre tant que le
+  mock accepte tout aveuglément** (limite connue, à retester une fois
+  `RecoursModule` réel et validé).
+- **Historique des transitions** affiché dans la fiche détail = journal
+  **local, session courante uniquement** (même limite que le journal
+  d'import de la vague précédente) : `RecoursController` n'expose aucun
+  endpoint d'historique.
+- Abonnement temps réel anticipé à `recours.timer` (`useRealtime`, voir
+  `src/lib/realtime.ts`) + polling de repli (30 s) — l'événement n'est pas
+  encore émis par `RealtimeModule` au moment de cette vague (même situation
+  que `claim.ingested`/`match.updated` pour `/cockpit` à la vague
+  précédente).
+
+### 6. `/monthly` (Module C · §6.5, écran 5) — FAIT
+
+`src/app/monthly/page.tsx`. Sélecteur de période (`<input type="month">`),
+synthèse par compagnie (`GET /settlement/monthly/{period}`, `Table` 6/p),
+état d'avancement (`Tag` Clôturé/En cours), action "Générer le bordereau"
+gardée par `hasPrivilege('synth')`.
+
+- **⚠️ Endpoint de génération ASSUMÉ, pas dans le contrat back actuel** :
+  `SettlementController` (`src/settlement/settlement.module.ts` côté back)
+  n'expose aujourd'hui que des `GET` (`monthly/:period`, `quarter/:q`),
+  **aucune action de génération**. L'écran appelle par convention
+  `POST /settlement/monthly/{period}/bordereau` (vérifié : répond
+  actuellement `404 {"code":"NOT_FOUND",...}`) et **gère ce cas
+  explicitement** — toast "génération indisponible" (pas une erreur
+  générique) plutôt que de planter. À confirmer/ajuster avec l'agent
+  Backend : si l'endpoint réel a une forme différente, seul l'unique appel
+  `apiPost` de ce fichier doit changer.
+
+### 7. `/quarter` (Module D · §6.6, écran 6) — FAIT
+
+`src/app/quarter/page.tsx`. Sélecteur de trimestre (5 options, trimestre
+courant + 4 précédents — simple formatage de date, pas une règle métier),
+matrice des positions bilatérales compagnie × compagnie (`GET
+/settlement/quarter/{q}`, tableau `.t` natif), compensation multilatérale
+(net par compagnie, `Tag ok/ko` selon le signe déjà renvoyé par l'API —
+positif = à recevoir, négatif = à payer, aucun calcul front), référence du
+bordereau trimestriel (`data.bordereau`, affichage seul — pas de
+téléchargement réel, `DocumentsModule` non branché), grille tarifaire
+`TARIF-2026.01` (`GET /pricing/grid`, déjà réel côté `MeteringModule`).
+
+### 8. `/commission` (Module E · §6.7, écran 7) — FAIT
+
+`src/app/commission/page.tsx`. File de conciliation paginée 6/p côté
+**front** (`GET /commission/cases`, `Table`), fiche détail en `Modal`,
+pénalité (montant + motif, `POST /commission/{id}/penalty`, gardée par
+`hasPrivilege('penaltyOrder')`), signature de PV
+(`POST /commission/{id}/pv-sign`, gardée par `hasPrivilege('pvSign')`).
+
+- **Pagination appliquée côté front** : `GET /commission/cases` ne
+  supporte aucun paramètre de pagination côté back (contrairement à
+  `/recours` et `/matching/queue`) — slice local 6/p sur la liste complète.
+  À remplacer par une vraie pagination serveur si la liste grossit.
+- **Privilège `sanction` non gardé par un endpoint dédié** : la matrice
+  RBAC (`roles-privileges.ts`) liste bien `sanction` parmi les 17
+  privilèges (accordé à `MEMBRE_COMMISSION`), mais
+  `CommissionController` ne garde aujourd'hui que `penaltyOrder` (pénalité)
+  et `pvSign` (signature PV) — aucune action "sanction" distincte
+  n'existe. L'écran gate donc ses deux seuls boutons réels sur les
+  privilèges effectivement vérifiés par le back (`penaltyOrder`/`pvSign`),
+  pour ne jamais afficher une action que le serveur rejetterait quand même
+  en 403. À revoir si un futur endpoint `sanction` est ajouté.
+- **Décisions non persistées côté back** (mock sans état) : les deux POST
+  répondent normalement mais ne modifient pas `cases()` côté back —
+  l'écran garde donc la pénalité/signature en mémoire **session
+  courante** pour l'affichage (même limite que le journal d'import), pas
+  un oubli.
+- **"Génération de PV"** (demandée par le dossier technique) est
+  implémentée comme **signature du PV** (`POST /commission/{id}/pv-sign`,
+  le seul endpoint existant) — pas de génération/téléchargement de document
+  séparé (`DocumentsModule` non branché).
+
+### Vérifications effectuées pour cette vague
+
+- `npx tsc --noEmit` : **vert**, aucune erreur.
+- `npm run build` (`next build`, Turbopack) : **vert**, les 15 routes
+  compilent (dont les 4 de cette vague), aucune régression sur
+  `/cockpit`/`/matching`/`/import`/`/referential`.
+- `npm run test` (vitest) : **15/15 tests existants toujours verts**
+  (aucune régression) — pas de nouveaux tests ajoutés pour cette vague par
+  manque de temps ; à prioriser par le Testeur ou une vague suivante
+  (voir modèle dans `page.test.tsx` de `/matching`/`/import`/`/cockpit`).
+- Test manuel bout-en-bout avec le vrai back (`npm run start:dev`,
+  `x-dev-user: OPERATEUR_PLACE`) : les 4 routes (`GET /recours`,
+  `POST /recours/:id/transition`, `GET /settlement/monthly/:period`,
+  `GET /settlement/quarter/:q`, `GET /pricing/grid`, `GET
+  /commission/cases`, `POST /commission/:id/penalty`, `POST
+  /commission/:id/pv-sign`) répondent avec exactement la forme attendue
+  par les types `src/lib/types.ts` ; le 404 de l'endpoint "bordereau"
+  assumé (`/monthly`) a été vérifié et est géré sans planter. Les 4 pages
+  répondent 200 côté Next.js (SSR initial) sans erreur serveur.
+- Types TypeScript ajoutés (`RecoursItem`, `SettlementMonthly`,
+  `SettlementQuarter`, `PriceGrid`, `CommissionCase`, etc. dans
+  `src/lib/types.ts`) toujours écrits à la main (pas générés depuis le
+  schéma OpenAPI) — même limite que la vague précédente.
+- i18n : toutes les nouvelles clés ajoutées en FR complet dans
+  `src/i18n/translations.ts` ; AR/EN restent les placeholders automatiques
+  (`[AR]`/`[EN]` + texte FR) générés par le mécanisme déjà en place — à
+  traduire par une vague suivante. RTL non cassé par construction (aucune
+  valeur `left/right` en dur dans les 4 écrans ; matrice compagnie × compagnie
+  reste lisible en RTL car c'est un tableau natif `.t`, qui suit déjà
+  `dir` comme le reste de l'appli).
 
 ## Ce qui est déjà prêt à réutiliser
 

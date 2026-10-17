@@ -164,3 +164,116 @@ export interface ClaimImportReport {
   ineligibleCount: number;
   rows: ClaimImportRowResult[];
 }
+
+/* ===================== Échanges Annexes 2/3/4 — Recours (écran 4, Module B §6.4) — B.2/B.3 =====================
+ * RecoursModule reste un mock "squelette libre" côté back (voir HANDOFF backend) : la forme ci-dessous reflète
+ * le contrôleur actuel (`src/recours/recours.module.ts`), pas un schéma Swagger figé par un Tech Lead distinct.
+ */
+
+/** États observés côté mock. "ENVOYE" n'a pas d'onglet dédié dans l'inventaire d'écran A.4 (tous/en attente/
+ * opposition/contestation/commission/forclos) — il reste visible seulement sous l'onglet "Tous" (voir HANDOFF). */
+export type RecoursState = 'ENVOYE' | 'EN_ATTENTE' | 'OPPOSITION' | 'CONTESTATION' | 'COMMISSION' | 'FORCLOS';
+export type RecoursFilter = 'TOUS' | 'EN_ATTENTE' | 'OPPOSITION' | 'CONTESTATION' | 'COMMISSION' | 'FORCLOS';
+
+export interface RecoursItem {
+  id: string;
+  claimId: string;
+  from: string;
+  to: string;
+  state: RecoursState;
+  requestSentAt: string;
+  amount: number;
+  /** Échéance conventionnelle (Art. 10/12/19) — date brute renvoyée par l'API ; voir `CountdownBar`
+   * (composant transverse) pour la nuance sur l'affichage de progression, purement présentationnel. */
+  conventionalDeadlineAt: string;
+}
+
+export interface RecoursTransitionResult {
+  id: string;
+  state: string;
+  transitionedAt: string;
+}
+
+/* ===================== Cycle mensuel (écran 5, Module C §6.5) — B.2 =====================
+ * SettlementModule reste un mock côté back (voir HANDOFF backend). */
+
+export type SettlementCompanyStatus = 'CLOTURE' | 'EN_COURS';
+
+export interface SettlementMonthlyCompany {
+  code: string;
+  claimsCount: number;
+  totalAmount: number;
+  status: SettlementCompanyStatus;
+}
+
+export interface SettlementMonthly {
+  period: string;
+  companies: SettlementMonthlyCompany[];
+}
+
+/** Résultat attendu d'une génération de bordereau mensuel — endpoint ASSUMÉ (voir HANDOFF, pas encore
+ * exposé par `SettlementController`, qui n'a aujourd'hui que des `GET`). */
+export interface SettlementBordereauResult {
+  bordereau: string;
+  generatedAt: string;
+}
+
+/* ===================== Compensation trimestrielle (écran 6, Module D §6.6) — B.2/B.3 ===================== */
+
+export interface SettlementPosition {
+  from: string;
+  to: string;
+  amount: number;
+}
+
+export interface SettlementNet {
+  code: string;
+  net: number;
+}
+
+export interface SettlementQuarter {
+  quarter: string;
+  bordereau: string;
+  positions: SettlementPosition[];
+  net: SettlementNet[];
+}
+
+/** Grille tarifaire des règlements (B.8, `TARIF-2026.01`) — `GET /pricing/grid` (MeteringModule, déjà réel). */
+export interface PriceGridMetric {
+  metric: string;
+  label: string;
+  unit: string;
+  includedQuota: number;
+  unitPrice: number;
+}
+
+export interface PriceGrid {
+  version: string;
+  effectiveFrom: string;
+  subscription: { label: string; monthly: number };
+  metrics: PriceGridMetric[];
+}
+
+/* ===================== Commission (écran 7, Module E §6.7) — B.2 =====================
+ * CommissionModule reste un mock côté back (voir HANDOFF backend). */
+
+export type CommissionCaseStatus = 'A_INSTRUIRE' | 'EN_DELIBERE' | 'PRONONCE';
+
+export interface CommissionCase {
+  id: string;
+  recoursId: string;
+  status: CommissionCaseStatus;
+  scheduledAt: string;
+}
+
+export interface CommissionPenaltyResult {
+  id: string;
+  amount: number;
+  reason: string;
+  orderedAt: string;
+}
+
+export interface CommissionPvSignResult {
+  id: string;
+  signedAt: string;
+}
