@@ -164,3 +164,132 @@ export interface ClaimImportReport {
   ineligibleCount: number;
   rows: ClaimImportRowResult[];
 }
+
+/* ===================== Monitoring assureurs (écran 8, Module F §6.8) — mock (pondérations réelles) ===================== */
+
+/** Clés de pondération du scoring composite — B.2 écran 8 (affichage uniquement, calcul API). */
+export interface MonitoringWeights {
+  delais: number;
+  silences: number;
+  oppositions: number;
+  qualiteDonnees: number;
+  forclusions: number;
+  demandesTardives: number;
+  penalites: number;
+}
+
+export interface MonitoringCompanyScore {
+  code: string;
+  score: number;
+  rank: number;
+  details: MonitoringWeights;
+}
+
+export interface MonitoringScores {
+  weights: MonitoringWeights;
+  companies: MonitoringCompanyScore[];
+}
+
+/* ===================== Anti-fraude (écran 9, Module G §6.9) — mock ===================== */
+
+export type FraudSeverity = 'ELEVEE' | 'MOYENNE' | 'FAIBLE';
+
+export interface FraudCase {
+  id: string;
+  severity: FraudSeverity;
+  signals: string[];
+  companiesInvolved: string[];
+  detectedAt: string;
+}
+
+export type FraudActionType = 'APPARIEMENT_MANUEL' | 'DELIAGE' | 'RELIAGE' | 'TRANSMISSION_TARDIVE';
+
+export interface FraudAction {
+  id: string;
+  type: FraudActionType;
+  actor: string;
+  at: string;
+}
+
+/* ===================== Métrologie & facturation (écran 10, Module G §6.9 / B.8) — grille réelle, mesures mock ===================== */
+
+export interface PriceGridMetric {
+  metric: string;
+  label: string;
+  unit: string;
+  includedQuota: number;
+  unitPrice: number;
+}
+
+export interface PriceGrid {
+  version: string;
+  effectiveFrom: string;
+  subscription: { label: string; monthly: number };
+  metrics: PriceGridMetric[];
+}
+
+export interface InvoiceLine extends PriceGridMetric {
+  measured: number;
+  facturable: number;
+  amount: number;
+}
+
+export type InvoiceStatus = 'EMISE' | 'PAYEE' | 'EN_RETARD';
+
+export interface MeteringInvoice {
+  company: string;
+  period: string;
+  gridVersion: string;
+  subscription: { label: string; monthly: number };
+  lines: InvoiceLine[];
+  totalHT: number;
+  totalTVA: number;
+  totalTTC: number;
+  status: InvoiceStatus;
+}
+
+/* ===================== Statistiques de la place (écran 11, Module H §6.10) — mock (référentiel wilayas réel) ===================== */
+
+export interface WilayaStat {
+  code: string;
+  name: string;
+  nameAr?: string;
+  region?: string;
+  col: number;
+  row: number;
+  lat?: number;
+  lng?: number;
+  declarations: number;
+  montants: number;
+  pour100k: number;
+}
+
+export interface MonthlyActivity {
+  month: string;
+  declarations: number;
+  annexes2: number;
+  oppositions: number;
+  indemnises: number;
+  econstatMobile: number;
+  econstatAgence: number;
+}
+
+/* ===================== Paramétrage (écran 14, Admin §5.1) — matrice réelle, utilisateurs mock ===================== */
+
+export interface PlaceUser {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  companyId?: string;
+  active: boolean;
+  grant: string[];
+  revoke: string[];
+}
+
+export type RoleMatrix = Record<string, Record<string, boolean>>;
+
+export interface RolesMatrixResponse {
+  roles: string[];
+  matrix: RoleMatrix;
+}
