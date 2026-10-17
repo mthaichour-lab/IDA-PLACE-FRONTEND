@@ -20,6 +20,12 @@ const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
  * compagnie viennent toujours de `GET /monitoring/scores` (aucun calcul
  * recodé côté front, règle d'or C.1).
  */
+/** Rend un `ScoreBar` si la valeur est disponible, sinon un repère "non disponible" — jamais de crash sur une composante `NON_DISPONIBLE` (null). */
+function renderScore(score: number | null, t: (k: TranslationKey) => string) {
+  if (score === null) return <span style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}>{t('common.noData')}</span>;
+  return <ScoreBar score={score} />;
+}
+
 const WEIGHT_LABELS: { key: keyof MonitoringWeights; label: TranslationKey }[] = [
   { key: 'delais', label: 'monitoring.weight.delais' },
   { key: 'silences', label: 'monitoring.weight.silences' },
@@ -48,7 +54,7 @@ export default function MonitoringPage() {
     () => [
       { key: 'rank', header: t('monitoring.col.rank'), render: (r) => <span className="mono">#{r.rank}</span> },
       { key: 'company', header: t('monitoring.col.company'), render: (r) => <CoChip code={r.code} /> },
-      { key: 'score', header: t('monitoring.col.score'), render: (r) => <ScoreBar score={r.score} /> },
+      { key: 'score', header: t('monitoring.col.score'), render: (r) => renderScore(r.score, t) },
     ],
     [t],
   );
@@ -110,7 +116,7 @@ export default function MonitoringPage() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 'var(--s-4)' }}>
                     <CoChip code={selected.code} />
                     <strong>#{selected.rank}</strong>
-                    <ScoreBar score={selected.score} />
+                    {renderScore(selected.score, t)}
                   </div>
 
                   <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>
@@ -124,7 +130,10 @@ export default function MonitoringPage() {
                             {t(w.label)} <span className="mono">({Math.round(query.data!.weights[w.key] * 100)}%)</span>
                           </span>
                         </div>
-                        <ScoreBar score={selected.details[w.key]} />
+                        {renderScore(selected.details[w.key].value, t)}
+                        {selected.details[w.key].dataSource === 'REEL' ? (
+                          <span style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}> ({selected.details[w.key].sampleSize})</span>
+                        ) : null}
                       </li>
                     ))}
                   </ul>

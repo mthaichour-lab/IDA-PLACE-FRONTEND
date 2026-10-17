@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
 import { Column, Table } from '@/components/ui/Table';
 import { Tag, TagTone } from '@/components/ui/Tag';
@@ -10,7 +10,7 @@ import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { apiGet, apiPost } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
-import { CommissionCase, CommissionCaseStatus, CommissionPenaltyResult, CommissionPvSignResult } from '@/lib/types';
+import { CommissionCase, CommissionCaseStatus, CommissionPenaltyResult, CommissionPvSignResult, Paginated } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 
@@ -46,25 +46,24 @@ export default function CommissionPage() {
   const canSign = hasPrivilege('pvSign');
 
   const casesQuery = useQuery({
-    queryKey: ['commission', 'cases'],
-    queryFn: () => apiGet<CommissionCase[]>('/commission/cases'),
+    queryKey: ['commission', 'cases', page],
+    queryFn: () => apiGet<Paginated<CommissionCase>>('/commission/cases', { page, pageSize: PAGE_SIZE }),
   });
 
-  const allCases = casesQuery.data ?? [];
-  const pageRows = useMemo(() => allCases.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [allCases, page]);
+  const pageRows = casesQuery.data?.items ?? [];
 
   useEffect(() => {
-    if (allCases.length === 0) {
+    if (pageRows.length === 0) {
       setSelectedId(null);
       return;
     }
-    if (!allCases.some((c) => c.id === selectedId)) {
-      setSelectedId(allCases[0].id);
+    if (!pageRows.some((c) => c.id === selectedId)) {
+      setSelectedId(pageRows[0].id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allCases.map((c) => c.id).join(',')]);
+  }, [pageRows.map((c) => c.id).join(',')]);
 
-  const selected = allCases.find((c) => c.id === selectedId) ?? null;
+  const selected = pageRows.find((c) => c.id === selectedId) ?? null;
 
   const penaltyMutation = useMutation({
     mutationFn: ({ id, amount, reason }: { id: string; amount: number; reason: string }) =>
@@ -129,7 +128,7 @@ export default function CommissionPage() {
                 columns={columns}
                 rows={pageRows}
                 page={page}
-                total={allCases.length}
+                total={casesQuery.data?.total ?? 0}
                 pageSize={PAGE_SIZE}
                 onPageChange={setPage}
                 onRowClick={(r) => setSelectedId(r.id)}

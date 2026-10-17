@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { DEV_USER } from './api-client';
 
 const BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001').replace(/\/$/, '');
 
@@ -36,6 +37,11 @@ export function useRealtime(events: RealtimeEventName[], onEvent: (event: Realti
         transports: ['websocket'],
         reconnectionAttempts: 5,
         timeout: 4000,
+        // ⚠️ Corrigé en revue Testeur, sprint 3 : un navigateur ne peut pas
+        // poser d'en-tête personnalisé sur un WebSocket brut — `auth` est
+        // le seul canal qui transmet l'identité dev au handshake Socket.IO
+        // (voir `RealtimeGateway.handleConnection`, back).
+        auth: { devUser: DEV_USER },
       });
       for (const ev of key.split(',') as RealtimeEventName[]) {
         if (!ev) continue;

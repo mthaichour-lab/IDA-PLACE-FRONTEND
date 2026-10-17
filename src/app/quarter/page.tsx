@@ -28,7 +28,7 @@ function formatDzd(amount: number, locale: string): string {
 function buildQuarterCsv(data: QuarterSettlement): string {
   const lines = ['section;from;to;amount'];
   for (const p of data.positions) lines.push(['POSITION', p.from, p.to, p.amount].join(';'));
-  for (const n of data.net) lines.push(['NET', n.code, '', n.net].join(';'));
+  for (const n of data.net) lines.push(['NET', n.company, '', n.net].join(';'));
   return lines.join('\n');
 }
 
@@ -64,7 +64,7 @@ export default function QuarterPage() {
 
   const data = query.data;
 
-  const companies = useMemo(() => (data ? data.net.map((n) => n.code) : []), [data]);
+  const companies = useMemo(() => (data ? data.net.map((n) => n.company) : []), [data]);
   const matrix = useMemo(() => {
     const m = new Map<string, number>();
     data?.positions.forEach((p) => m.set(`${p.from}:${p.to}`, p.amount));
@@ -160,8 +160,8 @@ export default function QuarterPage() {
             </div>
             <div className="sheet-body" style={{ display: 'flex', gap: 'var(--s-3)', flexWrap: 'wrap' }}>
               {data.net.map((n) => (
-                <span key={n.code} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <CoChip code={n.code} />
+                <span key={n.company} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <CoChip code={n.company} />
                   <Tag tone={n.net >= 0 ? 'ok' : 'ko'}>{formatDzd(n.net, locale)}</Tag>
                 </span>
               ))}

@@ -4,129 +4,117 @@ Le socle (coque, tokens, composants transverses, i18n, auth scaffold,
 client HTTP) est posé et **ne devrait pas avoir besoin d'être réécrit** —
 seulement étendu.
 
-**Quatre écrans sont maintenant réellement implémentés et branchés sur
-l'API réelle** : `/referential` (Module X, écran 12, livré précédemment)
-et, livrés dans ce sprint, `/cockpit` (écran 1), `/matching` (écran 2) et
-`/import` (écran 3). Les 10 autres restent des pages "en construction"
-(`src/components/WipPage.tsx`) avec le bon badge/titre.
+**Les 14 écrans sont maintenant tous réellement implémentés et branchés
+sur l'API réelle** (sprint 3, en plus des 4 déjà livrés au sprint 2 :
+`/cockpit`, `/matching`, `/import`, `/referential`) :
+`/exchanges`, `/monthly`, `/quarter`, `/commission`, `/ledger`,
+`/monitoring`, `/fraude`, `/metering`, `/stats`, `/params`.
 
-## Écrans livrés dans ce sprint
+## Sprint 3 en bref (deux agents Frontend en parallèle, worktrees séparés)
 
-### 1. `/cockpit` (Module I, écran 1) — FAIT
+- **Agent 1** : `/exchanges`, `/monthly`, `/quarter`, `/commission`,
+  `/ledger`.
+- **Agent 2** : `/monitoring`, `/fraude`, `/metering`, `/stats`,
+  `/params`.
+- **Fusion + revue croisée** (Testeur + Product Owner) : les deux agents
+  Frontend ont construit contre les contrats backend **devinés par
+  lecture de code**, sans voir le travail simultané des deux agents
+  Backend (eux-mêmes dans des worktrees séparés). Résultat : plusieurs
+  écrans crashaient au runtime (forme de DTO différente de ce qui avait
+  été lu/deviné). **Tout a été corrigé par le Tech Lead** avant ce
+  commit — voir le détail ci-dessous, pas la peine de re-corriger.
 
-`src/app/cockpit/page.tsx`. Branché sur `GET /api/v1/cockpit/summary`
-(TanStack Query, `refetchInterval: 20s` de repli). Bandeau `KpiRow`/`Kpi`
-(4 KPIs), `Sparkline` pour `sparklineDeclarations`, `BarChart` pour
-`barresNettes` + légende montants `Intl.NumberFormat(…DZD)`, raccourcis
-vers `/matching` et `/import`. Abonnement temps réel via
-`src/lib/realtime.ts` (`useRealtime`, Socket.IO, namespace `/realtime`,
-testé manuellement bout-en-bout : connexion OK, événement `metering.tick`
-reçu et déclenche bien un `refetch()`) — voir limite ci-dessous.
+### Corrigé après la revue croisée (sprint 3)
 
-### 2. `/matching` (Module A · §6.3, écran 2) — FAIT
+Tous ces bugs venaient d'un décalage entre la forme supposée par le front
+et la forme réelle renvoyée par le back (les deux ont été développés en
+parallèle sans se voir) — **aucun bug de logique front en soi**, mais à
+garder en tête : toujours vérifier la forme exacte contre le contrôleur
+backend avant de consommer une route nouvellement réelle.
 
-`src/app/matching/page.tsx`. Onglets `Tous/Auto/À confirmer/Non appariés`
-(`Tabs` + compteurs via `/matching/queue/counters`), tableau gauche paginé
-6/p (`Table` + `CoChip` + plaque mono + `ScoreBar` + `Tag` d'état),
-panneau droit "Appariement" : confrontation A/B, critères pondérés
-(libellés + poids 35/15/15/10/10 **en dur côté front, affichage
-uniquement** — le score final vient toujours de `row.score` renvoyé par
-l'API, aucun recalcul), seuils auto/à confirmer via `/matching/thresholds`,
-actions Confirmer/Rejeter/Complément (`POST /matching/{id}/decide`,
-invalidation du cache TanStack + `Toast`), raccourcis clavier `C`/`R`/`↑`/`↓`
-(désactivés quand le focus est sur un champ de saisie). Actions grisées
-via `hasPrivilege('matchDecide')`.
-
-### 3. `/import` (Module XII, écran 3) — FAIT
-
-`src/app/import/page.tsx`. Zone de dépôt drag-drop + bouton "Choisir le
-fichier" (visible uniquement si `hasPrivilege('import')` — sinon message
-"Accès réservé", sans dupliquer de règle d'autorisation), upload réel via
-`POST /claims/import` (nouveau helper `apiPostForm` dans
-`src/lib/api-client.ts`, multipart/form-data). Modèle téléchargeable
-construit côté front à partir de `GET /claims/import/columns` (47
-colonnes) — **placeholder CSV**, pas un classeur Excel mis en forme (voir
-limite ci-dessous). Aperçu ligne à ligne du rapport d'import paginé 6/p
-avec `Tag` Éligible IDA/Hors IDA + motifs. Journal d'import limité à la
-session courante (l'API n'exposant pas d'historique des imports — voir
-limite ci-dessous).
-
-### 4. Les 10 autres écrans (priorité normale)
-
-Pour chacun, consulter `ida-place-backend/ARCHITECTURE.md` (tableau état
-par module) et les routes déjà exposées (toutes documentées sur
-`/api/docs`). Les DTO de ces modules sont encore des mocks "squelette
-libre" côté back (pas de contrat figé) : coordonner avec l'agent Backend
-avant de s'y brancher en profondeur, pour éviter de construire un écran
-contre une forme qui va changer.
+1. **`/commission`, `/fraude` (cases + actions), `/params` (users)** :
+   crash total (`X.slice is not a function`). Ces endpoints renvoient
+   `{page, total, items}` (paginé serveur, comme `/matching`/`/import`),
+   pas un tableau brut. Corrigé : pagination serveur avec `page`/
+   `pageSize` en query, lecture de `.items`/`.total`.
+2. **`/monitoring`** : crash (`Objects are not valid as a React child`).
+   Chaque composante de `details` est `{value, dataSource, sampleSize}`
+   (`value` peut être `null` si `dataSource: 'NON_DISPONIBLE'`), pas un
+   simple nombre. Corrigé : `renderScore()` gère le cas `null` (affiche
+   "Aucune donnée" plutôt que de planter `ScoreBar`).
+3. **`/fraude`** : le type front supposait un champ `signals: string[]`
+   par cas ; l'API renvoie en réalité `type` (un seul type par cas,
+   enum `DOUBLON`/`ECONSTAT_REUTILISE`/`RECURRENCE_VEHICULE`/
+   `MONTANT_CALIBRE`/`INCOHERENCE_AB`) + `score` + `details: Record<string,
+   unknown>` + `claimIds`. Corrigé : colonnes et modale de détail
+   réécrites sur la forme réelle.
+4. **`/exchanges`** : le bouton "Appliquer" appelait un endpoint
+   `POST /recours/:id/transition` qui n'existe pas côté back (qui expose
+   `opposer`/`contester`/`settle`, chacun avec son propre contrat).
+   Corrigé : panneau d'action réécrit avec un formulaire contextuel selon
+   l'état du recours (opposition avec motif si `EN_ATTENTE`, contestation
+   avec motif si `OPPOSITION`, règlement sans montant si
+   `ACCEPTE_TACITE`/`COMMISSION`). Le champ d'échéance était aussi mal
+   nommé (`conventionalDeadlineAt` au lieu de `currentDeadlineAt`, et
+   absent pour les états sans timer actif — `OPPOSITION`, `COMMISSION`,
+   états finaux) — corrigé avec un repli "—" propre.
+5. **`/monthly`, `/quarter`** : champs de type incorrects
+   (`MonthlyCompanySynthesis.code`→`company`, `claimsCount`/`totalAmount`
+   → `claimsSettledCount`/`claimsPendingCount`/`totalSettledAmount`/
+   `totalPendingAmount` ; `QuarterNet.code`→`company`). Corrigé, types et
+   rendus alignés sur `SettlementCompanyLineDto`/`NetPositionDto` réels.
+6. **Connexion temps réel (`src/lib/realtime.ts`)** : envoyait
+   l'identité dev via un en-tête, qu'un navigateur ne peut pas poser sur
+   un WebSocket brut — la connexion était donc **toujours refusée** en
+   conditions réelles (contrairement à ce qu'indiquait le HANDOFF du
+   sprint 2, probablement testé hors navigateur). Corrigé : transmise via
+   `auth: { devUser }` du client Socket.IO (`DEV_USER` exporté depuis
+   `api-client.ts` pour réutilisation). Vérifié dans un vrai navigateur.
 
 ## Ce qui est déjà prêt à réutiliser
 
 - **Coque** : `src/components/shell/{Rail,Topbar,MobileBar,AppShell}.tsx`
-  + `nav-items.ts` (les 14 routes, avec les 4 items mobiles imposés par
-  A.3 : Cockpit, Échanges, Compensation trimestrielle, Journal scellé).
-- **Composants transverses** : voir liste dans README.md.
-- **i18n** : `useI18n()` (`t`, `locale`, `setLocale`, `dir`). Ajouter des
-  clés dans `src/i18n/translations.ts` (FR d'abord, puis AR/EN).
+  + `nav-items.ts` (les 14 routes, badge "CM"/"CY" désormais distincts —
+  collision corrigée sprint 3).
+- **Composants transverses** : `Kpi/KpiRow`, `Tag`, `Tabs`, `Table`
+  (pagination 6/p), `Modal`, `Toast/useToast`, `CoChip`, `ScoreBar`,
+  `BarChart/Sparkline`, `TileGrid`, et nouveaux ce sprint :
+  `CountdownBar` (timers conventionnels, écran 4),
+  `CompanyPeriodPicker`/`PriceGridEditor` (`src/components/metering/`,
+  partagés entre `/metering` et `/params`).
+- **i18n** : `useI18n()` (`t`, `locale`, `setLocale`, `dir`). FR complet
+  (y compris les 14 écrans désormais), AR/EN toujours des placeholders.
 - **Thème** : `useTheme()` (`theme`, `toggle`).
 - **Auth** : `useAuth()`, `RequirePrivilege`.
-- **Client HTTP** : `apiGet`/`apiPost`/`apiPut`/`apiPostForm` (nouveau,
-  multipart) + `ApiError` typée.
-- **Temps réel** : `useRealtime(events, onEvent)` dans `src/lib/realtime.ts`
-  (Socket.IO client, namespace `/realtime`) — nouveau dans ce sprint,
-  réutilisable pour `/matching` (événement `match.updated`, déjà listé en
-  argument sur l'écran matching bien qu'aucun rafraîchissement temps réel
-  n'y soit branché pour l'instant — voir limite ci-dessous) et `/metering`
-  (`metering.tick`, déjà émis par le back) le jour où ces écrans seront
-  faits. **Toujours** combiner avec un `refetchInterval` TanStack de repli
-  (voir `/cockpit`), jamais utiliser le WS comme unique mécanisme.
+- **Client HTTP** : `apiGet`/`apiPost`/`apiPut`/`apiPostForm` + `ApiError`
+  typée. `DEV_USER` désormais exporté (réutilisé par `realtime.ts`).
+- **Temps réel** : `useRealtime(events, onEvent)` — fonctionne désormais
+  réellement dans un navigateur (voir correctif 6 ci-dessus). **Toujours**
+  combiner avec un `refetchInterval` TanStack de repli.
 
-## Dette / limites connues (à signaler au Testeur)
+## Dette / limites connues (déjà documentées dans le code, pas des bugs)
 
-- **Bug backend découvert en test manuel bout-en-bout** (reproduit
-  plusieurs fois via `curl` direct sur `POST /api/v1/matching/{id}/decide`,
-  back démarré avec `npm run start:dev`) : le champ `status` (et
-  `rejectReason`) disparaît de la réponse de `GET /matching/queue` juste
-  après une décision — `MatchDecisionDto.action`/`reason` n'ont aucun
-  décorateur `class-validator` dans `matching.dto.ts`, et le
-  `ValidationPipe` global (whitelist) semble donc les vider avant qu'ils
-  n'atteignent `MatchingService.decide()` (`nextStatus[dto.action]`
-  devient `undefined`, puis disparaît du JSON). Le POST réussit (200,
-  `{id, decidedAt, decidedBy}`) et le front gère ce cas sans planter (le
-  `Tag` d'état affiche juste un badge vide), mais **la décision n'est pas
-  correctement persistée côté back**. C'est un défaut du dépôt backend
-  (hors périmètre front) — à transmettre à l'agent Backend : ajouter
-  `@IsIn(MATCH_DECISIONS)` sur `action` et `@IsOptional() @IsString()` sur
-  `reason`/`linkDeclId` dans `MatchDecisionDto`.
-- **Modèle 47 colonnes téléchargeable** (`/import`) : export **CSV**
-  généré côté front depuis `GET /claims/import/columns`
-  (`index;key;label;group;type;enumValues`), volontairement **pas** un
-  classeur Excel mis en forme — placeholder documenté dans le code
-  (`buildColumnsCsv`) et dans le sous-titre de l'écran. À remplacer par un
-  vrai modèle `.xlsx` (généré côté back ou via une librairie front) si le
-  Testeur ou le métier l'exige.
-- **Journal d'import** (`/import`) : l'API n'exposant pas d'historique des
-  imports, le journal n'est tenu qu'en mémoire côté client pour la session
-  en cours (perdu au rechargement de la page) — comportement documenté
-  dans le code et dans les libellés de l'écran, pas un oubli.
-- **Temps réel `/cockpit`** : le back n'émet encore que `metering.tick`
-  (démonstration périodique, 15s, voir `RealtimeModule` back) — testé
-  manuellement, la connexion WS s'établit et l'événement est bien reçu
-  côté front. Les événements `claim.ingested`/`match.updated` n'existent
-  pas encore côté back ; l'écran cockpit s'y abonne déjà par anticipation
-  (sans effet tant qu'ils ne sont pas émis) et reste fonctionnel grâce au
-  polling de repli (20s) dans tous les cas.
-- Les types TypeScript des réponses API (`src/lib/types.ts`) restent
-  écrits à la main, pas générés depuis le schéma OpenAPI (voir A.1/HANDOFF
-  précédent) — toujours vrai pour les types ajoutés dans ce sprint
-  (`CockpitSummary`, `MatchQueueItem`, `ClaimImportReport`, etc.).
-- Pas d'intégration OIDC Keycloak réelle (login/refresh) — toujours
-  `x-dev-user` (voir `.env.example`), inchangé par ce sprint.
-- `npm install`, `npx tsc --noEmit` et `npm run build` ont été vérifiés
-  dans cet environnement (registre npm joignable, `socket.io-client`
-  installé) : **tout est vert**. Test manuel bout-en-bout effectué avec
-  le vrai back-end démarré (`npm run start:dev`, `x-dev-user:
-  OPERATEUR_PLACE`) : `/cockpit`, `/matching`, `/import` répondent 200,
-  affichent les données réelles de l'API et les 3 flux (résumé cockpit,
-  file de matching + décision, import + rapport) ont été exercés via
-  l'API réelle (voir détail des appels dans l'historique de ce sprint).
+- **Pas de persistance pour certaines actions d'admin** : `/params`
+  (onglet Utilisateurs) ne peut pas éditer actif/suspendu ni les
+  dérogations de privilèges (`PUT /admin/users/:id` existe mais n'est pas
+  câblé à ce formulaire — l'API ne l'expose que pour `active`/dérogations
+  de façon minimale, voir le code pour le détail exact).
+- **Pas d'agrégat cross-compagnie** pour les coûts (`/params`, onglet
+  Coûts) ni pour les KPIs `/fraude`/`/monitoring` — dérivés côté front
+  d'une liste complète (pageSize large), documenté dans le code.
+- **Exports CSV placeholder** (`/monthly`, `/quarter`, `/ledger`) : l'API
+  n'expose pas d'endpoint de génération de bordereau/export — export CSV
+  généré côté front à partir des données déjà chargées, documenté dans
+  le code et les libellés d'écran.
+- **Journal des pénalités/PV `/commission`** : pas d'historique exposé
+  par l'API, tenu en mémoire pour la session courante (même limite que
+  le journal `/import`).
+
+## Scripts
+
+| Script | Rôle |
+|---|---|
+| `npm run dev` | Démarrage en développement (Turbopack) |
+| `npm run build` | Build de production |
+| `npm run start` | Démarrage du build de production |
+| `npm run lint` | `tsc --noEmit` |

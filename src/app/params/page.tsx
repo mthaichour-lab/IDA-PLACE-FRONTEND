@@ -76,8 +76,8 @@ function UsersTab() {
   const [form, setForm] = useState({ name: '', email: '', role: '', companyId: '' });
 
   const usersQuery = useQuery({
-    queryKey: ['admin', 'users'],
-    queryFn: () => apiGet<PlaceUser[]>('/admin/users'),
+    queryKey: ['admin', 'users', page],
+    queryFn: () => apiGet<Paginated<PlaceUser>>('/admin/users', { page, pageSize: PAGE_SIZE }),
   });
 
   const matrixQuery = useQuery({
@@ -87,8 +87,8 @@ function UsersTab() {
 
   const createMutation = useMutation({
     mutationFn: (body: Partial<PlaceUser>) => apiPost<PlaceUser>('/admin/users', body),
-    onSuccess: (user) => {
-      queryClient.setQueryData<PlaceUser[]>(['admin', 'users'], (prev) => [...(prev ?? []), user]);
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
       toast(t('params.users.toast.created'), 'ok');
       setCreateOpen(false);
       setForm({ name: '', email: '', role: '', companyId: '' });
@@ -96,8 +96,7 @@ function UsersTab() {
     onError: () => toast(t('params.users.toast.error'), 'ko'),
   });
 
-  const users = usersQuery.data ?? [];
-  const pageRows = users.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const pageRows = usersQuery.data?.items ?? [];
   const roles = matrixQuery.data?.roles ?? [];
 
   const columns: Column<PlaceUser>[] = [
@@ -135,7 +134,7 @@ function UsersTab() {
             </button>
           </div>
         ) : (
-          <Table columns={columns} rows={pageRows} page={page} total={users.length} pageSize={PAGE_SIZE} onPageChange={setPage} onRowClick={setSelected} getRowKey={(r) => r.id} />
+          <Table columns={columns} rows={pageRows} page={page} total={usersQuery.data?.total ?? 0} pageSize={PAGE_SIZE} onPageChange={setPage} onRowClick={setSelected} getRowKey={(r) => r.id} />
         )}
       </div>
 

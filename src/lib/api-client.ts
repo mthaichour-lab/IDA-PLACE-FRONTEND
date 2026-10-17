@@ -12,7 +12,8 @@ import { ApiError, ApiErrorBody } from './api-error';
  */
 const BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001').replace(/\/$/, '');
 const API_PREFIX = '/api/v1';
-const DEV_USER = process.env.NEXT_PUBLIC_DEV_USER ?? 'OPERATEUR_PLACE';
+/** Exporté pour `realtime.ts` : le handshake Socket.IO transmet la même identité dev via `auth`, pas un en-tête (impossible sur un WebSocket navigateur). */
+export const DEV_USER = process.env.NEXT_PUBLIC_DEV_USER ?? 'OPERATEUR_PLACE';
 
 function buildUrl(path: string, query?: Record<string, string | number | undefined>): string {
   const url = new URL(`${BASE_URL}${API_PREFIX}${path}`);

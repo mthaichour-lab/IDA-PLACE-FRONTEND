@@ -11,17 +11,17 @@ import { Tag, TagTone } from '@/components/ui/Tag';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { apiGet } from '@/lib/api-client';
-import { FraudAction, FraudCase, FraudSeverity } from '@/lib/types';
+import { FraudAction, FraudCase, FraudSeverity, Paginated } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 
-/**
- * Les 5 étapes de détection (B.9) — liste fixe de libellés d'écran, utilisée
- * uniquement pour regrouper l'affichage des signaux déjà renvoyés par
- * `GET /fraud/cases` (`signals: string[]`) ; aucune détection n'est faite
- * côté front (règle d'or C.1).
- */
-const SIGNAL_STEPS = ['Doublons & e-constat', 'Réseau/récurrence', 'Montants & plafond', 'Incohérences A/B', 'Vélocité'];
+const CASE_TYPE_LABEL: Record<FraudCase['type'], TranslationKey> = {
+  DOUBLON: 'fraude.type.DOUBLON',
+  ECONSTAT_REUTILISE: 'fraude.type.ECONSTAT_REUTILISE',
+  RECURRENCE_VEHICULE: 'fraude.type.RECURRENCE_VEHICULE',
+  MONTANT_CALIBRE: 'fraude.type.MONTANT_CALIBRE',
+  INCOHERENCE_AB: 'fraude.type.INCOHERENCE_AB',
+};
 
 const SEVERITY_ORDER: Record<FraudSeverity, number> = { ELEVEE: 0, MOYENNE: 1, FAIBLE: 2 };
 const SEVERITY_TONE: Record<FraudSeverity, TagTone> = { ELEVEE: 'ko', MOYENNE: 'warn', FAIBLE: 'a' };
@@ -44,44 +44,49 @@ export default function FraudePage() {
   const [selectedCase, setSelectedCase] = useState<FraudCase | null>(null);
 
   const casesQuery = useQuery({
-    queryKey: ['fraud', 'cases'],
-    queryFn: () => apiGet<FraudCase[]>('/fraud/cases'),
+    queryKey: ['fraud', 'cases', casesPage],
+    queryFn: () => apiGet<Paginated<FraudCase>>('/fraud/cases', { page: casesPage, pageSize: PAGE_SIZE }),
   });
 
   const actionsQuery = useQuery({
-    queryKey: ['fraud', 'actions'],
-    queryFn: () => apiGet<FraudAction[]>('/fraud/actions'),
+    queryKey: ['fraud', 'actions', actionsPage],
+    queryFn: () => apiGet<Paginated<FraudAction>>('/fraud/actions', { page: actionsPage, pageSize: PAGE_SIZE }),
+  });
+
+  // KPIs (écran 9) : pas d'endpoint d'agrégat dédié (voir rapport de
+  // livraison) — un second appel pleine page sert uniquement au décompte
+  // (gravité élevée, compagnies concernées), jamais affiché tel quel comme
+  // liste (la liste affichée reste la page courante, paginée serveur).
+  const casesAllQuery = useQuery({
+    queryKey: ['fraud', 'cases', 'all'],
+    queryFn: () => apiGet<Paginated<FraudCase>>('/fraud/cases', { page: 1, pageSize: 10_000 }),
   });
 
   // Tri d'affichage par gravité ("file priorisée par gravité", écran 9) — la
   // gravité elle-même est renvoyée par l'API, on ne fait que l'ordonner ici.
-  const sortedCases = useMemo(
-    () => [...(casesQuery.data ?? [])].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]),
+  const casePage = useMemo(
+    () => [...(casesQuery.data?.items ?? [])].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]),
     [casesQuery.data],
   );
-  const casePage = sortedCases.slice((casesPage - 1) * PAGE_SIZE, casesPage * PAGE_SIZE);
+  const actionPage = actionsQuery.data?.items ?? [];
 
-  const actions = actionsQuery.data ?? [];
-  const actionPage = actions.slice((actionsPage - 1) * PAGE_SIZE, actionsPage * PAGE_SIZE);
-
-  // KPIs (écran 9) : comptages d'affichage dérivés des listes renvoyées par
-  // l'API — pas de scoring/verdict, juste des dénombrements (aucun endpoint
-  // d'agrégat dédié n'est encore exposé par le back, voir rapport final).
   const kpis = useMemo(() => {
+    const allCases = casesAllQuery.data?.items ?? [];
     const companies = new Set<string>();
-    for (const c of casesQuery.data ?? []) for (const co of c.companiesInvolved) companies.add(co);
+    for (const c of allCases) for (const co of c.companiesInvolved) companies.add(co);
     return {
-      cases: casesQuery.data?.length ?? 0,
-      severe: (casesQuery.data ?? []).filter((c) => c.severity === 'ELEVEE').length,
-      actions: actionsQuery.data?.length ?? 0,
+      cases: casesAllQuery.data?.total ?? casesQuery.data?.total ?? 0,
+      severe: allCases.filter((c) => c.severity === 'ELEVEE').length,
+      actions: actionsQuery.data?.total ?? 0,
       companies: companies.size,
     };
-  }, [casesQuery.data, actionsQuery.data]);
+  }, [casesAllQuery.data, casesQuery.data, actionsQuery.data]);
 
   const caseColumns: Column<FraudCase>[] = [
     { key: 'id', header: t('fraude.col.id'), render: (r) => <span className="mono">{r.id}</span> },
     { key: 'severity', header: t('fraude.col.severity'), render: (r) => <Tag tone={SEVERITY_TONE[r.severity]}>{t(SEVERITY_LABEL[r.severity])}</Tag> },
-    { key: 'signals', header: t('fraude.col.signals'), render: (r) => <span>{r.signals.length}</span> },
+    { key: 'type', header: t('fraude.col.type'), render: (r) => <Tag tone="a">{t(CASE_TYPE_LABEL[r.type])}</Tag> },
+    { key: 'score', header: t('fraude.col.score'), render: (r) => <span className="mono">{r.score}</span> },
     {
       key: 'companies',
       header: t('fraude.col.companies'),
@@ -129,7 +134,7 @@ export default function FraudePage() {
               columns={caseColumns}
               rows={casePage}
               page={casesPage}
-              total={sortedCases.length}
+              total={casesQuery.data?.total ?? 0}
               pageSize={PAGE_SIZE}
               onPageChange={setCasesPage}
               onRowClick={setSelectedCase}
@@ -158,7 +163,7 @@ export default function FraudePage() {
               columns={actionColumns}
               rows={actionPage}
               page={actionsPage}
-              total={actions.length}
+              total={actionsQuery.data?.total ?? 0}
               pageSize={PAGE_SIZE}
               onPageChange={setActionsPage}
               getRowKey={(r) => r.id}
@@ -174,6 +179,14 @@ export default function FraudePage() {
               {t('fraude.panel.detectedAt')} {new Date(selectedCase.detectedAt).toLocaleString(locale)}
             </p>
 
+            <div style={{ display: 'flex', gap: 6, marginBottom: 'var(--s-4)', alignItems: 'center' }}>
+              <Tag tone={SEVERITY_TONE[selectedCase.severity]}>{t(SEVERITY_LABEL[selectedCase.severity])}</Tag>
+              <Tag tone="a">{t(CASE_TYPE_LABEL[selectedCase.type])}</Tag>
+              <span className="mono" style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}>
+                score {selectedCase.score}
+              </span>
+            </div>
+
             <strong style={{ display: 'block', margin: '0 0 var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('fraude.panel.companies')}</strong>
             <div style={{ display: 'flex', gap: 6, marginBottom: 'var(--s-4)' }}>
               {selectedCase.companiesInvolved.map((c) => (
@@ -181,17 +194,19 @@ export default function FraudePage() {
               ))}
             </div>
 
-            <strong style={{ display: 'block', margin: '0 0 var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('fraude.panel.signals')}</strong>
+            <strong style={{ display: 'block', margin: '0 0 var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('fraude.panel.claims')}</strong>
+            <p className="mono" style={{ marginTop: 0, marginBottom: 'var(--s-4)' }}>
+              {selectedCase.claimIds.join(', ')}
+            </p>
+
+            <strong style={{ display: 'block', margin: '0 0 var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('fraude.panel.details')}</strong>
             <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {SIGNAL_STEPS.map((step) => {
-                const present = selectedCase.signals.includes(step);
-                return (
-                  <li key={step} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 'var(--k-fs-s)' }}>
-                    <span>{step}</span>
-                    <Tag tone={present ? 'ko' : 'a'}>{present ? t('fraude.signal.present') : t('fraude.signal.absent')}</Tag>
-                  </li>
-                );
-              })}
+              {Object.entries(selectedCase.details).map(([key, value]) => (
+                <li key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 'var(--k-fs-s)' }}>
+                  <span>{key}</span>
+                  <span className="mono">{String(value)}</span>
+                </li>
+              ))}
             </ul>
           </>
         ) : null}

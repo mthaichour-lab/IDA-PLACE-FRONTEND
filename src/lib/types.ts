@@ -172,9 +172,16 @@ export interface ClaimImportReport {
  * back-end n'a pas encore persisté les timers conventionnels réels).
  */
 
-export type RecoursState = 'ENVOYE' | 'EN_ATTENTE' | 'OPPOSITION' | 'CONTESTATION' | 'COMMISSION' | 'FORCLOS';
-/** Onglets écran 4 (énoncé de mission) — 'ENVOYE' existe côté back mais n'a pas d'onglet dédié : visible seulement sous "Tous". */
+/** Forme exacte de `RECOURS_STATES` (back, `recours.rules.ts`) — corrigée après la revue croisée sprint 3 (le back n'a pas d'état 'ENVOYE', et a 'ACCEPTE_TACITE'/'REGLE' que ce type omettait). */
+export type RecoursState = 'EN_ATTENTE' | 'ACCEPTE_TACITE' | 'OPPOSITION' | 'CONTESTATION' | 'COMMISSION' | 'REGLE' | 'FORCLOS';
+/** Onglets écran 4 (énoncé de mission). */
 export type RecoursFilter = 'TOUS' | 'EN_ATTENTE' | 'OPPOSITION' | 'CONTESTATION' | 'COMMISSION' | 'FORCLOS';
+
+export interface RecoursOpposition {
+  motif: string;
+  at: string;
+  by?: string;
+}
 
 export interface RecoursItem {
   id: string;
@@ -183,15 +190,30 @@ export interface RecoursItem {
   to: string;
   state: RecoursState;
   requestSentAt: string;
+  responseAt?: string;
+  opposition?: RecoursOpposition;
+  contestation?: RecoursOpposition;
+  commissionAt?: string;
+  settledAt?: string;
   amount: number;
-  /** Échéance conventionnelle (Art. 10/12/19) — purement informatif, voir `CountdownBar`. */
-  conventionalDeadlineAt: string;
+  /** Échéance conventionnelle courante (Art. 10 ou 12 selon l'état) — purement informatif, voir `CountdownBar`. Nom de champ réel côté API (corrigé : ce n'était pas `conventionalDeadlineAt`). */
+  currentDeadlineAt?: string;
 }
 
 export interface RecoursTransitionResult {
   id: string;
-  state: string;
-  transitionedAt: string;
+  claimId: string;
+  from: string;
+  to: string;
+  state: RecoursState;
+  requestSentAt: string;
+  responseAt?: string;
+  opposition?: RecoursOpposition;
+  contestation?: RecoursOpposition;
+  commissionAt?: string;
+  settledAt?: string;
+  amount: number;
+  currentDeadlineAt?: string;
 }
 
 /* ===================== Cycle mensuel (écran 5, Module C §6.5) — B.2/B.3 =====================
@@ -200,11 +222,18 @@ export interface RecoursTransitionResult {
 
 export type SettlementStatus = 'CLOTURE' | 'EN_COURS';
 
+/** Forme exacte de `SettlementCompanyLineDto` (back) — corrigée après la revue croisée sprint 3. */
 export interface MonthlyCompanySynthesis {
-  code: string;
-  claimsCount: number;
-  totalAmount: number;
+  company: string;
+  claimsSettledCount: number;
+  claimsPendingCount: number;
+  totalSettledAmount: number;
+  totalPendingAmount: number;
+  fraisTraitement: number;
   status: SettlementStatus;
+  bordereauRef: string;
+  generatedAt: string;
+  closedAt?: string;
 }
 
 export interface MonthlySettlement {
@@ -222,8 +251,9 @@ export interface QuarterPosition {
   amount: number;
 }
 
+/** Nom de champ réel côté API : `company`, pas `code` (corrigé après la revue croisée sprint 3). */
 export interface QuarterNet {
-  code: string;
+  company: string;
   net: number;
 }
 
@@ -299,27 +329,41 @@ export interface MonitoringWeights {
   penalites: number;
 }
 
+/** Forme exacte d'une composante de `details` (back) — corrigée après la revue croisée sprint 3 : ce n'est pas un simple nombre. */
+export interface MonitoringComponentValue {
+  value: number | null;
+  dataSource: 'REEL' | 'NON_DISPONIBLE';
+  sampleSize: number;
+}
+
 export interface MonitoringCompanyScore {
   code: string;
-  score: number;
+  /** `null` si toutes les composantes sont `NON_DISPONIBLE` pour cette compagnie. */
+  score: number | null;
   rank: number;
-  details: MonitoringWeights;
+  details: Record<keyof MonitoringWeights, MonitoringComponentValue>;
 }
 
 export interface MonitoringScores {
   weights: MonitoringWeights;
   companies: MonitoringCompanyScore[];
+  notes: string[];
 }
 
 /* ===================== Anti-fraude (écran 9, Module G §6.9) — mock ===================== */
 
 export type FraudSeverity = 'ELEVEE' | 'MOYENNE' | 'FAIBLE';
+/** Forme exacte de `FraudCaseViewDto` (back) — corrigée après la revue croisée sprint 3 : un cas a un seul `type` (pas une liste `signals`). */
+export type FraudCaseType = 'DOUBLON' | 'ECONSTAT_REUTILISE' | 'RECURRENCE_VEHICULE' | 'MONTANT_CALIBRE' | 'INCOHERENCE_AB';
 
 export interface FraudCase {
   id: string;
+  type: FraudCaseType;
+  score: number;
   severity: FraudSeverity;
-  signals: string[];
+  claimIds: string[];
   companiesInvolved: string[];
+  details: Record<string, unknown>;
   detectedAt: string;
 }
 

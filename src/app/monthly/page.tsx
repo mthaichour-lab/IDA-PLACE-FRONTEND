@@ -29,8 +29,10 @@ function formatDzd(amount: number, locale: string): string {
 
 /** Export CSV client (placeholder documenté — voir rapport de livraison : pas d'endpoint back de génération de bordereau pour le cycle mensuel). */
 function buildMonthlyCsv(data: MonthlySettlement): string {
-  const header = 'period;code;claimsCount;totalAmount;status';
-  const lines = data.companies.map((c) => [data.period, c.code, c.claimsCount, c.totalAmount, c.status].join(';'));
+  const header = 'period;company;claimsSettledCount;claimsPendingCount;totalSettledAmount;totalPendingAmount;status';
+  const lines = data.companies.map((c) =>
+    [data.period, c.company, c.claimsSettledCount, c.claimsPendingCount, c.totalSettledAmount, c.totalPendingAmount, c.status].join(';'),
+  );
   return [header, ...lines].join('\n');
 }
 
@@ -61,22 +63,30 @@ export default function MonthlyPage() {
   const data = query.data;
   const companies = data?.companies ?? [];
   const closedCount = companies.filter((c) => c.status === 'CLOTURE').length;
-  const totalAmount = companies.reduce((sum, c) => sum + c.totalAmount, 0);
+  const totalAmount = companies.reduce((sum, c) => sum + c.totalSettledAmount + c.totalPendingAmount, 0);
 
   const pageRows = useMemo(() => companies.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [companies, page]);
 
   const columns: Column<MonthlyCompanySynthesis>[] = [
     {
-      key: 'code',
+      key: 'company',
       header: t('monthly.col.company'),
       render: (r) => (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <CoChip code={r.code} />
+          <CoChip code={r.company} />
         </span>
       ),
     },
-    { key: 'claimsCount', header: t('monthly.col.claims'), render: (r) => <span className="mono">{r.claimsCount}</span> },
-    { key: 'totalAmount', header: t('monthly.col.amount'), render: (r) => <span className="mono">{formatDzd(r.totalAmount, locale)}</span> },
+    {
+      key: 'claims',
+      header: t('monthly.col.claims'),
+      render: (r) => <span className="mono">{r.claimsSettledCount + r.claimsPendingCount}</span>,
+    },
+    {
+      key: 'amount',
+      header: t('monthly.col.amount'),
+      render: (r) => <span className="mono">{formatDzd(r.totalSettledAmount + r.totalPendingAmount, locale)}</span>,
+    },
     {
       key: 'status',
       header: t('monthly.col.status'),
@@ -156,7 +166,7 @@ export default function MonthlyPage() {
               <span>{t('monthly.table.title')}</span>
             </div>
             <div className="sheet-body">
-              <Table columns={columns} rows={pageRows} page={page} total={companies.length} pageSize={PAGE_SIZE} onPageChange={setPage} getRowKey={(r) => r.code} />
+              <Table columns={columns} rows={pageRows} page={page} total={companies.length} pageSize={PAGE_SIZE} onPageChange={setPage} getRowKey={(r) => r.company} />
             </div>
           </div>
 

@@ -24,23 +24,22 @@ const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 const POLL_INTERVAL_MS = 30_000;
 
 const STATE_TONE: Record<RecoursState, TagTone> = {
-  ENVOYE: 'a',
   EN_ATTENTE: 'warn',
+  ACCEPTE_TACITE: 'ok',
   OPPOSITION: 'ko',
   CONTESTATION: 'ko',
   COMMISSION: 'warn',
-  FORCLOS: 'ok',
+  REGLE: 'ok',
+  FORCLOS: 'a',
 };
 
-/** Les 6 transitions possibles (B.2/B.3) — formulaire simple, aucune règle de validité n'est recalculée côté front : l'API reste libre de refuser. */
-const TRANSITION_TARGETS: RecoursState[] = ['ENVOYE', 'EN_ATTENTE', 'OPPOSITION', 'CONTESTATION', 'COMMISSION', 'FORCLOS'];
-
 const STATE_LABEL_KEY: Record<RecoursState, TranslationKey> = {
-  ENVOYE: 'exchanges.state.ENVOYE',
   EN_ATTENTE: 'exchanges.state.EN_ATTENTE',
+  ACCEPTE_TACITE: 'exchanges.state.ACCEPTE_TACITE',
   OPPOSITION: 'exchanges.state.OPPOSITION',
   CONTESTATION: 'exchanges.state.CONTESTATION',
   COMMISSION: 'exchanges.state.COMMISSION',
+  REGLE: 'exchanges.state.REGLE',
   FORCLOS: 'exchanges.state.FORCLOS',
 };
 
@@ -53,8 +52,8 @@ function formatDzd(amount: number, locale: string): string {
 }
 
 function articleHint(state: RecoursState): TranslationKey | null {
-  if (state === 'ENVOYE' || state === 'EN_ATTENTE') return 'exchanges.article.art10';
-  if (state === 'OPPOSITION') return 'exchanges.article.art12';
+  if (state === 'EN_ATTENTE') return 'exchanges.article.art10';
+  if (state === 'CONTESTATION') return 'exchanges.article.art12';
   if (state === 'FORCLOS') return 'exchanges.article.art19';
   return null;
 }
@@ -68,9 +67,10 @@ export default function ExchangesPage() {
   const [filter, setFilter] = useState<RecoursFilter>('TOUS');
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [targetState, setTargetState] = useState<RecoursState>('EN_ATTENTE');
+  const [motif, setMotif] = useState('');
 
-  const canDecide = hasPrivilege('exchange');
+  const canExchange = hasPrivilege('exchange');
+  const canPay = hasPrivilege('pay');
 
   const listQuery = useQuery({
     queryKey: ['recours', 'list', filter, page],
@@ -102,18 +102,35 @@ export default function ExchangesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items.map((i) => i.id).join(',')]);
 
+  useEffect(() => {
+    setMotif('');
+  }, [selectedId]);
+
   const selected = items.find((i) => i.id === selectedId) ?? null;
 
-  const transitionMutation = useMutation({
-    mutationFn: ({ id, toState }: { id: string; toState: RecoursState }) =>
-      apiPost<RecoursTransitionResult>(`/recours/${id}/transition`, { toState }),
-    onSuccess: () => {
-      toast(t('exchanges.toast.success'), 'ok');
-      void queryClient.invalidateQueries({ queryKey: ['recours'] });
-    },
-    onError: () => {
-      toast(t('exchanges.toast.error'), 'ko');
-    },
+  function onActionSettled(ok: boolean) {
+    toast(t(ok ? 'exchanges.toast.success' : 'exchanges.toast.error'), ok ? 'ok' : 'ko');
+    if (ok) void queryClient.invalidateQueries({ queryKey: ['recours'] });
+  }
+
+  const opposerMutation = useMutation({
+    mutationFn: ({ id, motif: m }: { id: string; motif: string }) =>
+      apiPost<RecoursTransitionResult>(`/recours/${id}/opposer`, { motif: m }),
+    onSuccess: () => onActionSettled(true),
+    onError: () => onActionSettled(false),
+  });
+
+  const contesterMutation = useMutation({
+    mutationFn: ({ id, motif: m }: { id: string; motif: string }) =>
+      apiPost<RecoursTransitionResult>(`/recours/${id}/contester`, { motif: m }),
+    onSuccess: () => onActionSettled(true),
+    onError: () => onActionSettled(false),
+  });
+
+  const settleMutation = useMutation({
+    mutationFn: ({ id }: { id: string }) => apiPost<RecoursTransitionResult>(`/recours/${id}/settle`, {}),
+    onSuccess: () => onActionSettled(true),
+    onError: () => onActionSettled(false),
   });
 
   function changeFilter(next: string) {
@@ -121,9 +138,19 @@ export default function ExchangesPage() {
     setPage(1);
   }
 
-  function applyTransition() {
-    if (!selected || !canDecide || transitionMutation.isPending) return;
-    transitionMutation.mutate({ id: selected.id, toState: targetState });
+  function submitOpposer() {
+    if (!selected || !canExchange || !motif.trim() || opposerMutation.isPending) return;
+    opposerMutation.mutate({ id: selected.id, motif: motif.trim() });
+  }
+
+  function submitContester() {
+    if (!selected || !canExchange || !motif.trim() || contesterMutation.isPending) return;
+    contesterMutation.mutate({ id: selected.id, motif: motif.trim() });
+  }
+
+  function submitSettle() {
+    if (!selected || !canPay || settleMutation.isPending) return;
+    settleMutation.mutate({ id: selected.id });
   }
 
   const columns: Column<RecoursItem>[] = useMemo(
@@ -143,7 +170,7 @@ export default function ExchangesPage() {
       {
         key: 'deadline',
         header: t('exchanges.col.deadline'),
-        render: (r) => <CountdownBar startAt={r.requestSentAt} deadlineAt={r.conventionalDeadlineAt} />,
+        render: (r) => (r.currentDeadlineAt ? <CountdownBar startAt={r.requestSentAt} deadlineAt={r.currentDeadlineAt} /> : <span>—</span>),
       },
     ],
     [t, locale],
@@ -216,12 +243,14 @@ export default function ExchangesPage() {
                   <div style={{ fontSize: 'var(--k-fs-s)' }}>
                     <strong>{t('exchanges.panel.sentAt')}</strong> : {new Date(selected.requestSentAt).toLocaleString(locale)}
                   </div>
-                  <div>
-                    <div style={{ fontSize: 'var(--k-fs-s)', marginBottom: 4 }}>
-                      <strong>{t('exchanges.panel.deadline')}</strong> : {new Date(selected.conventionalDeadlineAt).toLocaleString(locale)}
+                  {selected.currentDeadlineAt ? (
+                    <div>
+                      <div style={{ fontSize: 'var(--k-fs-s)', marginBottom: 4 }}>
+                        <strong>{t('exchanges.panel.deadline')}</strong> : {new Date(selected.currentDeadlineAt).toLocaleString(locale)}
+                      </div>
+                      <CountdownBar startAt={selected.requestSentAt} deadlineAt={selected.currentDeadlineAt} />
                     </div>
-                    <CountdownBar startAt={selected.requestSentAt} deadlineAt={selected.conventionalDeadlineAt} />
-                  </div>
+                  ) : null}
                 </div>
 
                 {articleHint(selected.state) ? (
@@ -230,44 +259,81 @@ export default function ExchangesPage() {
                   </p>
                 ) : null}
 
-                {!canDecide ? <p className="note warn">{t('common.forbidden')}</p> : null}
-
                 <div style={{ marginTop: 'var(--s-4)' }}>
-                  <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.transition.title')}</strong>
-                  <label htmlFor="transition-state" style={{ display: 'block', fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', marginBottom: 4 }}>
-                    {t('exchanges.transition.label')}
-                  </label>
-                  <select
-                    id="transition-state"
-                    value={targetState}
-                    disabled={!canDecide}
-                    onChange={(e) => setTargetState(e.target.value as RecoursState)}
-                    style={{
-                      width: '100%',
-                      marginBottom: 'var(--s-3)',
-                      padding: '6px 10px',
-                      border: '1px solid var(--rule-strong)',
-                      borderRadius: 'var(--k-r-s)',
-                      font: 'inherit',
-                      background: 'var(--paper)',
-                      color: 'var(--ink)',
-                    }}
-                  >
-                    {TRANSITION_TARGETS.map((s) => (
-                      <option key={s} value={s}>
-                        {t(STATE_LABEL_KEY[s])}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="tag warn"
-                    style={{ cursor: canDecide ? 'pointer' : 'not-allowed', border: 'none' }}
-                    disabled={!canDecide || transitionMutation.isPending}
-                    onClick={applyTransition}
-                  >
-                    {t('exchanges.transition.apply')}
-                  </button>
+                  {selected.state === 'EN_ATTENTE' ? (
+                    <>
+                      <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>
+                        {t('exchanges.action.opposer.title')}
+                      </strong>
+                      {!canExchange ? <p className="note warn">{t('common.forbidden')}</p> : null}
+                      <label htmlFor="motif-opposer" style={{ display: 'block', fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', marginBottom: 4 }}>
+                        {t('exchanges.action.opposer.motif')}
+                      </label>
+                      <textarea
+                        id="motif-opposer"
+                        value={motif}
+                        disabled={!canExchange}
+                        onChange={(e) => setMotif(e.target.value)}
+                        rows={3}
+                        style={{ width: '100%', marginBottom: 'var(--s-3)', padding: '6px 10px', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', font: 'inherit', background: 'var(--paper)', color: 'var(--ink)' }}
+                      />
+                      <button
+                        type="button"
+                        className="tag warn"
+                        style={{ cursor: canExchange ? 'pointer' : 'not-allowed', border: 'none' }}
+                        disabled={!canExchange || !motif.trim() || opposerMutation.isPending}
+                        onClick={submitOpposer}
+                      >
+                        {t('exchanges.action.opposer.submit')}
+                      </button>
+                    </>
+                  ) : selected.state === 'OPPOSITION' ? (
+                    <>
+                      <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>
+                        {t('exchanges.action.contester.title')}
+                      </strong>
+                      {!canExchange ? <p className="note warn">{t('common.forbidden')}</p> : null}
+                      <label htmlFor="motif-contester" style={{ display: 'block', fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', marginBottom: 4 }}>
+                        {t('exchanges.action.contester.motif')}
+                      </label>
+                      <textarea
+                        id="motif-contester"
+                        value={motif}
+                        disabled={!canExchange}
+                        onChange={(e) => setMotif(e.target.value)}
+                        rows={3}
+                        style={{ width: '100%', marginBottom: 'var(--s-3)', padding: '6px 10px', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', font: 'inherit', background: 'var(--paper)', color: 'var(--ink)' }}
+                      />
+                      <button
+                        type="button"
+                        className="tag ko"
+                        style={{ cursor: canExchange ? 'pointer' : 'not-allowed', border: 'none' }}
+                        disabled={!canExchange || !motif.trim() || contesterMutation.isPending}
+                        onClick={submitContester}
+                      >
+                        {t('exchanges.action.contester.submit')}
+                      </button>
+                    </>
+                  ) : selected.state === 'ACCEPTE_TACITE' || selected.state === 'COMMISSION' ? (
+                    <>
+                      <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>
+                        {t('exchanges.action.settle.title')}
+                      </strong>
+                      {!canPay ? <p className="note warn">{t('common.forbidden')}</p> : null}
+                      <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginBottom: 'var(--s-3)' }}>{t('exchanges.action.settle.note')}</p>
+                      <button
+                        type="button"
+                        className="tag ok"
+                        style={{ cursor: canPay ? 'pointer' : 'not-allowed', border: 'none' }}
+                        disabled={!canPay || settleMutation.isPending}
+                        onClick={submitSettle}
+                      >
+                        {t('exchanges.action.settle.submit')}
+                      </button>
+                    </>
+                  ) : (
+                    <p style={{ color: 'var(--ink-3)' }}>{t('exchanges.action.none')}</p>
+                  )}
                 </div>
               </>
             )}
