@@ -70,7 +70,7 @@ du choix et comment migrer vers `next-intl` si besoin plus tard.
 
 ## Conventions pour la suite (agent Frontend)
 
-- **Pagination** : toujours 6 lignes/page (A.5). Le composant générique
+- **Pagination** : toujours 7 lignes/page (A.5). Le composant générique
   `src/components/ui/Table.tsx` l'impose déjà par défaut.
 - **Aucune règle métier côté front** (C.1) : tout verdict, score, barème,
   tarif vient de l'API. Le front affiche, il ne calcule jamais.

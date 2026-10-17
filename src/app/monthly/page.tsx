@@ -14,7 +14,7 @@ import { ApiError } from '@/lib/api-error';
 import { useAuth } from '@/lib/auth-context';
 import { SettlementBordereauResult, SettlementMonthly, SettlementMonthlyCompany } from '@/lib/types';
 
-const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
+const PAGE_SIZE = 7; // pagination fixe 7/p — A.5
 
 function formatDzd(amount: number, locale: string): string {
   try {

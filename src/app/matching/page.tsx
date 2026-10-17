@@ -25,7 +25,7 @@ import {
 } from '@/lib/types';
 import { Paginated } from '@/lib/types';
 
-const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
+const PAGE_SIZE = 7; // pagination fixe 7/p — A.5
 
 /**
  * Critères pondérés du score d'appariement (B.5) — libellés + poids

@@ -13,7 +13,7 @@ import { apiGet, apiPost } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { CommissionCase, CommissionCaseStatus, CommissionPenaltyResult, CommissionPvSignResult } from '@/lib/types';
 
-const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
+const PAGE_SIZE = 7; // pagination fixe 7/p — A.5
 
 function statusTone(status: CommissionCaseStatus): TagTone {
   if (status === 'PRONONCE') return 'ok';
@@ -46,7 +46,7 @@ export default function CommissionPage() {
   const canSignPv = hasPrivilege('pvSign');
 
   // `GET /commission/cases` ne supporte pas la pagination côté back
-  // (contrairement à `/recours`/`/matching/queue`) : pagination 6/p
+  // (contrairement à `/recours`/`/matching/queue`) : pagination 7/p
   // appliquée côté front sur la liste complète.
   const casesQuery = useQuery({
     queryKey: ['commission', 'cases'],
