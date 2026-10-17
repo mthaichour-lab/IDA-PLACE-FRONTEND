@@ -164,3 +164,124 @@ export interface ClaimImportReport {
   ineligibleCount: number;
   rows: ClaimImportRowResult[];
 }
+
+/* ===================== Échanges Annexes 2/3/4 (écran 4, Module B §6.4) — B.2/B.3 =====================
+ * Reflet de `RecoursModule` (mock minimal côté back, voir ARCHITECTURE.md) : registre des recours
+ * inter-compagnies + transition d'état. Pas d'endpoint de détail dédié — la fiche écran 4 réutilise
+ * les champs déjà présents dans l'item de liste (voir HANDOFF à rédiger : forme à surveiller, le
+ * back-end n'a pas encore persisté les timers conventionnels réels).
+ */
+
+export type RecoursState = 'ENVOYE' | 'EN_ATTENTE' | 'OPPOSITION' | 'CONTESTATION' | 'COMMISSION' | 'FORCLOS';
+/** Onglets écran 4 (énoncé de mission) — 'ENVOYE' existe côté back mais n'a pas d'onglet dédié : visible seulement sous "Tous". */
+export type RecoursFilter = 'TOUS' | 'EN_ATTENTE' | 'OPPOSITION' | 'CONTESTATION' | 'COMMISSION' | 'FORCLOS';
+
+export interface RecoursItem {
+  id: string;
+  claimId: string;
+  from: string;
+  to: string;
+  state: RecoursState;
+  requestSentAt: string;
+  amount: number;
+  /** Échéance conventionnelle (Art. 10/12/19) — purement informatif, voir `CountdownBar`. */
+  conventionalDeadlineAt: string;
+}
+
+export interface RecoursTransitionResult {
+  id: string;
+  state: string;
+  transitionedAt: string;
+}
+
+/* ===================== Cycle mensuel (écran 5, Module C §6.5) — B.2/B.3 =====================
+ * Reflet de `SettlementController.monthly` (mock minimal, valeurs calculées à la volée non persistées).
+ */
+
+export type SettlementStatus = 'CLOTURE' | 'EN_COURS';
+
+export interface MonthlyCompanySynthesis {
+  code: string;
+  claimsCount: number;
+  totalAmount: number;
+  status: SettlementStatus;
+}
+
+export interface MonthlySettlement {
+  period: string;
+  companies: MonthlyCompanySynthesis[];
+}
+
+/* ===================== Compensation trimestrielle (écran 6, Module D §6.6) — B.2/B.3 =====================
+ * Reflet de `SettlementController.quarter`.
+ */
+
+export interface QuarterPosition {
+  from: string;
+  to: string;
+  amount: number;
+}
+
+export interface QuarterNet {
+  code: string;
+  net: number;
+}
+
+export interface QuarterSettlement {
+  quarter: string;
+  bordereau: string;
+  positions: QuarterPosition[];
+  net: QuarterNet[];
+}
+
+/** Reflet partiel de `GET /pricing/grid` (MeteringModule, B.8) — seule `version` est utilisée ici (référence TARIF-2026.01, écran 6). */
+export interface PriceGridSummary {
+  version: string;
+  effectiveFrom: string;
+}
+
+/* ===================== Commission (écran 7, Module E §6.7) — B.2 =====================
+ * Reflet de `CommissionController` (mock minimal, pas de persistance côté back).
+ */
+
+export type CommissionCaseStatus = 'A_INSTRUIRE' | 'EN_DELIBERE' | 'PRONONCE';
+
+export interface CommissionCase {
+  id: string;
+  recoursId: string;
+  status: CommissionCaseStatus;
+  scheduledAt: string;
+}
+
+export interface CommissionPenaltyResult {
+  id: string;
+  amount: number;
+  reason: string;
+  orderedAt: string;
+}
+
+export interface CommissionPvSignResult {
+  id: string;
+  signedAt: string;
+}
+
+/* ===================== Journal scellé (écran 13, Module XI) — B.2/B.3 =====================
+ * Reflet de `LedgerModule` — seul module "mock" à implémenter réellement la logique de chaînage
+ * SHA-256 (voir ARCHITECTURE.md), stockage en mémoire (non append-only en base, TODO back).
+ */
+
+export interface LedgerEntry {
+  id: string;
+  type: string;
+  ref: string;
+  actor: string;
+  summary: string;
+  at: string;
+  hash: string;
+  prevHash: string | null;
+}
+
+export interface LedgerVerifyResult {
+  valid: boolean;
+  brokenAt?: string;
+}
