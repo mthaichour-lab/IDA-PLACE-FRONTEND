@@ -93,6 +93,25 @@ privilège, persistance confirmée après rechargement de la liste).
   actions autorisées par état, scoping d'un privilège B.7) — pas une
   couverture exhaustive de chaque branche.
 
+## Corrigé en revue de polish (2026-10-17) — dérive de contrat `/stats`
+
+`StatsModule` (back) a changé de forme sans que ce changement soit
+répercuté côté front : `pour100k` est omis (pas de référentiel
+démographique), et l'activité mensuelle expose `econstat`/`autresCanaux`
+(comptes réels par canal) au lieu des anciens champs mock
+`annexes2`/`oppositions`/`indemnises`/`econstatMobile`/`econstatAgence`.
+**L'écran `/stats` affichait donc des valeurs `undefined`/`NaN` en
+conditions réelles** (jamais détecté faute de test composant avant ce
+sprint). Corrigé : `WilayaStat`/`MonthlyActivity` (`src/lib/types.ts`)
+et `/stats/page.tsx` alignés sur `WilayaStatDto`/`MonthlyStatDto` réels
+(back `stats.service.ts`) — mesure "pour 100k hab." retirée des onglets,
+3 séries mensuelles (déclarations/e-constat/autres canaux), répartition
+par canal en comptes réels (plus de fausses "%"). Vérifié en navigateur
+réel (import d'un dossier, wilaya 16 → comptes/montants corrects) + test
+composant mis à jour. **Leçon** : toujours vérifier un type de données
+mocké contre le DTO réel du back avant d'écrire un test composant — ne
+pas faire confiance à `types.ts` existant sans le recomparer.
+
 ## Dette / limites connues (documentées dans le code, pas des bugs)
 
 - **Pas d'agrégat cross-compagnie** pour les coûts (`/params`) ni pour

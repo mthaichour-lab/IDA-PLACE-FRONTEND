@@ -269,19 +269,16 @@ const fr = {
 
   // ----- Statistiques de la place (écran 11, Module H §6.10) -----
   'stats.title': 'Statistiques de la place',
-  'stats.subtitle': 'Carte en tuiles des 69 wilayas, activité mensuelle et adoption du e-constat mobile.',
+  'stats.subtitle': 'Carte en tuiles des 69 wilayas, activité mensuelle et répartition par canal de déclaration.',
   'stats.map.title': 'Carte des wilayas',
   'stats.measure.declarations': 'Déclarations',
   'stats.measure.montants': 'Montants',
-  'stats.measure.pour100k': 'Pour 100 000 hab.',
-  'stats.monthly.title': 'Activité mensuelle',
   'stats.monthly.declarations': 'Déclarations',
-  'stats.monthly.annexes2': 'Annexes 2 émises',
-  'stats.monthly.oppositions': 'Oppositions',
-  'stats.monthly.indemnises': 'Assurés indemnisés',
-  'stats.econstat.title': 'Adoption e-constat mobile vs agence',
-  'stats.econstat.mobile': 'Mobile',
-  'stats.econstat.agence': 'Agence',
+  'stats.monthly.econstat': 'Déclarations e-constat',
+  'stats.monthly.autresCanaux': 'Autres canaux (ERP/import/API)',
+  'stats.econstat.title': 'Répartition par canal de déclaration',
+  'stats.econstat.econstat': 'E-constat',
+  'stats.econstat.autresCanaux': 'Autres canaux',
   'stats.empty': 'Donnée non encore disponible côté API.',
 
   // ----- Paramétrage (écran 14, Admin §5.1) -----

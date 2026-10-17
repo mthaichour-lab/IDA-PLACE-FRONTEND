@@ -292,21 +292,10 @@ export interface SettlementQuarter {
   closedBy?: string;
 }
 
-/** Grille tarifaire des règlements (B.8, `TARIF-2026.01`) — `GET /pricing/grid` (MeteringModule, déjà réel). */
-export interface PriceGridMetric {
-  metric: string;
-  label: string;
-  unit: string;
-  includedQuota: number;
-  unitPrice: number;
-}
-
-export interface PriceGrid {
-  version: string;
-  effectiveFrom: string;
-  subscription: { label: string; monthly: number };
-  metrics: PriceGridMetric[];
-}
+// `PriceGrid`/`PriceGridMetric` (grille tarifaire des règlements, B.8,
+// `GET /pricing/grid`) sont définis plus bas avec `InvoiceLine`/
+// `MeteringInvoice` (section Métrologie) — réutilisés ici par `/quarter`
+// (bordereau trimestriel, même grille que `/metering`), pas redéfinis.
 
 /* ===================== Commission (écran 7, Module E §6.7) — B.2 =====================
  * Forme exacte de `CommissionCaseViewDto`/`SanctionViewDto` (back `commission.dto.ts`). Routes réelles sous
@@ -357,8 +346,9 @@ export interface CommissionPenaltyResult {
 export interface CommissionPvSignResult extends CommissionCase {}
 
 /* ===================== Journal scellé (écran 13, Module XI) — B.2/B.3 =====================
- * Reflet de `LedgerModule` — seul module "mock" à implémenter réellement la logique de chaînage
- * SHA-256 (voir ARCHITECTURE.md), stockage en mémoire (non append-only en base, TODO back).
+ * Reflet de `LedgerModule` — chaînage SHA-256 réel (`hash(n)=f(event,hash(n-1))`,
+ * `GET /ledger/verify`), désormais append-only en base (`ledger_entry`), repli
+ * mémoire équivalent si PostgreSQL absent (voir ARCHITECTURE.md back).
  */
 
 export interface LedgerEntry {
@@ -474,7 +464,18 @@ export interface MeteringInvoice {
   status: InvoiceStatus;
 }
 
-/* ===================== Statistiques de la place (écran 11, Module H §6.10) — mock (référentiel wilayas réel) ===================== */
+/* ===================== Statistiques de la place (écran 11, Module H §6.10) =====================
+ * Forme exacte de `WilayaStatDto`/`MonthlyStatDto` (back `stats.service.ts`) — agrégation RÉELLE
+ * depuis ClaimsModule, StatsModule n'étant pas dans la liste des contrats figés (B.11).
+ *
+ * `pour100k` OMIS (pas de référentiel démographique officiel dans le dossier
+ * technique) plutôt qu'inventé — pas de mesure "pour 100 000 hab." côté front.
+ * `annexes2`/`oppositions`/`indemnises` dépendent de RecoursModule/SettlementModule
+ * (devenus réels depuis — voir TODO `stats.service.ts` back, à réintroduire si repris
+ * côté front). "e-constat mobile vs agence" approximé par canal réel
+ * (`econstat` = canal ECONSTAT, `autresCanaux` = ERP+IMPORT+API) — le modèle de
+ * données ne distingue pas mobile/agence au sein du canal ECONSTAT.
+ */
 
 export interface WilayaStat {
   code: string;
@@ -487,17 +488,13 @@ export interface WilayaStat {
   lng?: number;
   declarations: number;
   montants: number;
-  pour100k: number;
 }
 
 export interface MonthlyActivity {
   month: string;
   declarations: number;
-  annexes2: number;
-  oppositions: number;
-  indemnises: number;
-  econstatMobile: number;
-  econstatAgence: number;
+  econstat: number;
+  autresCanaux: number;
 }
 
 /* ===================== Paramétrage (écran 14, Admin §5.1) — matrice réelle, utilisateurs mock ===================== */

@@ -11,19 +11,21 @@ const ME: MeResponse = {
 };
 
 const WILAYAS: WilayaStat[] = [
-  { code: '16', name: 'Alger', col: 1, row: 1, declarations: 120, montants: 5_000_000, pour100k: 42 },
-  { code: '31', name: 'Oran', col: 2, row: 1, declarations: 80, montants: 3_000_000, pour100k: 30 },
+  { code: '16', name: 'Alger', col: 1, row: 1, declarations: 120, montants: 5_000_000 },
+  { code: '31', name: 'Oran', col: 2, row: 1, declarations: 80, montants: 3_000_000 },
 ];
 
 const MONTHLY: MonthlyActivity[] = [
-  { month: '2026-09', declarations: 90, annexes2: 10, oppositions: 5, indemnises: 60, econstatMobile: 70, econstatAgence: 30 },
-  { month: '2026-10', declarations: 110, annexes2: 12, oppositions: 6, indemnises: 70, econstatMobile: 75, econstatAgence: 25 },
+  { month: '2026-09', declarations: 90, econstat: 70, autresCanaux: 20 },
+  { month: '2026-10', declarations: 110, econstat: 85, autresCanaux: 25 },
 ];
 
 /**
  * Écran Statistiques de la place (/stats, écran 11, Module H §6.10) —
- * carte des wilayas (référentiel réel), bascule déclarations/montants/pour
- * 100k habitants, répartition e-constat mobile vs agence.
+ * carte des wilayas (référentiel réel), bascule déclarations/montants
+ * (pas de "pour 100k hab.", omis faute de référentiel démographique —
+ * voir stats.service.ts back), répartition par canal de déclaration
+ * (e-constat vs autres canaux ERP/import/API).
  */
 describe('Écran Statistiques de la place (/stats)', () => {
   afterEach(() => {
@@ -57,5 +59,14 @@ describe('Écran Statistiques de la place (/stats)', () => {
     renderWithProviders(<StatsPage />);
 
     await waitFor(() => expect(screen.getAllByText(/non encore disponible/i).length).toBeGreaterThan(0));
+  });
+
+  it('affiche la répartition par canal de déclaration (e-constat vs autres canaux, en comptes réels)', async () => {
+    mockFetchJson({ '/api/v1/me': ME, '/api/v1/stats/wilayas': WILAYAS, '/api/v1/stats/monthly': MONTHLY });
+
+    renderWithProviders(<StatsPage />);
+
+    await waitFor(() => expect(screen.getByText('70 / 20')).toBeInTheDocument());
+    expect(screen.getByText('85 / 25')).toBeInTheDocument();
   });
 });

@@ -11,19 +11,17 @@ import { TranslationKey } from '@/i18n/translations';
 import { apiGet } from '@/lib/api-client';
 import { MonthlyActivity, WilayaStat } from '@/lib/types';
 
-type MeasureKey = 'declarations' | 'montants' | 'pour100k';
+type MeasureKey = 'declarations' | 'montants';
 
 const MEASURES: { key: MeasureKey; label: TranslationKey }[] = [
   { key: 'declarations', label: 'stats.measure.declarations' },
   { key: 'montants', label: 'stats.measure.montants' },
-  { key: 'pour100k', label: 'stats.measure.pour100k' },
 ];
 
-const MONTHLY_SERIES: { key: keyof Pick<MonthlyActivity, 'declarations' | 'annexes2' | 'oppositions' | 'indemnises'>; label: TranslationKey }[] = [
+const MONTHLY_SERIES: { key: keyof Pick<MonthlyActivity, 'declarations' | 'econstat' | 'autresCanaux'>; label: TranslationKey }[] = [
   { key: 'declarations', label: 'stats.monthly.declarations' },
-  { key: 'annexes2', label: 'stats.monthly.annexes2' },
-  { key: 'oppositions', label: 'stats.monthly.oppositions' },
-  { key: 'indemnises', label: 'stats.monthly.indemnises' },
+  { key: 'econstat', label: 'stats.monthly.econstat' },
+  { key: 'autresCanaux', label: 'stats.monthly.autresCanaux' },
 ];
 
 function monthShort(month: string): string {
@@ -120,27 +118,27 @@ export default function StatsPage() {
               <div style={{ display: 'flex', gap: 'var(--s-4)', fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
                 <span>
                   <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: 'var(--k-pri-2)', marginInlineEnd: 6 }} />
-                  {t('stats.econstat.mobile')}
+                  {t('stats.econstat.econstat')}
                 </span>
                 <span>
                   <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: 'var(--rule-strong)', marginInlineEnd: 6 }} />
-                  {t('stats.econstat.agence')}
+                  {t('stats.econstat.autresCanaux')}
                 </span>
               </div>
               {monthly.map((m) => {
-                const total = Math.max(1, m.econstatMobile + m.econstatAgence);
-                const mobilePct = (m.econstatMobile / total) * 100;
+                const total = Math.max(1, m.econstat + m.autresCanaux);
+                const econstatPct = (m.econstat / total) * 100;
                 return (
-                  <div key={m.month} style={{ display: 'grid', gridTemplateColumns: '48px 1fr 72px', alignItems: 'center', gap: 8 }}>
+                  <div key={m.month} style={{ display: 'grid', gridTemplateColumns: '48px 1fr 96px', alignItems: 'center', gap: 8 }}>
                     <span className="mono" style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}>
                       {monthShort(m.month)}
                     </span>
                     <div style={{ display: 'flex', height: 10, borderRadius: 'var(--k-r-pill)', overflow: 'hidden', background: 'var(--rule)' }}>
-                      <div style={{ width: `${mobilePct}%`, background: 'var(--k-pri-2)' }} />
-                      <div style={{ width: `${100 - mobilePct}%`, background: 'var(--rule-strong)' }} />
+                      <div style={{ width: `${econstatPct}%`, background: 'var(--k-pri-2)' }} />
+                      <div style={{ width: `${100 - econstatPct}%`, background: 'var(--rule-strong)' }} />
                     </div>
                     <span className="mono" style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', textAlign: 'end' }}>
-                      {m.econstatMobile}% / {m.econstatAgence}%
+                      {m.econstat} / {m.autresCanaux}
                     </span>
                   </div>
                 );
