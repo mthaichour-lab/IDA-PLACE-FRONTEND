@@ -16,7 +16,7 @@ import { buildRecentPeriods } from '@/lib/period-options';
 import { useRealtime } from '@/lib/realtime';
 import { CompanyView, InvoiceLine, MeteringInvoice, Paginated, PriceGrid } from '@/lib/types';
 
-const PAGE_SIZE = 7; // pagination fixe 7/p — A.5
+const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 const POLL_INTERVAL_MS = 20_000; // repli polling (B.12) — voir /cockpit
 const PERIODS = buildRecentPeriods(12);
 

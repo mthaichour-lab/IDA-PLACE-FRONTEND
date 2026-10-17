@@ -13,7 +13,7 @@ import { TranslationKey } from '@/i18n/translations';
 import { apiGet } from '@/lib/api-client';
 import { FraudAction, FraudCase, FraudSeverity, Paginated } from '@/lib/types';
 
-const PAGE_SIZE = 7; // pagination fixe 7/p — A.5
+const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 
 const CASE_TYPE_LABEL: Record<FraudCase['type'], TranslationKey> = {
   DOUBLON: 'fraude.type.DOUBLON',

@@ -11,7 +11,7 @@ import { apiGet, apiPostForm } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { ClaimColumnDef, ClaimImportReport, ClaimImportRowResult } from '@/lib/types';
 
-const PAGE_SIZE = 7; // pagination fixe 7/p — A.5
+const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 
 /** Construit un CSV (placeholder documenté — pas un classeur Excel mis en forme) à partir du modèle 47 colonnes. */
 function buildColumnsCsv(columns: ClaimColumnDef[]): string {

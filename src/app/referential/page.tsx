@@ -12,7 +12,7 @@ import { useI18n } from '@/i18n/provider';
 import { apiGet } from '@/lib/api-client';
 import { AgencyView, CompanyView, ExpertView, Paginated } from '@/lib/types';
 
-const PAGE_SIZE = 7; // pagination fixe 7/p — A.5
+const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 
 type TabKey = 'companies' | 'agencies' | 'experts';
 

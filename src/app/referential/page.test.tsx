@@ -29,13 +29,13 @@ describe('Écran Référentiel de place (/referential)', () => {
     vi.unstubAllGlobals();
   });
 
-  it('affiche la pagination 7 lignes/page et la respecte (A.5)', async () => {
+  it('affiche la pagination 6 lignes/page et la respecte (A.5)', async () => {
     const allCompanies = Array.from({ length: 9 }, (_, i) => company(i + 1));
     mockFetchRouter((pathname, url) => {
       if (pathname === '/api/v1/me') return ME_OPERATEUR;
       if (pathname === '/api/v1/referential/companies') {
         const page = Number(url.searchParams.get('page') ?? '1');
-        const pageSize = Number(url.searchParams.get('pageSize') ?? '7');
+        const pageSize = Number(url.searchParams.get('pageSize') ?? '6');
         const start = (page - 1) * pageSize;
         return { page, total: allCompanies.length, items: allCompanies.slice(start, start + pageSize) };
       }
@@ -46,19 +46,19 @@ describe('Écran Référentiel de place (/referential)', () => {
 
     renderWithProviders(<ReferentialPage />);
 
-    // Page 1 : exactement 7 lignes (sur 9 compagnies au total).
+    // Page 1 : exactement 6 lignes (sur 9 compagnies au total).
     await waitFor(() => expect(screen.getByText('Compagnie 1')).toBeInTheDocument());
-    expect(screen.getByText('Compagnie 7')).toBeInTheDocument();
-    expect(screen.queryByText('Compagnie 8')).not.toBeInTheDocument();
+    expect(screen.getByText('Compagnie 6')).toBeInTheDocument();
+    expect(screen.queryByText('Compagnie 7')).not.toBeInTheDocument();
 
-    const rows = screen.getAllByRole('row'); // 1 ligne d'en-tête + 7 lignes de données
-    expect(rows).toHaveLength(8);
+    const rows = screen.getAllByRole('row'); // 1 ligne d'en-tête + 6 lignes de données
+    expect(rows).toHaveLength(7);
 
-    // Navigation vers la page 2 : les 2 compagnies restantes.
+    // Navigation vers la page 2 : les 3 compagnies restantes.
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: /suivant|next/i }));
 
-    await waitFor(() => expect(screen.getByText('Compagnie 8')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Compagnie 7')).toBeInTheDocument());
     expect(screen.getByText('Compagnie 9')).toBeInTheDocument();
     expect(screen.queryByText('Compagnie 1')).not.toBeInTheDocument();
   });

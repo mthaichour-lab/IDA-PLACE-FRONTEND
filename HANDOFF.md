@@ -12,6 +12,37 @@ correspondant) :
 - `/monitoring`, `/fraude`, `/metering`, `/stats`, `/params` ;
 - `/exchanges`, `/monthly`, `/quarter`, `/commission`, `/ledger`.
 
+## ⚠️ 2026-10-17 — Le dossier technique de référence est maintenant disponible
+
+Le document cité partout dans ce code (`IDA_Place_Dossier_Technique.md`,
+jusqu'ici introuvable sur cette machine) est maintenant sur le poste de
+l'utilisateur : `C:\Users\mthai\Desktop\IDA\IDA_Place_Dossier_Technique.md`
++ un guide utilisateur illustré, `Guide_IDA_Place.docx` (16 captures
+d'écran de référence, une par écran). **Les deux contredisent plusieurs
+décisions prises faute de mieux pendant les sprints précédents :**
+
+1. **Pagination = 6 lignes/page, pas 7.** Corrigé ce sprint sur les 14
+   écrans + `Table.tsx` (le prop `pageSize` par défaut était déjà
+   incohérent avec son propre commentaire JSDoc, qui disait déjà 6).
+2. **`/stats` doit avoir une mesure "Pour 100 000 hab."** — retirée par
+   erreur début sprint 3 bis en suivant l'omission du back (qui avait
+   lui-même omis la mesure faute de référentiel démographique). Le
+   dossier ne fournit pas non plus ce référentiel : **à trancher avec
+   l'UAR/CNA avant de la réintroduire** (ne pas inventer de données de
+   population).
+3. **Écart de maquette majeur, plusieurs écrans.** Les captures du guide
+   montrent des écrans sensiblement plus riches que l'implémentation
+   actuelle (ex. `/quarter` : agenda de réunion commission, matrice
+   thermique des positions bilatérales, diagramme circulaire des flux de
+   règlement, 6 KPI ; `/stats` : 6 KPI, répartition par code de barème
+   Art. 14 (B01-B11), répartition par catégorie de véhicule, comparatif
+   de délais IRSAM vs IDA, tableau d'activité par compagnie). Certains de
+   ces éléments nécessitent des données/référentiels que le modèle
+   back actuel n'a pas (code barème sur `Claim`, catégorie véhicule,
+   baseline IRSAM) — à chiffrer écran par écran avant de se lancer, PAS
+   une simple session de polish. Voir les deux documents avant toute
+   reprise de ce chantier.
+
 ## ⚠️ Particularité de ce sprint : deux implémentations concurrentes réconciliées
 
 Une **session Claude indépendante**, travaillant en parallèle sur ce même
@@ -83,13 +114,13 @@ privilège, persistance confirmée après rechargement de la liste).
 - **Temps réel** : `useRealtime(events, onEvent)` — fonctionne réellement
   dans un navigateur (transmission via `auth`, pas un en-tête). **Toujours**
   combiner avec un `refetchInterval` TanStack de repli.
-- **Tests** : Vitest + React Testing Library — `npm test`. 47 tests
+- **Tests** : Vitest + React Testing Library — `npm test`. 48 tests
   composants, les 14 écrans couverts : `/cockpit`, `/import`, `/matching`,
   `/referential` (apportés par la session parallèle, sprint 3) +
   `/monitoring`, `/fraude`, `/metering`, `/stats`, `/params`, `/exchanges`,
   `/monthly`, `/quarter`, `/commission`, `/ledger` (sprint 3 bis, patron
   existant — `src/test/render.tsx`, `vitest.setup.ts`). 1-2 cas par écran
-  (rendu principal + une règle métier représentative : pagination 7/p,
+  (rendu principal + une règle métier représentative : pagination 6/p,
   actions autorisées par état, scoping d'un privilège B.7) — pas une
   couverture exhaustive de chaque branche.
 

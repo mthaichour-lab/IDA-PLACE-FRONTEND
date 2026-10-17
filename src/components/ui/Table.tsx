@@ -9,7 +9,7 @@ export interface Column<T> {
 }
 
 /**
- * Tableau générique transverse `.t` (A.3), pagination FIXE 7 lignes/page
+ * Tableau générique transverse `.t` (A.3), pagination FIXE 6 lignes/page
  * (A.5). La pagination est pilotée par le parent (`page`/`total`), pour
  * fonctionner aussi bien avec une liste déjà paginée côté API
  * (`{page,total,items}`, B.11) qu'avec un tableau local.
@@ -19,7 +19,7 @@ export function Table<T>({
   rows,
   page,
   total,
-  pageSize = 7,
+  pageSize = 6,
   onPageChange,
   onRowClick,
   getRowKey,

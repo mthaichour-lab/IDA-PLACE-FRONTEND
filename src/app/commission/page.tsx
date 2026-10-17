@@ -13,7 +13,7 @@ import { apiGet, apiPost } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { CommissionCase, CommissionCaseStatus, CommissionPenaltyResult, CommissionPvSignResult, Paginated } from '@/lib/types';
 
-const PAGE_SIZE = 7; // pagination fixe 7/p — A.5
+const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 
 function statusTone(status: CommissionCaseStatus): TagTone {
   if (status === 'PRONONCE') return 'ok';
