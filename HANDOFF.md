@@ -69,6 +69,35 @@ des 3 points back) :
   Vérifié en navigateur réel (import + recours réglé + opposé → KPI et
   graphiques corrects).
 
+### `/quarter` rapproché de la capture de référence (2026-10-17)
+
+Voir HANDOFF.md back pour le détail des 2 endpoints additifs :
+- **KPI de synthèse** (`GET /settlement/quarter/:q/summary`, réel) :
+  positions brutes, après netting bilatéral, après netting
+  multilatéral, réduction des flux (%), recours compensés, en
+  opposition (hors circuit).
+- **"Positions nettes multilatérales" en tableau** (compagnie/à
+  recevoir/à payer/position) — remplace l'ancienne liste de chips,
+  mêmes données (`SettlementQuarter.net`, contrat figé inchangé).
+- **"Matrice des positions brutes" (nouvelle section)** — carte
+  thermique créancier(ligne)×débiteur(colonne) via `GET
+  /settlement/quarter/:q/matrix`, couleur dégradée par intensité (même
+  pattern que la carte des wilayas de `/stats`), marges "à
+  recevoir"/"à payer" par ligne/colonne calculées côté front à partir
+  des cellules. Remplace l'ancienne table "positions bilatérales" qui
+  montrait en réalité les positions déjà NETTÉES (`positions`, pas la
+  matrice brute) sous ce nom trompeur.
+- **Encore manquant** (captures du guide, hors périmètre de cette
+  passe) : agenda de réunion de commission (date/lieu/ordre du jour —
+  aucune donnée source, voir HANDOFF.md back), diagramme circulaire des
+  flux de règlement (visualisation à construire, les données existent
+  déjà via `net`/`matrix`), logos réels des compagnies (actuellement
+  `CoChip` — pastille colorée + code, pas une image — cohérent avec le
+  reste de l'app, pas changé ici).
+- Test composant (`page.test.tsx`) réécrit en conséquence (4 cas).
+  Vérifié en navigateur réel (3 recours réglés CAAT/SAA + 1 opposé →
+  KPI et matrice corrects, somme "à payer"/"à recevoir" cohérente).
+
 ## ⚠️ Particularité de ce sprint : deux implémentations concurrentes réconciliées
 
 Une **session Claude indépendante**, travaillant en parallèle sur ce même

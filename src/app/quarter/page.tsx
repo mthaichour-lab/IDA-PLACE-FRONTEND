@@ -4,10 +4,11 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
 import { CoChip } from '@/components/ui/CoChip';
+import { Kpi, KpiRow } from '@/components/ui/Kpi';
 import { Tag } from '@/components/ui/Tag';
 import { useI18n } from '@/i18n/provider';
 import { apiGet } from '@/lib/api-client';
-import { PriceGrid, SettlementQuarter } from '@/lib/types';
+import { PriceGrid, SettlementQuarter, SettlementQuarterMatrix, SettlementQuarterSummary } from '@/lib/types';
 
 function formatDzd(amount: number, locale: string): string {
   try {
@@ -45,25 +46,48 @@ export default function QuarterPage() {
     queryFn: () => apiGet<SettlementQuarter>(`/settlement/quarter/${quarter}`),
   });
 
+  const summaryQuery = useQuery({
+    queryKey: ['settlement', 'quarter', quarter, 'summary'],
+    queryFn: () => apiGet<SettlementQuarterSummary>(`/settlement/quarter/${quarter}/summary`),
+  });
+
+  const matrixQuery = useQuery({
+    queryKey: ['settlement', 'quarter', quarter, 'matrix'],
+    queryFn: () => apiGet<SettlementQuarterMatrix>(`/settlement/quarter/${quarter}/matrix`),
+  });
+
   const gridQuery = useQuery({
     queryKey: ['pricing', 'grid'],
     queryFn: () => apiGet<PriceGrid>('/pricing/grid'),
   });
 
   const data = quarterQuery.data;
-  const companies = useMemo(() => {
-    if (!data) return [];
-    const codes = new Set<string>();
-    for (const p of data.positions) {
-      codes.add(p.from);
-      codes.add(p.to);
-    }
-    return Array.from(codes).sort();
-  }, [data]);
+  const summary = summaryQuery.data;
+  const rawMatrix = matrixQuery.data;
 
-  function amountAt(from: string, to: string): number | undefined {
-    return data?.positions.find((p) => p.from === from && p.to === to)?.amount;
-  }
+  const rawAmountAt = useMemo(() => {
+    const byKey = new Map<string, number>();
+    for (const c of rawMatrix?.cells ?? []) byKey.set(`${c.from}|${c.to}`, c.amount);
+    return (from: string, to: string) => byKey.get(`${from}|${to}`) ?? 0;
+  }, [rawMatrix]);
+
+  const rawMax = useMemo(() => Math.max(1, ...(rawMatrix?.cells.map((c) => c.amount) ?? [0])), [rawMatrix]);
+
+  const rowTotals = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const c of rawMatrix?.companies ?? []) {
+      totals.set(c, (rawMatrix?.cells ?? []).filter((cell) => cell.from === c).reduce((s, cell) => s + cell.amount, 0));
+    }
+    return totals;
+  }, [rawMatrix]);
+
+  const colTotals = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const c of rawMatrix?.companies ?? []) {
+      totals.set(c, (rawMatrix?.cells ?? []).filter((cell) => cell.to === c).reduce((s, cell) => s + cell.amount, 0));
+    }
+    return totals;
+  }, [rawMatrix]);
 
   return (
     <>
@@ -89,6 +113,26 @@ export default function QuarterPage() {
         </div>
       </div>
 
+      {summaryQuery.isLoading ? (
+        <p>{t('common.loading')}</p>
+      ) : summaryQuery.error || !summary ? (
+        <div className="note ko" role="alert">
+          <span>{t('common.error')}</span>
+          <button type="button" onClick={() => summaryQuery.refetch()}>
+            {t('common.retry')}
+          </button>
+        </div>
+      ) : (
+        <KpiRow>
+          <Kpi value={formatDzd(summary.grossTotal, locale)} label={t('quarter.kpi.grossTotal')} />
+          <Kpi value={formatDzd(summary.bilateralNetTotal, locale)} label={t('quarter.kpi.bilateralNetTotal')} />
+          <Kpi value={formatDzd(summary.multilateralNetTotal, locale)} label={t('quarter.kpi.multilateralNetTotal')} />
+          <Kpi value={`${summary.reductionPct}%`} label={t('quarter.kpi.reductionPct')} />
+          <Kpi value={summary.settledCount} label={t('quarter.kpi.settledCount')} />
+          <Kpi value={summary.opposedCount} label={t('quarter.kpi.opposedCount')} />
+        </KpiRow>
+      )}
+
       {quarterQuery.isLoading ? (
         <p>{t('common.loading')}</p>
       ) : quarterQuery.error || !data ? (
@@ -100,37 +144,34 @@ export default function QuarterPage() {
         </div>
       ) : (
         <>
-          <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
+          <div className="sheet" style={{ marginTop: 'var(--s-5)', marginBottom: 'var(--s-5)' }}>
             <div className="sheet-head">
-              <span>{t('quarter.matrix.title')}</span>
+              <span>{t('quarter.net.title')}</span>
             </div>
             <div className="sheet-body">
               <div className="t-wrap">
-                <table className="t" aria-label={t('quarter.matrix.title')}>
+                <table className="t">
                   <thead>
                     <tr>
-                      <th>{t('quarter.matrix.from')}</th>
-                      {companies.map((c) => (
-                        <th key={c}>
-                          <CoChip code={c} />
-                        </th>
-                      ))}
+                      <th>{t('quarter.net.col.company')}</th>
+                      <th>{t('quarter.net.col.receivable')}</th>
+                      <th>{t('quarter.net.col.payable')}</th>
+                      <th>{t('quarter.net.col.position')}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {companies.map((from) => (
-                      <tr key={from}>
-                        <td>
-                          <CoChip code={from} />
+                    {data.net.map((n) => (
+                      <tr key={n.code}>
+                        <td style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <CoChip code={n.code} />
+                          <span className="mono">{n.code}</span>
                         </td>
-                        {companies.map((to) => {
-                          const amount = amountAt(from, to);
-                          return (
-                            <td key={to} className="mono">
-                              {from === to || amount === undefined ? <span style={{ color: 'var(--ink-3)' }}>—</span> : formatDzd(amount, locale)}
-                            </td>
-                          );
-                        })}
+                        <td className="mono">{n.net > 0 ? formatDzd(n.net, locale) : '—'}</td>
+                        <td className="mono">{n.net < 0 ? formatDzd(-n.net, locale) : '—'}</td>
+                        <td>
+                          <Tag tone={n.net >= 0 ? 'ok' : 'ko'}>{n.net >= 0 ? t('quarter.net.receivable') : t('quarter.net.payable')}</Tag>{' '}
+                          <span className="mono">{formatDzd(Math.abs(n.net), locale)}</span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -139,32 +180,76 @@ export default function QuarterPage() {
             </div>
           </div>
 
-          <div className="grid g-side2" style={{ marginBottom: 'var(--s-5)' }}>
-            <div className="sheet" style={{ gridColumn: 'span 2' }}>
-              <div className="sheet-head">
-                <span>{t('quarter.net.title')}</span>
-              </div>
-              <div className="sheet-body" style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s-3)' }}>
-                {data.net.map((n) => (
-                  <div key={n.code} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--rule)', borderRadius: 'var(--k-r-m)', padding: 'var(--s-3) var(--s-4)' }}>
-                    <CoChip code={n.code} />
-                    <span className="mono">{formatDzd(Math.abs(n.net), locale)}</span>
-                    <Tag tone={n.net >= 0 ? 'ok' : 'ko'}>{n.net >= 0 ? t('quarter.net.receivable') : t('quarter.net.payable')}</Tag>
-                  </div>
-                ))}
-              </div>
+          <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
+            <div className="sheet-head">
+              <span>{t('quarter.rawMatrix.title')}</span>
             </div>
+            <div className="sheet-body">
+              {matrixQuery.isLoading ? (
+                <p>{t('common.loading')}</p>
+              ) : matrixQuery.error || !rawMatrix || rawMatrix.companies.length === 0 ? (
+                <p style={{ color: 'var(--ink-3)' }}>{t('common.noData')}</p>
+              ) : (
+                <div className="t-wrap">
+                  <table className="t" aria-label={t('quarter.rawMatrix.title')}>
+                    <thead>
+                      <tr>
+                        <th>{t('quarter.rawMatrix.from')}</th>
+                        {rawMatrix.companies.map((c) => (
+                          <th key={c}>
+                            <CoChip code={c} />
+                          </th>
+                        ))}
+                        <th>{t('quarter.net.receivable')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rawMatrix.companies.map((from) => (
+                        <tr key={from}>
+                          <td>
+                            <CoChip code={from} />
+                          </td>
+                          {rawMatrix.companies.map((to) => {
+                            const amount = rawAmountAt(from, to);
+                            const intensity = from === to ? 0 : amount / rawMax;
+                            return (
+                              <td
+                                key={to}
+                                className="mono"
+                                style={from === to ? undefined : { background: `color-mix(in srgb, var(--k-pri-2) ${Math.round(intensity * 70)}%, var(--paper))` }}
+                              >
+                                {from === to || amount === 0 ? <span style={{ color: 'var(--ink-3)' }}>—</span> : formatDzd(amount, locale)}
+                              </td>
+                            );
+                          })}
+                          <td className="mono">{formatDzd(rowTotals.get(from) ?? 0, locale)}</td>
+                        </tr>
+                      ))}
+                      <tr>
+                        <td>{t('quarter.rawMatrix.payableRow')}</td>
+                        {rawMatrix.companies.map((c) => (
+                          <td key={c} className="mono">
+                            {formatDzd(colTotals.get(c) ?? 0, locale)}
+                          </td>
+                        ))}
+                        <td />
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
 
-            <div className="sheet">
-              <div className="sheet-head">
-                <span>{t('quarter.bordereau.title')}</span>
-              </div>
-              <div className="sheet-body">
-                <p style={{ fontSize: 'var(--k-fs-s)', color: 'var(--ink-2)', marginTop: 0 }}>{t('quarter.bordereau.reference')}</p>
-                <p className="mono" style={{ fontSize: 'var(--k-fs-l)', fontWeight: 700 }}>
-                  {data.bordereau}
-                </p>
-              </div>
+          <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
+            <div className="sheet-head">
+              <span>{t('quarter.bordereau.title')}</span>
+            </div>
+            <div className="sheet-body">
+              <p style={{ fontSize: 'var(--k-fs-s)', color: 'var(--ink-2)', marginTop: 0 }}>{t('quarter.bordereau.reference')}</p>
+              <p className="mono" style={{ fontSize: 'var(--k-fs-l)', fontWeight: 700 }}>
+                {data.bordereau}
+              </p>
             </div>
           </div>
 

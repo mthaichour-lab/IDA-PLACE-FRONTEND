@@ -292,6 +292,33 @@ export interface SettlementQuarter {
   closedBy?: string;
 }
 
+/**
+ * Compléments additifs (`GET /settlement/quarter/:q/matrix`,
+ * `GET /settlement/quarter/:q/summary`) — `SettlementQuarter` ci-dessus
+ * reste le contrat figé inchangé (back `settlement.service.ts`).
+ */
+export interface SettlementMatrixCell {
+  from: string;
+  to: string;
+  amount: number;
+}
+
+export interface SettlementQuarterMatrix {
+  quarter: string;
+  companies: string[];
+  cells: SettlementMatrixCell[];
+}
+
+export interface SettlementQuarterSummary {
+  quarter: string;
+  grossTotal: number;
+  bilateralNetTotal: number;
+  multilateralNetTotal: number;
+  reductionPct: number;
+  settledCount: number;
+  opposedCount: number;
+}
+
 // `PriceGrid`/`PriceGridMetric` (grille tarifaire des règlements, B.8,
 // `GET /pricing/grid`) sont définis plus bas avec `InvoiceLine`/
 // `MeteringInvoice` (section Métrologie) — réutilisés ici par `/quarter`
