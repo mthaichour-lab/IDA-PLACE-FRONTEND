@@ -465,16 +465,19 @@ export interface MeteringInvoice {
 }
 
 /* ===================== Statistiques de la place (écran 11, Module H §6.10) =====================
- * Forme exacte de `WilayaStatDto`/`MonthlyStatDto` (back `stats.service.ts`) — agrégation RÉELLE
- * depuis ClaimsModule, StatsModule n'étant pas dans la liste des contrats figés (B.11).
+ * Forme exacte de `WilayaStatDto`/`MonthlyStatDto`/`StatsSummaryDto` (back
+ * `stats.service.ts`) — agrégation RÉELLE depuis ClaimsModule +
+ * RecoursModule, StatsModule n'étant pas dans la liste des contrats figés
+ * (B.11).
  *
  * `pour100k` OMIS (pas de référentiel démographique officiel dans le dossier
- * technique) plutôt qu'inventé — pas de mesure "pour 100 000 hab." côté front.
- * `annexes2`/`oppositions`/`indemnises` dépendent de RecoursModule/SettlementModule
- * (devenus réels depuis — voir TODO `stats.service.ts` back, à réintroduire si repris
- * côté front). "e-constat mobile vs agence" approximé par canal réel
- * (`econstat` = canal ECONSTAT, `autresCanaux` = ERP+IMPORT+API) — le modèle de
- * données ne distingue pas mobile/agence au sein du canal ECONSTAT.
+ * technique ni le guide illustré) plutôt qu'inventé — pas de mesure
+ * "pour 100 000 hab." côté front tant qu'aucune source n'est fournie.
+ * `annexes2`/`oppositions`/`indemnises` RÉELS (RecoursModule, depuis sprint
+ * 3). "e-constat mobile vs agence" reste approximé par canal réel
+ * (`econstat` = canal ECONSTAT, `autresCanaux` = ERP+IMPORT+API) — le modèle
+ * de données ne distingue pas mobile/agence au sein du canal ECONSTAT ;
+ * ne jamais relabelliser ces deux champs "mobile"/"agence" côté affichage.
  */
 
 export interface WilayaStat {
@@ -495,6 +498,17 @@ export interface MonthlyActivity {
   declarations: number;
   econstat: number;
   autresCanaux: number;
+  annexes2: number;
+  oppositions: number;
+  indemnises: number;
+}
+
+/** KPI de synthèse `/stats` (nouveau, voir stats.service.ts back — KPI volontairement omis documentés là-bas : comparatif IRSAM, pour100k). */
+export interface StatsSummary {
+  declarations: number;
+  oppositionRatePct: number;
+  settledAmount: number;
+  avgSettlementDays: number | null;
 }
 
 /* ===================== Paramétrage (écran 14, Admin §5.1) — matrice réelle, utilisateurs mock ===================== */

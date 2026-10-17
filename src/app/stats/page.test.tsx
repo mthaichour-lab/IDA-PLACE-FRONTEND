@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { mockFetchJson, renderWithProviders } from '@/test/render';
-import { MeResponse, MonthlyActivity, WilayaStat } from '@/lib/types';
+import { MeResponse, MonthlyActivity, StatsSummary, WilayaStat } from '@/lib/types';
 import StatsPage from './page';
 
 const ME: MeResponse = {
@@ -16,34 +16,61 @@ const WILAYAS: WilayaStat[] = [
 ];
 
 const MONTHLY: MonthlyActivity[] = [
-  { month: '2026-09', declarations: 90, econstat: 70, autresCanaux: 20 },
-  { month: '2026-10', declarations: 110, econstat: 85, autresCanaux: 25 },
+  { month: '2026-09', declarations: 90, econstat: 70, autresCanaux: 20, annexes2: 12, oppositions: 3, indemnises: 8 },
+  { month: '2026-10', declarations: 110, econstat: 85, autresCanaux: 25, annexes2: 15, oppositions: 4, indemnises: 10 },
 ];
 
+const SUMMARY: StatsSummary = { declarations: 200, oppositionRatePct: 16, settledAmount: 8_220_000, avgSettlementDays: 24.5 };
+
+function mockStatsApi(overrides: { wilayas?: WilayaStat[]; monthly?: MonthlyActivity[]; summary?: StatsSummary } = {}) {
+  mockFetchJson({
+    '/api/v1/me': ME,
+    '/api/v1/stats/wilayas': overrides.wilayas ?? WILAYAS,
+    '/api/v1/stats/monthly': overrides.monthly ?? MONTHLY,
+    '/api/v1/stats/summary': overrides.summary ?? SUMMARY,
+  });
+}
+
 /**
- * Écran Statistiques de la place (/stats, écran 11, Module H §6.10) —
- * carte des wilayas (référentiel réel), bascule déclarations/montants
- * (pas de "pour 100k hab.", omis faute de référentiel démographique —
- * voir stats.service.ts back), répartition par canal de déclaration
- * (e-constat vs autres canaux ERP/import/API).
+ * Écran Statistiques de la place (/stats, écran 11, Module H §6.10) — KPI de
+ * synthèse, carte des wilayas (référentiel réel) avec bascule déclarations/
+ * montants (pas de "pour 100k hab.", omis faute de référentiel démographique
+ * — voir stats.service.ts back), zones à forte sinistralité, activité
+ * mensuelle réelle (Annexes 2/oppositions/réglés — RecoursModule), et
+ * répartition par canal de déclaration (e-constat vs autres canaux).
  */
 describe('Écran Statistiques de la place (/stats)', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it('affiche la carte des wilayas (une tuile par code, valeur = mesure "déclarations" par défaut)', async () => {
-    mockFetchJson({ '/api/v1/me': ME, '/api/v1/stats/wilayas': WILAYAS, '/api/v1/stats/monthly': MONTHLY });
+  it('affiche les KPI de synthèse (déclarations, taux d’opposition, compensé, délai moyen)', async () => {
+    mockStatsApi();
+    renderWithProviders(<StatsPage />);
 
+    await waitFor(() => expect(screen.getByText('200')).toBeInTheDocument());
+    expect(screen.getByText('16%')).toBeInTheDocument();
+    expect(screen.getByText(/8\s?220\s?000/)).toBeInTheDocument();
+    expect(screen.getByText('24.5 j')).toBeInTheDocument();
+  });
+
+  it('affiche "n/d" pour le délai moyen de règlement si aucun recours n’est encore réglé', async () => {
+    mockStatsApi({ summary: { ...SUMMARY, avgSettlementDays: null } });
+    renderWithProviders(<StatsPage />);
+
+    await waitFor(() => expect(screen.getByText('n/d')).toBeInTheDocument());
+  });
+
+  it('affiche la carte des wilayas (une tuile par code, valeur = mesure "déclarations" par défaut)', async () => {
+    mockStatsApi();
     renderWithProviders(<StatsPage />);
 
     await waitFor(() => expect(screen.getByTitle(/16 — Alger : 120/)).toBeInTheDocument());
     expect(screen.getByTitle(/31 — Oran : 80/)).toBeInTheDocument();
   });
 
-  it('bascule sur la mesure "montants" via les onglets (valeur de la tuile mise à jour)', async () => {
-    mockFetchJson({ '/api/v1/me': ME, '/api/v1/stats/wilayas': WILAYAS, '/api/v1/stats/monthly': MONTHLY });
-
+  it('bascule sur la mesure "montants" via les onglets (valeur de la tuile et du classement mis à jour)', async () => {
+    mockStatsApi();
     renderWithProviders(<StatsPage />);
 
     await waitFor(() => expect(screen.getByTitle(/16 — Alger : 120/)).toBeInTheDocument());
@@ -53,17 +80,34 @@ describe('Écran Statistiques de la place (/stats)', () => {
     await waitFor(() => expect(screen.getByTitle(/16 — Alger : 5000000/)).toBeInTheDocument());
   });
 
-  it("affiche un état vide explicite (pas de crash) si l'API renvoie une liste de wilayas vide", async () => {
-    mockFetchJson({ '/api/v1/me': ME, '/api/v1/stats/wilayas': [], '/api/v1/stats/monthly': MONTHLY });
+  it('affiche le classement des zones à forte sinistralité, triées par la mesure active', async () => {
+    mockStatsApi();
+    renderWithProviders(<StatsPage />);
 
+    await waitFor(() => expect(screen.getByText('Alger')).toBeInTheDocument());
+    const items = screen.getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('Alger');
+    expect(items[1]).toHaveTextContent('Oran');
+  });
+
+  it("affiche un état vide explicite (pas de crash) si l'API renvoie une liste de wilayas vide", async () => {
+    mockStatsApi({ wilayas: [] });
     renderWithProviders(<StatsPage />);
 
     await waitFor(() => expect(screen.getAllByText(/non encore disponible/i).length).toBeGreaterThan(0));
   });
 
-  it('affiche la répartition par canal de déclaration (e-constat vs autres canaux, en comptes réels)', async () => {
-    mockFetchJson({ '/api/v1/me': ME, '/api/v1/stats/wilayas': WILAYAS, '/api/v1/stats/monthly': MONTHLY });
+  it('affiche l’activité mensuelle réelle (Annexes 2 émises, oppositions, recours réglés — RecoursModule)', async () => {
+    mockStatsApi();
+    renderWithProviders(<StatsPage />);
 
+    await waitFor(() => expect(screen.getByText('Annexes 2 émises')).toBeInTheDocument());
+    expect(screen.getByText('Oppositions')).toBeInTheDocument();
+    expect(screen.getByText('Recours réglés')).toBeInTheDocument();
+  });
+
+  it('affiche la répartition par canal de déclaration (e-constat vs autres canaux, en comptes réels)', async () => {
+    mockStatsApi();
     renderWithProviders(<StatsPage />);
 
     await waitFor(() => expect(screen.getByText('70 / 20')).toBeInTheDocument());

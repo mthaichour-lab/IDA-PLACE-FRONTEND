@@ -34,14 +34,40 @@ décisions prises faute de mieux pendant les sprints précédents :**
    montrent des écrans sensiblement plus riches que l'implémentation
    actuelle (ex. `/quarter` : agenda de réunion commission, matrice
    thermique des positions bilatérales, diagramme circulaire des flux de
-   règlement, 6 KPI ; `/stats` : 6 KPI, répartition par code de barème
-   Art. 14 (B01-B11), répartition par catégorie de véhicule, comparatif
-   de délais IRSAM vs IDA, tableau d'activité par compagnie). Certains de
-   ces éléments nécessitent des données/référentiels que le modèle
-   back actuel n'a pas (code barème sur `Claim`, catégorie véhicule,
-   baseline IRSAM) — à chiffrer écran par écran avant de se lancer, PAS
-   une simple session de polish. Voir les deux documents avant toute
-   reprise de ce chantier.
+   règlement, 6 KPI). Certains éléments nécessitent des données/
+   référentiels que le modèle back n'a pas — à chiffrer écran par écran
+   avant de se lancer, PAS une simple session de polish. Voir les deux
+   documents avant toute reprise de ce chantier.
+
+### `/stats` rapproché de la capture de référence (2026-10-17)
+
+Première passe de rapprochement (voir HANDOFF.md back pour le détail
+des 3 points back) :
+- **KPI de synthèse** (`GET /stats/summary`, réel) : déclarations,
+  taux d'opposition, montant compensé, délai moyen de règlement.
+- **Classement "Zones à forte sinistralité"** (top 5, calculé côté
+  front à partir de `/stats/wilayas`, trié par la mesure active).
+- **"Activité mensuelle" restaurée en 4 séries réelles** (déclarations/
+  Annexes 2 émises/oppositions/recours réglés, via `RecoursModule`,
+  devenu réel) — remplace les champs `econstat`/`autresCanaux` que
+  j'avais substitués par erreur à ces 4 séries début sprint 3 bis en
+  suivant l'ancienne approximation du back, alors que le dossier/guide
+  les demandaient explicitement par leur nom d'origine.
+- **"Répartition par canal de déclaration"** conservée (`econstat` vs
+  `autresCanaux`) — c'est la bonne approximation pour CETTE mesure-là
+  (le dossier demande "mobile vs agence", data absente du modèle), mais
+  ne jamais la relabelliser "mobile"/"agence" : elle ne mesure que
+  ECONSTAT vs ERP+IMPORT+API.
+- **Encore manquant** (voir dossier A.4 écran 11, hors périmètre de
+  cette passe) : mesure "Pour 100 000 hab." (référentiel démographique
+  manquant, point 2 ci-dessus), comparatif "vs IRSAM" (baseline absente
+  des deux documents), répartition par code de barème Art.14 et par
+  catégorie de véhicule, tableau "délais de bout en bout", tableau
+  "activité par compagnie" — aucun champ source pour ces quatre
+  derniers dans le modèle `Claim` actuel.
+- Test composant (`page.test.tsx`) réécrit en conséquence (8 cas).
+  Vérifié en navigateur réel (import + recours réglé + opposé → KPI et
+  graphiques corrects).
 
 ## ⚠️ Particularité de ce sprint : deux implémentations concurrentes réconciliées
 
