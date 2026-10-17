@@ -1,23 +1,19 @@
 'use client';
 
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { FolioHeader } from '@/components/FolioHeader';
 import { CoChip } from '@/components/ui/CoChip';
-import { Column, Table } from '@/components/ui/Table';
+import { Table, Column } from '@/components/ui/Table';
 import { Tag } from '@/components/ui/Tag';
-import { Kpi, KpiRow } from '@/components/ui/Kpi';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
-import { apiGet } from '@/lib/api-client';
-import { MonthlyCompanySynthesis, MonthlySettlement } from '@/lib/types';
+import { TranslationKey } from '@/i18n/translations';
+import { apiGet, apiPost } from '@/lib/api-client';
+import { useAuth } from '@/lib/auth-context';
+import { SettlementMonthly, SettlementMonthlyCompany } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
-
-function currentPeriod(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-}
 
 function formatDzd(amount: number, locale: string): string {
   try {
@@ -27,108 +23,92 @@ function formatDzd(amount: number, locale: string): string {
   }
 }
 
-/** Export CSV client (placeholder documenté — voir rapport de livraison : pas d'endpoint back de génération de bordereau pour le cycle mensuel). */
-function buildMonthlyCsv(data: MonthlySettlement): string {
-  const header = 'period;company;claimsSettledCount;claimsPendingCount;totalSettledAmount;totalPendingAmount;status';
-  const lines = data.companies.map((c) =>
-    [data.period, c.company, c.claimsSettledCount, c.claimsPendingCount, c.totalSettledAmount, c.totalPendingAmount, c.status].join(';'),
-  );
-  return [header, ...lines].join('\n');
-}
-
-function downloadText(fileName: string, content: string) {
-  const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+function currentPeriod(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
 export default function MonthlyPage() {
   const { t, locale } = useI18n();
+  const { hasPrivilege } = useAuth();
   const { toast } = useToast();
-  const [period, setPeriod] = useState(currentPeriod());
+  const queryClient = useQueryClient();
+
+  const [period, setPeriod] = useState(currentPeriod);
   const [page, setPage] = useState(1);
 
-  const query = useQuery({
+  const canGenerate = hasPrivilege('synth');
+
+  const monthlyQuery = useQuery({
     queryKey: ['settlement', 'monthly', period],
-    queryFn: () => apiGet<MonthlySettlement>(`/settlement/monthly/${period}`),
-    enabled: /^\d{4}-\d{2}$/.test(period),
+    queryFn: () => apiGet<SettlementMonthly>(`/settlement/monthly/${period}`),
   });
 
-  const data = query.data;
-  const companies = data?.companies ?? [];
-  const closedCount = companies.filter((c) => c.status === 'CLOTURE').length;
-  const totalAmount = companies.reduce((sum, c) => sum + c.totalSettledAmount + c.totalPendingAmount, 0);
+  // Clôture par compagnie — forme réelle : `POST /settlement/monthly/:period/close`
+  // avec `{company}` (idempotent, 409 si déjà clôturée), pas un bordereau
+  // global pour toute la place.
+  const closeMutation = useMutation({
+    mutationFn: (company: string) => apiPost(`/settlement/monthly/${period}/close`, { company }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['settlement', 'monthly', period] });
+      toast(t('monthly.toast.generated'), 'ok');
+    },
+    onError: () => toast(t('monthly.toast.error'), 'ko'),
+  });
 
-  const pageRows = useMemo(() => companies.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [companies, page]);
+  const companies = monthlyQuery.data?.companies ?? [];
+  const pageRows = companies.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const columns: Column<MonthlyCompanySynthesis>[] = [
-    {
-      key: 'company',
-      header: t('monthly.col.company'),
-      render: (r) => (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <CoChip code={r.company} />
-        </span>
-      ),
-    },
-    {
-      key: 'claims',
-      header: t('monthly.col.claims'),
-      render: (r) => <span className="mono">{r.claimsSettledCount + r.claimsPendingCount}</span>,
-    },
-    {
-      key: 'amount',
-      header: t('monthly.col.amount'),
-      render: (r) => <span className="mono">{formatDzd(r.totalSettledAmount + r.totalPendingAmount, locale)}</span>,
-    },
-    {
-      key: 'status',
-      header: t('monthly.col.status'),
-      render: (r) => <Tag tone={r.status === 'CLOTURE' ? 'ok' : 'warn'}>{t(`monthly.status.${r.status}`)}</Tag>,
-    },
-  ];
-
-  function onGenerate() {
-    if (!data) return;
-    downloadText(`bordereau-mensuel-${data.period}.csv`, buildMonthlyCsv(data));
-    toast(t('monthly.generate.success'), 'ok');
-  }
+  const columns: Column<SettlementMonthlyCompany>[] = useMemo(
+    () => [
+      {
+        key: 'company',
+        header: t('monthly.col.company'),
+        render: (r) => (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <CoChip code={r.code} /> <span className="mono">{r.code}</span>
+          </span>
+        ),
+      },
+      { key: 'claimsCount', header: t('monthly.col.claimsCount'), render: (r) => <span className="mono">{r.claimsCount}</span> },
+      { key: 'totalAmount', header: t('monthly.col.totalAmount'), render: (r) => <span className="mono">{formatDzd(r.totalAmount, locale)}</span> },
+      {
+        key: 'status',
+        header: t('monthly.col.status'),
+        render: (r) => <Tag tone={r.status === 'CLOTURE' ? 'ok' : 'warn'}>{t(`monthly.status.${r.status}` as TranslationKey)}</Tag>,
+      },
+      {
+        key: 'action',
+        header: '',
+        render: (r) =>
+          r.status === 'CLOTURE' ? (
+            <span className="mono" style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}>
+              {r.bordereauRef}
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="tag ok"
+              style={{ border: 'none', cursor: canGenerate ? 'pointer' : 'not-allowed' }}
+              disabled={!canGenerate || closeMutation.isPending}
+              onClick={() => closeMutation.mutate(r.code)}
+              title={!canGenerate ? t('common.forbidden') : undefined}
+            >
+              {t('monthly.action.generateBordereau')}
+            </button>
+          ),
+      },
+    ],
+    [t, locale, canGenerate, closeMutation],
+  );
 
   return (
     <>
-      <FolioHeader
-        badge="Module C · §6.5"
-        title={t('monthly.title')}
-        subtitle={t('monthly.subtitle')}
-        actions={
-          <button
-            type="button"
-            onClick={onGenerate}
-            disabled={!data}
-            style={{
-              padding: '8px 16px',
-              borderRadius: 'var(--k-r-s)',
-              border: '1px solid var(--k-pri)',
-              background: 'var(--k-pri)',
-              color: '#fff',
-              font: 'inherit',
-              cursor: data ? 'pointer' : 'not-allowed',
-            }}
-          >
-            {t('monthly.generate.button')}
-          </button>
-        }
-      />
+      <FolioHeader badge="Module C · §6.5" title={t('monthly.title')} subtitle={t('monthly.subtitle')} />
 
       <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
-        <div className="sheet-body" style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-3)', flexWrap: 'wrap' }}>
-          <label htmlFor="monthly-period" style={{ fontSize: 'var(--k-fs-s)', color: 'var(--ink-2)' }}>
+        <div className="sheet-body">
+          <label htmlFor="monthly-period" style={{ display: 'block', fontSize: 'var(--k-fs-s)', color: 'var(--ink-2)', marginBottom: 4 }}>
             {t('monthly.period.label')}
           </label>
           <input
@@ -141,38 +121,27 @@ export default function MonthlyPage() {
             }}
             style={{ padding: '6px 10px', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', font: 'inherit', background: 'var(--paper)', color: 'var(--ink)' }}
           />
+
+          {!canGenerate ? <p className="note warn" style={{ marginTop: 'var(--s-3)' }}>{t('common.forbidden')}</p> : null}
         </div>
       </div>
 
-      {query.isLoading ? (
-        <p>{t('common.loading')}</p>
-      ) : query.error || !data ? (
-        <div className="note ko" role="alert">
-          <span>{t('common.error')}</span>
-          <button type="button" onClick={() => query.refetch()}>
-            {t('common.retry')}
-          </button>
+      <div className="sheet">
+        <div className="sheet-body">
+          {monthlyQuery.isLoading ? (
+            <p>{t('common.loading')}</p>
+          ) : monthlyQuery.error ? (
+            <div className="note ko" role="alert">
+              <span>{t('common.error')}</span>
+              <button type="button" onClick={() => monthlyQuery.refetch()}>
+                {t('common.retry')}
+              </button>
+            </div>
+          ) : (
+            <Table columns={columns} rows={pageRows} page={page} total={companies.length} pageSize={PAGE_SIZE} onPageChange={setPage} getRowKey={(r) => r.code} />
+          )}
         </div>
-      ) : (
-        <>
-          <KpiRow>
-            <Kpi value={companies.length} label={t('monthly.kpi.companies')} />
-            <Kpi value={closedCount} label={t('monthly.kpi.closed')} />
-            <Kpi value={formatDzd(totalAmount, locale)} label={t('monthly.kpi.total')} />
-          </KpiRow>
-
-          <div className="sheet" style={{ marginTop: 'var(--s-5)' }}>
-            <div className="sheet-head">
-              <span>{t('monthly.table.title')}</span>
-            </div>
-            <div className="sheet-body">
-              <Table columns={columns} rows={pageRows} page={page} total={companies.length} pageSize={PAGE_SIZE} onPageChange={setPage} getRowKey={(r) => r.company} />
-            </div>
-          </div>
-
-          <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginTop: 'var(--s-3)' }}>{t('monthly.generate.note')}</p>
-        </>
-      )}
+      </div>
     </>
   );
 }

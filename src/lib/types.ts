@@ -165,22 +165,59 @@ export interface ClaimImportReport {
   rows: ClaimImportRowResult[];
 }
 
-/* ===================== Échanges Annexes 2/3/4 (écran 4, Module B §6.4) — B.2/B.3 =====================
- * Reflet de `RecoursModule` (mock minimal côté back, voir ARCHITECTURE.md) : registre des recours
- * inter-compagnies + transition d'état. Pas d'endpoint de détail dédié — la fiche écran 4 réutilise
- * les champs déjà présents dans l'item de liste (voir HANDOFF à rédiger : forme à surveiller, le
- * back-end n'a pas encore persisté les timers conventionnels réels).
+/* ===================== Échanges Annexes 2/3/4 — Recours (écran 4, Module B §6.4) — B.2/B.3 =====================
+ * Forme exacte du vrai `RecoursModule` (`src/recours/dto/recours.dto.ts`, back) — corrigée après la revue
+ * croisée sprint 3 (front construit avant que ce backend ne soit réel, jamais revérifié depuis) :
+ * pas d'état 'ENVOYE' (7 vrais états dont REJETE), timer structuré (pas de date brute en champ plat), et la
+ * transition se fait par `action` (RECOURS_ACTIONS), pas par état cible.
  */
 
-/** Forme exacte de `RECOURS_STATES` (back, `recours.rules.ts`) — corrigée après la revue croisée sprint 3 (le back n'a pas d'état 'ENVOYE', et a 'ACCEPTE_TACITE'/'REGLE' que ce type omettait). */
-export type RecoursState = 'EN_ATTENTE' | 'ACCEPTE_TACITE' | 'OPPOSITION' | 'CONTESTATION' | 'COMMISSION' | 'REGLE' | 'FORCLOS';
-/** Onglets écran 4 (énoncé de mission). */
-export type RecoursFilter = 'TOUS' | 'EN_ATTENTE' | 'OPPOSITION' | 'CONTESTATION' | 'COMMISSION' | 'FORCLOS';
+export const RECOURS_STATES = ['EN_ATTENTE', 'OPPOSITION', 'CONTESTATION', 'COMMISSION', 'REGLE', 'REJETE', 'FORCLOS'] as const;
+export type RecoursState = (typeof RECOURS_STATES)[number];
+export type RecoursFilter = 'TOUS' | RecoursState;
 
-export interface RecoursOpposition {
-  motif: string;
+export const RECOURS_ACTIONS = [
+  'accepter',
+  'opposer',
+  'lever_opposition',
+  'contester',
+  'transmettre_commission',
+  'cloturer_commission_favorable',
+  'cloturer_commission_defavorable',
+] as const;
+export type RecoursAction = (typeof RECOURS_ACTIONS)[number];
+
+/** Actions manuelles autorisées par état courant (miroir d'affichage de `ALLOWED_ACTIONS_BY_STATE`, back `recours.rules.ts`) — l'API reste seule juge, ceci n'évite qu'un 409 prévisible. */
+export const RECOURS_ALLOWED_ACTIONS: Record<RecoursState, RecoursAction[]> = {
+  EN_ATTENTE: ['accepter', 'opposer'],
+  OPPOSITION: ['lever_opposition', 'contester'],
+  CONTESTATION: ['transmettre_commission'],
+  COMMISSION: ['cloturer_commission_favorable', 'cloturer_commission_defavorable'],
+  REGLE: [],
+  REJETE: [],
+  FORCLOS: [],
+};
+
+export interface RecoursOppositionOrContestation {
+  raisedAt: string;
+  reason?: string;
+  status: string;
+  deadlineAt?: string;
+  decidedAt?: string;
+}
+
+export interface RecoursResolution {
+  kind: string;
   at: string;
-  by?: string;
+  note?: string;
+}
+
+/** Timer conventionnel courant — purement présentationnel (`CountdownBar`), aucun calcul côté front (C.1). */
+export interface RecoursTimer {
+  timerType: 'SILENCE_ART10' | 'OPPOSITION_ART12' | 'FORCLUSION_ART19' | 'AUCUN';
+  deadlineAt?: string;
+  remainingDays: number;
+  expired: boolean;
 }
 
 export interface RecoursItem {
@@ -191,109 +228,133 @@ export interface RecoursItem {
   state: RecoursState;
   requestSentAt: string;
   responseAt?: string;
-  opposition?: RecoursOpposition;
-  contestation?: RecoursOpposition;
+  opposition?: RecoursOppositionOrContestation;
+  contestation?: RecoursOppositionOrContestation;
   commissionAt?: string;
   settledAt?: string;
   amount: number;
-  /** Échéance conventionnelle courante (Art. 10 ou 12 selon l'état) — purement informatif, voir `CountdownBar`. Nom de champ réel côté API (corrigé : ce n'était pas `conventionalDeadlineAt`). */
-  currentDeadlineAt?: string;
+  resolution?: RecoursResolution;
+  timer: RecoursTimer;
+  createdAt: string;
 }
 
 export interface RecoursTransitionResult {
   id: string;
-  claimId: string;
-  from: string;
-  to: string;
   state: RecoursState;
-  requestSentAt: string;
-  responseAt?: string;
-  opposition?: RecoursOpposition;
-  contestation?: RecoursOpposition;
-  commissionAt?: string;
-  settledAt?: string;
-  amount: number;
-  currentDeadlineAt?: string;
+  timer: RecoursTimer;
+  transitionedAt: string;
 }
 
 /* ===================== Cycle mensuel (écran 5, Module C §6.5) — B.2/B.3 =====================
- * Reflet de `SettlementController.monthly` (mock minimal, valeurs calculées à la volée non persistées).
+ * Forme exacte de `CompanyMonthlySynthesisDto`/`MonthlySettlementDto` (back `settlement.dto.ts`).
  */
 
-export type SettlementStatus = 'CLOTURE' | 'EN_COURS';
+export type SettlementCompanyStatus = 'CLOTURE' | 'EN_COURS';
 
-/** Forme exacte de `SettlementCompanyLineDto` (back) — corrigée après la revue croisée sprint 3. */
-export interface MonthlyCompanySynthesis {
-  company: string;
-  claimsSettledCount: number;
-  claimsPendingCount: number;
-  totalSettledAmount: number;
-  totalPendingAmount: number;
-  fraisTraitement: number;
-  status: SettlementStatus;
-  bordereauRef: string;
-  generatedAt: string;
+export interface SettlementMonthlyCompany {
+  code: string;
+  claimsCount: number;
+  /** Nombre de recours résolus (REGLE/REJETE/FORCLOS) sur la période. */
+  resolvedCount: number;
+  totalAmount: number;
+  status: SettlementCompanyStatus;
   closedAt?: string;
+  bordereauRef?: string;
 }
 
-export interface MonthlySettlement {
+export interface SettlementMonthly {
   period: string;
-  companies: MonthlyCompanySynthesis[];
+  companies: SettlementMonthlyCompany[];
 }
 
 /* ===================== Compensation trimestrielle (écran 6, Module D §6.6) — B.2/B.3 =====================
- * Reflet de `SettlementController.quarter`.
+ * Forme exacte de `QuarterlySettlementDto` (back `settlement.dto.ts`).
  */
 
-export interface QuarterPosition {
+export interface SettlementPosition {
   from: string;
   to: string;
   amount: number;
 }
 
-/** Nom de champ réel côté API : `company`, pas `code` (corrigé après la revue croisée sprint 3). */
-export interface QuarterNet {
-  company: string;
+export interface SettlementNet {
+  code: string;
+  /** Positif = la compagnie doit recevoir ; négatif = elle doit payer. */
   net: number;
 }
 
-export interface QuarterSettlement {
+export interface SettlementQuarter {
   quarter: string;
-  bordereau: string;
-  positions: QuarterPosition[];
-  net: QuarterNet[];
+  bordereau?: string;
+  positions: SettlementPosition[];
+  net: SettlementNet[];
+  closedAt?: string;
+  closedBy?: string;
 }
 
-/** Reflet partiel de `GET /pricing/grid` (MeteringModule, B.8) — seule `version` est utilisée ici (référence TARIF-2026.01, écran 6). */
-export interface PriceGridSummary {
+/** Grille tarifaire des règlements (B.8, `TARIF-2026.01`) — `GET /pricing/grid` (MeteringModule, déjà réel). */
+export interface PriceGridMetric {
+  metric: string;
+  label: string;
+  unit: string;
+  includedQuota: number;
+  unitPrice: number;
+}
+
+export interface PriceGrid {
   version: string;
   effectiveFrom: string;
+  subscription: { label: string; monthly: number };
+  metrics: PriceGridMetric[];
 }
 
 /* ===================== Commission (écran 7, Module E §6.7) — B.2 =====================
- * Reflet de `CommissionController` (mock minimal, pas de persistance côté back).
+ * Forme exacte de `CommissionCaseViewDto`/`SanctionViewDto` (back `commission.dto.ts`). Routes réelles sous
+ * `/commission/cases` (pas `/commission/:id`), voir `commission.controller.ts`.
  */
 
-export type CommissionCaseStatus = 'A_INSTRUIRE' | 'EN_DELIBERE' | 'PRONONCE';
+export const COMMISSION_CASE_STATUSES = ['A_INSTRUIRE', 'EN_DELIBERE', 'PRONONCE'] as const;
+export type CommissionCaseStatus = (typeof COMMISSION_CASE_STATUSES)[number];
+
+export interface CommissionDecision {
+  outcome: string;
+  motif?: string;
+}
+
+export interface CommissionPv {
+  signedBy: string;
+  signedAt: string;
+  ref: string;
+}
 
 export interface CommissionCase {
   id: string;
   recoursId: string;
+  claimId: string;
+  companyA: string;
+  companyB: string;
+  amount: number;
+  motif: string;
   status: CommissionCaseStatus;
   scheduledAt: string;
+  decidedAt?: string;
+  decision?: CommissionDecision;
+  pv?: CommissionPv;
+  createdAt: string;
 }
 
 export interface CommissionPenaltyResult {
   id: string;
-  amount: number;
+  commissionCaseId?: string;
+  companyCode: string;
+  type: string;
+  amount?: number;
   reason: string;
   orderedAt: string;
+  orderedBy: string;
 }
 
-export interface CommissionPvSignResult {
-  id: string;
-  signedAt: string;
-}
+export interface CommissionPvSignResult extends CommissionCase {}
 
 /* ===================== Journal scellé (écran 13, Module XI) — B.2/B.3 =====================
  * Reflet de `LedgerModule` — seul module "mock" à implémenter réellement la logique de chaînage

@@ -1,80 +1,68 @@
 'use client';
 
-import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
 import { CoChip } from '@/components/ui/CoChip';
 import { Tag } from '@/components/ui/Tag';
-import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { apiGet } from '@/lib/api-client';
-import { PriceGridSummary, QuarterSettlement } from '@/lib/types';
-
-function currentQuarter(): string {
-  const now = new Date();
-  const q = Math.floor(now.getMonth() / 3) + 1;
-  return `${now.getFullYear()}-Q${q}`;
-}
+import { PriceGrid, SettlementQuarter } from '@/lib/types';
 
 function formatDzd(amount: number, locale: string): string {
   try {
-    return new Intl.NumberFormat(locale, { style: 'currency', currency: 'DZD', maximumFractionDigits: 0, signDisplay: 'always' }).format(amount);
+    return new Intl.NumberFormat(locale, { style: 'currency', currency: 'DZD', maximumFractionDigits: 0 }).format(amount);
   } catch {
-    return `${amount >= 0 ? '+' : ''}${amount.toLocaleString()} DA`;
+    return `${amount.toLocaleString()} DA`;
   }
 }
 
-/** Export CSV client (placeholder documenté — voir rapport de livraison : l'API ne renvoie qu'un identifiant de bordereau, pas de fichier). */
-function buildQuarterCsv(data: QuarterSettlement): string {
-  const lines = ['section;from;to;amount'];
-  for (const p of data.positions) lines.push(['POSITION', p.from, p.to, p.amount].join(';'));
-  for (const n of data.net) lines.push(['NET', n.company, '', n.net].join(';'));
-  return lines.join('\n');
-}
-
-function downloadText(fileName: string, content: string) {
-  const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+/** Trimestre courant (simple formatage de date, pas une règle métier) + les 3 précédents, pour le sélecteur. */
+function quarterOptions(): string[] {
+  const now = new Date();
+  const currentQ = Math.floor(now.getMonth() / 3) + 1;
+  const options: string[] = [];
+  let y = now.getFullYear();
+  let q = currentQ;
+  for (let i = 0; i < 5; i++) {
+    options.push(`${y}-Q${q}`);
+    q -= 1;
+    if (q === 0) {
+      q = 4;
+      y -= 1;
+    }
+  }
+  return options;
 }
 
 export default function QuarterPage() {
   const { t, locale } = useI18n();
-  const { toast } = useToast();
-  const [quarter, setQuarter] = useState(currentQuarter());
+  const options = useMemo(quarterOptions, []);
+  const [quarter, setQuarter] = useState(options[0]);
 
-  const query = useQuery({
+  const quarterQuery = useQuery({
     queryKey: ['settlement', 'quarter', quarter],
-    queryFn: () => apiGet<QuarterSettlement>(`/settlement/quarter/${quarter}`),
-    enabled: /^\d{4}-Q[1-4]$/.test(quarter),
+    queryFn: () => apiGet<SettlementQuarter>(`/settlement/quarter/${quarter}`),
   });
 
-  // Référence à la grille tarifaire courante (TARIF-2026.01, B.8) — lue depuis l'API
-  // (`GET /pricing/grid`, MeteringModule), jamais recalculée côté front.
   const gridQuery = useQuery({
     queryKey: ['pricing', 'grid'],
-    queryFn: () => apiGet<PriceGridSummary>('/pricing/grid'),
+    queryFn: () => apiGet<PriceGrid>('/pricing/grid'),
   });
 
-  const data = query.data;
-
-  const companies = useMemo(() => (data ? data.net.map((n) => n.company) : []), [data]);
-  const matrix = useMemo(() => {
-    const m = new Map<string, number>();
-    data?.positions.forEach((p) => m.set(`${p.from}:${p.to}`, p.amount));
-    return m;
+  const data = quarterQuery.data;
+  const companies = useMemo(() => {
+    if (!data) return [];
+    const codes = new Set<string>();
+    for (const p of data.positions) {
+      codes.add(p.from);
+      codes.add(p.to);
+    }
+    return Array.from(codes).sort();
   }, [data]);
 
-  function onDownload() {
-    if (!data) return;
-    downloadText(`bordereau-trimestriel-${data.quarter}.csv`, buildQuarterCsv(data));
-    toast(t('quarter.bordereau.download'), 'ok');
+  function amountAt(from: string, to: string): number | undefined {
+    return data?.positions.find((p) => p.from === from && p.to === to)?.amount;
   }
 
   return (
@@ -82,8 +70,8 @@ export default function QuarterPage() {
       <FolioHeader badge="Module D · §6.6" title={t('quarter.title')} subtitle={t('quarter.subtitle')} />
 
       <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
-        <div className="sheet-body" style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-3)', flexWrap: 'wrap' }}>
-          <label htmlFor="quarter-select" style={{ fontSize: 'var(--k-fs-s)', color: 'var(--ink-2)' }}>
+        <div className="sheet-body">
+          <label htmlFor="quarter-select" style={{ display: 'block', fontSize: 'var(--k-fs-s)', color: 'var(--ink-2)', marginBottom: 4 }}>
             {t('quarter.period.label')}
           </label>
           <select
@@ -92,27 +80,21 @@ export default function QuarterPage() {
             onChange={(e) => setQuarter(e.target.value)}
             style={{ padding: '6px 10px', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', font: 'inherit', background: 'var(--paper)', color: 'var(--ink)' }}
           >
-            {quarterOptions().map((q) => (
-              <option key={q} value={q}>
-                {q}
+            {options.map((o) => (
+              <option key={o} value={o}>
+                {o}
               </option>
             ))}
           </select>
-
-          {gridQuery.data ? (
-            <span className="mono" style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginInlineStart: 'auto' }}>
-              {t('quarter.tariff.reference')} : {gridQuery.data.version}
-            </span>
-          ) : null}
         </div>
       </div>
 
-      {query.isLoading ? (
+      {quarterQuery.isLoading ? (
         <p>{t('common.loading')}</p>
-      ) : query.error || !data ? (
+      ) : quarterQuery.error || !data ? (
         <div className="note ko" role="alert">
           <span>{t('common.error')}</span>
-          <button type="button" onClick={() => query.refetch()}>
+          <button type="button" onClick={() => quarterQuery.refetch()}>
             {t('common.retry')}
           </button>
         </div>
@@ -120,14 +102,14 @@ export default function QuarterPage() {
         <>
           <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
             <div className="sheet-head">
-              <span>{t('quarter.positions.title')}</span>
+              <span>{t('quarter.matrix.title')}</span>
             </div>
             <div className="sheet-body">
               <div className="t-wrap">
-                <table className="t">
+                <table className="t" aria-label={t('quarter.matrix.title')}>
                   <thead>
                     <tr>
-                      <th>{t('quarter.col.from')} \ {t('quarter.col.to')}</th>
+                      <th>{t('quarter.matrix.from')}</th>
                       {companies.map((c) => (
                         <th key={c}>
                           <CoChip code={c} />
@@ -141,11 +123,14 @@ export default function QuarterPage() {
                         <td>
                           <CoChip code={from} />
                         </td>
-                        {companies.map((to) => (
-                          <td key={to} className="mono">
-                            {from === to ? <span style={{ color: 'var(--ink-3)' }}>—</span> : formatDzd(matrix.get(`${from}:${to}`) ?? 0, locale).replace('+', '')}
-                          </td>
-                        ))}
+                        {companies.map((to) => {
+                          const amount = amountAt(from, to);
+                          return (
+                            <td key={to} className="mono">
+                              {from === to || amount === undefined ? <span style={{ color: 'var(--ink-3)' }}>—</span> : formatDzd(amount, locale)}
+                            </td>
+                          );
+                        })}
                       </tr>
                     ))}
                   </tbody>
@@ -154,51 +139,81 @@ export default function QuarterPage() {
             </div>
           </div>
 
-          <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
-            <div className="sheet-head">
-              <span>{t('quarter.net.title')}</span>
+          <div className="grid g-side2" style={{ marginBottom: 'var(--s-5)' }}>
+            <div className="sheet" style={{ gridColumn: 'span 2' }}>
+              <div className="sheet-head">
+                <span>{t('quarter.net.title')}</span>
+              </div>
+              <div className="sheet-body" style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s-3)' }}>
+                {data.net.map((n) => (
+                  <div key={n.code} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--rule)', borderRadius: 'var(--k-r-m)', padding: 'var(--s-3) var(--s-4)' }}>
+                    <CoChip code={n.code} />
+                    <span className="mono">{formatDzd(Math.abs(n.net), locale)}</span>
+                    <Tag tone={n.net >= 0 ? 'ok' : 'ko'}>{n.net >= 0 ? t('quarter.net.receivable') : t('quarter.net.payable')}</Tag>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="sheet-body" style={{ display: 'flex', gap: 'var(--s-3)', flexWrap: 'wrap' }}>
-              {data.net.map((n) => (
-                <span key={n.company} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <CoChip code={n.company} />
-                  <Tag tone={n.net >= 0 ? 'ok' : 'ko'}>{formatDzd(n.net, locale)}</Tag>
-                </span>
-              ))}
+
+            <div className="sheet">
+              <div className="sheet-head">
+                <span>{t('quarter.bordereau.title')}</span>
+              </div>
+              <div className="sheet-body">
+                <p style={{ fontSize: 'var(--k-fs-s)', color: 'var(--ink-2)', marginTop: 0 }}>{t('quarter.bordereau.reference')}</p>
+                <p className="mono" style={{ fontSize: 'var(--k-fs-l)', fontWeight: 700 }}>
+                  {data.bordereau}
+                </p>
+              </div>
             </div>
           </div>
 
           <div className="sheet">
             <div className="sheet-head">
-              <span>{t('quarter.bordereau.title')}</span>
+              <span>
+                {t('quarter.grid.title')} · <span className="mono">{gridQuery.data?.version ?? 'TARIF-2026.01'}</span>
+              </span>
             </div>
             <div className="sheet-body">
-              <p>
-                <span className="mono">{data.bordereau}</span>
-              </p>
-              <button
-                type="button"
-                onClick={onDownload}
-                style={{ padding: '8px 16px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--k-pri)', background: 'var(--k-pri)', color: '#fff', font: 'inherit', cursor: 'pointer' }}
-              >
-                {t('quarter.bordereau.download')}
-              </button>
-              <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginTop: 'var(--s-3)' }}>{t('quarter.bordereau.note')}</p>
+              {gridQuery.isLoading ? (
+                <p>{t('common.loading')}</p>
+              ) : gridQuery.error || !gridQuery.data ? (
+                <div className="note ko" role="alert">
+                  <span>{t('common.error')}</span>
+                </div>
+              ) : (
+                <>
+                  <p style={{ fontSize: 'var(--k-fs-s)', color: 'var(--ink-2)' }}>
+                    {t('quarter.grid.subscription')} : <span className="mono">{formatDzd(gridQuery.data.subscription.monthly, locale)}</span>
+                  </p>
+                  <div className="t-wrap">
+                    <table className="t">
+                      <thead>
+                        <tr>
+                          <th>{t('quarter.grid.col.metric')}</th>
+                          <th>{t('quarter.grid.col.unit')}</th>
+                          <th>{t('quarter.grid.col.quota')}</th>
+                          <th>{t('quarter.grid.col.price')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {gridQuery.data.metrics.map((m) => (
+                          <tr key={m.metric}>
+                            <td>{m.label}</td>
+                            <td className="mono">{m.unit}</td>
+                            <td className="mono">{m.includedQuota.toLocaleString(locale)}</td>
+                            <td className="mono">{formatDzd(m.unitPrice, locale)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </>
       )}
     </>
   );
-}
-
-/** Quelques trimestres autour de l'actuel — l'API ignore le contenu exact du mock, mais une liste bornée reste une UX plus sûre qu'un champ libre. */
-function quarterOptions(): string[] {
-  const now = new Date();
-  const year = now.getFullYear();
-  const options: string[] = [];
-  for (const y of [year - 1, year, year + 1]) {
-    for (let q = 1; q <= 4; q++) options.push(`${y}-Q${q}`);
-  }
-  return options;
 }

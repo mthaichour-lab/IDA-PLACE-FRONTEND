@@ -1,10 +1,11 @@
 'use client';
 
-import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
 import { CoChip } from '@/components/ui/CoChip';
 import { CountdownBar } from '@/components/ui/CountdownBar';
+import { Modal } from '@/components/ui/Modal';
 import { Table, Column } from '@/components/ui/Table';
 import { Tabs } from '@/components/ui/Tabs';
 import { Tag, TagTone } from '@/components/ui/Tag';
@@ -14,34 +15,31 @@ import { TranslationKey } from '@/i18n/translations';
 import { apiGet, apiPost } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { useRealtime } from '@/lib/realtime';
-import { Paginated, RecoursFilter, RecoursItem, RecoursState, RecoursTransitionResult } from '@/lib/types';
+import { Paginated, RecoursAction, RecoursFilter, RecoursItem, RecoursState, RecoursTransitionResult, RECOURS_ALLOWED_ACTIONS } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 
-// Polling de repli (règle d'or : le WS ne doit jamais être le seul mécanisme).
-// Le back n'émet pas encore `recours.timer` à ce jour (voir rapport de livraison) ;
-// cet abonnement est prévu par anticipation, le polling garantit l'écran utilisable.
+// Polling de repli (B.12) : `recours.timer` n'est pas encore émis par le
+// back (RealtimeModule n'émet que claim.ingested/match.updated/metering.tick
+// au moment de cette vague, voir HANDOFF backend) — l'écran s'y abonne par
+// anticipation (même esprit que /cockpit), sans jamais s'appuyer sur lui seul.
 const POLL_INTERVAL_MS = 30_000;
 
-const STATE_TONE: Record<RecoursState, TagTone> = {
-  EN_ATTENTE: 'warn',
-  ACCEPTE_TACITE: 'ok',
-  OPPOSITION: 'ko',
-  CONTESTATION: 'ko',
-  COMMISSION: 'warn',
-  REGLE: 'ok',
-  FORCLOS: 'a',
-};
+const TABS: { key: RecoursFilter; label: TranslationKey }[] = [
+  { key: 'TOUS', label: 'exchanges.tab.tous' },
+  { key: 'EN_ATTENTE', label: 'exchanges.tab.enAttente' },
+  { key: 'OPPOSITION', label: 'exchanges.tab.opposition' },
+  { key: 'CONTESTATION', label: 'exchanges.tab.contestation' },
+  { key: 'COMMISSION', label: 'exchanges.tab.commission' },
+  { key: 'FORCLOS', label: 'exchanges.tab.forclos' },
+];
 
-const STATE_LABEL_KEY: Record<RecoursState, TranslationKey> = {
-  EN_ATTENTE: 'exchanges.state.EN_ATTENTE',
-  ACCEPTE_TACITE: 'exchanges.state.ACCEPTE_TACITE',
-  OPPOSITION: 'exchanges.state.OPPOSITION',
-  CONTESTATION: 'exchanges.state.CONTESTATION',
-  COMMISSION: 'exchanges.state.COMMISSION',
-  REGLE: 'exchanges.state.REGLE',
-  FORCLOS: 'exchanges.state.FORCLOS',
-};
+function stateTone(state: RecoursState): TagTone {
+  if (state === 'FORCLOS' || state === 'REJETE') return 'ko';
+  if (state === 'OPPOSITION' || state === 'CONTESTATION') return 'warn';
+  if (state === 'COMMISSION') return 'a';
+  return 'ok';
+}
 
 function formatDzd(amount: number, locale: string): string {
   try {
@@ -51,11 +49,13 @@ function formatDzd(amount: number, locale: string): string {
   }
 }
 
-function articleHint(state: RecoursState): TranslationKey | null {
-  if (state === 'EN_ATTENTE') return 'exchanges.article.art10';
-  if (state === 'CONTESTATION') return 'exchanges.article.art12';
-  if (state === 'FORCLOS') return 'exchanges.article.art19';
-  return null;
+function recoursQuery(filter: RecoursFilter, page: number) {
+  return { filter, page, pageSize: PAGE_SIZE };
+}
+
+interface TransitionLogEntry {
+  state: string;
+  transitionedAt: string;
 }
 
 export default function ExchangesPage() {
@@ -66,91 +66,57 @@ export default function ExchangesPage() {
 
   const [filter, setFilter] = useState<RecoursFilter>('TOUS');
   const [page, setPage] = useState(1);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [motif, setMotif] = useState('');
+  const [selected, setSelected] = useState<RecoursItem | null>(null);
+  // Historique de transitions côté client, session courante uniquement —
+  // RecoursController n'expose aucun endpoint d'historique (voir HANDOFF).
+  const [transitionLog, setTransitionLog] = useState<Record<string, TransitionLogEntry[]>>({});
 
-  const canExchange = hasPrivilege('exchange');
-  const canPay = hasPrivilege('pay');
+  const canTransition = hasPrivilege('exchange');
+
+  const countersQuery = useQuery({
+    queryKey: ['recours', 'counters'],
+    queryFn: () => apiGet<Record<string, number>>('/recours/counters'),
+    refetchInterval: POLL_INTERVAL_MS,
+  });
 
   const listQuery = useQuery({
     queryKey: ['recours', 'list', filter, page],
-    queryFn: () =>
-      apiGet<Paginated<RecoursItem>>('/recours', {
-        page,
-        pageSize: PAGE_SIZE,
-        state: filter === 'TOUS' ? undefined : filter,
-      }),
+    queryFn: () => apiGet<Paginated<RecoursItem>>('/recours', recoursQuery(filter, page)),
     refetchInterval: POLL_INTERVAL_MS,
   });
 
   const onRealtimeEvent = useCallback(() => {
     void listQuery.refetch();
-  }, [listQuery]);
-
+    void countersQuery.refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useRealtime(['recours.timer'], onRealtimeEvent);
 
   const items = listQuery.data?.items ?? [];
 
-  useEffect(() => {
-    if (items.length === 0) {
-      setSelectedId(null);
-      return;
-    }
-    if (!items.some((i) => i.id === selectedId)) {
-      setSelectedId(items[0].id);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items.map((i) => i.id).join(',')]);
+  const [reason, setReason] = useState('');
 
-  useEffect(() => {
-    setMotif('');
-  }, [selectedId]);
-
-  const selected = items.find((i) => i.id === selectedId) ?? null;
-
-  function onActionSettled(ok: boolean) {
-    toast(t(ok ? 'exchanges.toast.success' : 'exchanges.toast.error'), ok ? 'ok' : 'ko');
-    if (ok) void queryClient.invalidateQueries({ queryKey: ['recours'] });
-  }
-
-  const opposerMutation = useMutation({
-    mutationFn: ({ id, motif: m }: { id: string; motif: string }) =>
-      apiPost<RecoursTransitionResult>(`/recours/${id}/opposer`, { motif: m }),
-    onSuccess: () => onActionSettled(true),
-    onError: () => onActionSettled(false),
-  });
-
-  const contesterMutation = useMutation({
-    mutationFn: ({ id, motif: m }: { id: string; motif: string }) =>
-      apiPost<RecoursTransitionResult>(`/recours/${id}/contester`, { motif: m }),
-    onSuccess: () => onActionSettled(true),
-    onError: () => onActionSettled(false),
-  });
-
-  const settleMutation = useMutation({
-    mutationFn: ({ id }: { id: string }) => apiPost<RecoursTransitionResult>(`/recours/${id}/settle`, {}),
-    onSuccess: () => onActionSettled(true),
-    onError: () => onActionSettled(false),
+  const transitionMutation = useMutation({
+    mutationFn: ({ id, action, reason: r }: { id: string; action: RecoursAction; reason?: string }) =>
+      apiPost<RecoursTransitionResult>(`/recours/${id}/transition`, { action, reason: r || undefined }),
+    onSuccess: (result, variables) => {
+      setTransitionLog((prev) => ({
+        ...prev,
+        [variables.id]: [{ state: result.state, transitionedAt: result.transitionedAt }, ...(prev[variables.id] ?? [])],
+      }));
+      setSelected((prev) => (prev && prev.id === variables.id ? { ...prev, state: result.state, timer: result.timer } : prev));
+      setReason('');
+      toast(t('exchanges.detail.transition.toast.ok'), 'ok');
+      void queryClient.invalidateQueries({ queryKey: ['recours'] });
+    },
+    onError: () => {
+      toast(t('exchanges.detail.transition.toast.error'), 'ko');
+    },
   });
 
   function changeFilter(next: string) {
     setFilter(next as RecoursFilter);
     setPage(1);
-  }
-
-  function submitOpposer() {
-    if (!selected || !canExchange || !motif.trim() || opposerMutation.isPending) return;
-    opposerMutation.mutate({ id: selected.id, motif: motif.trim() });
-  }
-
-  function submitContester() {
-    if (!selected || !canExchange || !motif.trim() || contesterMutation.isPending) return;
-    contesterMutation.mutate({ id: selected.id, motif: motif.trim() });
-  }
-
-  function submitSettle() {
-    if (!selected || !canPay || settleMutation.isPending) return;
-    settleMutation.mutate({ id: selected.id });
   }
 
   const columns: Column<RecoursItem>[] = useMemo(
@@ -161,16 +127,25 @@ export default function ExchangesPage() {
         header: t('exchanges.col.parties'),
         render: (r) => (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <CoChip code={r.from} /> <span style={{ color: 'var(--ink-3)' }}>→</span> <CoChip code={r.to} />
+            <CoChip code={r.from} /> <span aria-hidden="true">→</span> <CoChip code={r.to} />
           </span>
         ),
       },
       { key: 'amount', header: t('exchanges.col.amount'), render: (r) => <span className="mono">{formatDzd(r.amount, locale)}</span> },
-      { key: 'state', header: t('exchanges.col.state'), render: (r) => <Tag tone={STATE_TONE[r.state]}>{t(STATE_LABEL_KEY[r.state])}</Tag> },
+      { key: 'state', header: t('exchanges.col.state'), render: (r) => <Tag tone={stateTone(r.state)}>{t(`exchanges.state.${r.state}` as TranslationKey)}</Tag> },
       {
         key: 'deadline',
         header: t('exchanges.col.deadline'),
-        render: (r) => (r.currentDeadlineAt ? <CountdownBar startAt={r.requestSentAt} deadlineAt={r.currentDeadlineAt} /> : <span>—</span>),
+        render: (r) =>
+          r.timer.deadlineAt ? (
+            <CountdownBar
+              startAt={r.requestSentAt}
+              deadlineAt={r.timer.deadlineAt}
+              renderLabel={({ remainingDays, overdue }) => `${remainingDays} ${overdue ? t('exchanges.countdown.overdue') : t('exchanges.countdown.remaining')}`}
+            />
+          ) : (
+            <span style={{ color: 'var(--ink-3)', fontSize: 'var(--k-fs-xs)' }}>{t('exchanges.countdown.none')}</span>
+          ),
       },
     ],
     [t, locale],
@@ -180,166 +155,128 @@ export default function ExchangesPage() {
     <>
       <FolioHeader badge="Module B · §6.4" title={t('exchanges.title')} subtitle={t('exchanges.subtitle')} />
 
-      <div className="grid g-side">
-        <div className="sheet">
-          <div className="sheet-body">
-            <Tabs
-              items={[
-                { key: 'TOUS', label: t('exchanges.tab.tous') },
-                { key: 'EN_ATTENTE', label: t('exchanges.tab.enAttente') },
-                { key: 'OPPOSITION', label: t('exchanges.tab.opposition') },
-                { key: 'CONTESTATION', label: t('exchanges.tab.contestation') },
-                { key: 'COMMISSION', label: t('exchanges.tab.commission') },
-                { key: 'FORCLOS', label: t('exchanges.tab.forclos') },
-              ]}
-              activeKey={filter}
-              onChange={changeFilter}
+      <div className="sheet">
+        <div className="sheet-body">
+          <Tabs items={TABS.map((tab) => ({ key: tab.key, label: t(tab.label), count: countersQuery.data?.[tab.key] }))} activeKey={filter} onChange={changeFilter} />
+
+          {listQuery.isLoading ? (
+            <p>{t('common.loading')}</p>
+          ) : listQuery.error ? (
+            <div className="note ko" role="alert">
+              <span>{t('common.error')}</span>
+              <button type="button" onClick={() => listQuery.refetch()}>
+                {t('common.retry')}
+              </button>
+            </div>
+          ) : (
+            <Table
+              columns={columns}
+              rows={items}
+              page={listQuery.data?.page ?? 1}
+              total={listQuery.data?.total ?? 0}
+              pageSize={PAGE_SIZE}
+              onPageChange={setPage}
+              onRowClick={setSelected}
+              getRowKey={(r) => r.id}
             />
-
-            {listQuery.isLoading ? (
-              <p>{t('common.loading')}</p>
-            ) : listQuery.error ? (
-              <div className="note ko" role="alert">
-                <span>{t('common.error')}</span>
-                <button type="button" onClick={() => listQuery.refetch()}>
-                  {t('common.retry')}
-                </button>
-              </div>
-            ) : (
-              <Table
-                columns={columns}
-                rows={items}
-                page={listQuery.data?.page ?? 1}
-                total={listQuery.data?.total ?? 0}
-                pageSize={PAGE_SIZE}
-                onPageChange={setPage}
-                onRowClick={(r) => setSelectedId(r.id)}
-                getRowKey={(r) => r.id}
-              />
-            )}
-          </div>
+          )}
         </div>
-
-        <aside className="sheet" aria-label={t('exchanges.panel.title')}>
-          <div className="sheet-head">
-            <span>{t('exchanges.panel.title')}</span>
-          </div>
-          <div className="sheet-body">
-            {!selected ? (
-              <p style={{ color: 'var(--ink-3)' }}>{t('exchanges.panel.empty')}</p>
-            ) : (
-              <>
-                <div style={{ marginBottom: 'var(--s-4)', display: 'flex', flexDirection: 'column', gap: 'var(--s-2)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span className="mono">{selected.claimId}</span>
-                    <Tag tone={STATE_TONE[selected.state]}>{t(STATE_LABEL_KEY[selected.state])}</Tag>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <CoChip code={selected.from} /> <span style={{ color: 'var(--ink-3)' }}>→</span> <CoChip code={selected.to} />
-                  </div>
-                  <div style={{ fontSize: 'var(--k-fs-s)' }}>
-                    <strong>{t('exchanges.panel.amount')}</strong> : {formatDzd(selected.amount, locale)}
-                  </div>
-                  <div style={{ fontSize: 'var(--k-fs-s)' }}>
-                    <strong>{t('exchanges.panel.sentAt')}</strong> : {new Date(selected.requestSentAt).toLocaleString(locale)}
-                  </div>
-                  {selected.currentDeadlineAt ? (
-                    <div>
-                      <div style={{ fontSize: 'var(--k-fs-s)', marginBottom: 4 }}>
-                        <strong>{t('exchanges.panel.deadline')}</strong> : {new Date(selected.currentDeadlineAt).toLocaleString(locale)}
-                      </div>
-                      <CountdownBar startAt={selected.requestSentAt} deadlineAt={selected.currentDeadlineAt} />
-                    </div>
-                  ) : null}
-                </div>
-
-                {articleHint(selected.state) ? (
-                  <p className="note warn" style={{ fontSize: 'var(--k-fs-xs)' }}>
-                    {t(articleHint(selected.state) as TranslationKey)}
-                  </p>
-                ) : null}
-
-                <div style={{ marginTop: 'var(--s-4)' }}>
-                  {selected.state === 'EN_ATTENTE' ? (
-                    <>
-                      <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>
-                        {t('exchanges.action.opposer.title')}
-                      </strong>
-                      {!canExchange ? <p className="note warn">{t('common.forbidden')}</p> : null}
-                      <label htmlFor="motif-opposer" style={{ display: 'block', fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', marginBottom: 4 }}>
-                        {t('exchanges.action.opposer.motif')}
-                      </label>
-                      <textarea
-                        id="motif-opposer"
-                        value={motif}
-                        disabled={!canExchange}
-                        onChange={(e) => setMotif(e.target.value)}
-                        rows={3}
-                        style={{ width: '100%', marginBottom: 'var(--s-3)', padding: '6px 10px', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', font: 'inherit', background: 'var(--paper)', color: 'var(--ink)' }}
-                      />
-                      <button
-                        type="button"
-                        className="tag warn"
-                        style={{ cursor: canExchange ? 'pointer' : 'not-allowed', border: 'none' }}
-                        disabled={!canExchange || !motif.trim() || opposerMutation.isPending}
-                        onClick={submitOpposer}
-                      >
-                        {t('exchanges.action.opposer.submit')}
-                      </button>
-                    </>
-                  ) : selected.state === 'OPPOSITION' ? (
-                    <>
-                      <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>
-                        {t('exchanges.action.contester.title')}
-                      </strong>
-                      {!canExchange ? <p className="note warn">{t('common.forbidden')}</p> : null}
-                      <label htmlFor="motif-contester" style={{ display: 'block', fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', marginBottom: 4 }}>
-                        {t('exchanges.action.contester.motif')}
-                      </label>
-                      <textarea
-                        id="motif-contester"
-                        value={motif}
-                        disabled={!canExchange}
-                        onChange={(e) => setMotif(e.target.value)}
-                        rows={3}
-                        style={{ width: '100%', marginBottom: 'var(--s-3)', padding: '6px 10px', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', font: 'inherit', background: 'var(--paper)', color: 'var(--ink)' }}
-                      />
-                      <button
-                        type="button"
-                        className="tag ko"
-                        style={{ cursor: canExchange ? 'pointer' : 'not-allowed', border: 'none' }}
-                        disabled={!canExchange || !motif.trim() || contesterMutation.isPending}
-                        onClick={submitContester}
-                      >
-                        {t('exchanges.action.contester.submit')}
-                      </button>
-                    </>
-                  ) : selected.state === 'ACCEPTE_TACITE' || selected.state === 'COMMISSION' ? (
-                    <>
-                      <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>
-                        {t('exchanges.action.settle.title')}
-                      </strong>
-                      {!canPay ? <p className="note warn">{t('common.forbidden')}</p> : null}
-                      <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginBottom: 'var(--s-3)' }}>{t('exchanges.action.settle.note')}</p>
-                      <button
-                        type="button"
-                        className="tag ok"
-                        style={{ cursor: canPay ? 'pointer' : 'not-allowed', border: 'none' }}
-                        disabled={!canPay || settleMutation.isPending}
-                        onClick={submitSettle}
-                      >
-                        {t('exchanges.action.settle.submit')}
-                      </button>
-                    </>
-                  ) : (
-                    <p style={{ color: 'var(--ink-3)' }}>{t('exchanges.action.none')}</p>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        </aside>
       </div>
+
+      <Modal open={!!selected} title={selected ? `${t('exchanges.detail.titlePrefix')} ${selected.id}` : ''} onClose={() => setSelected(null)}>
+        {selected ? (
+          <>
+            <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--s-3)', marginBottom: 'var(--s-4)' }}>
+              <Field label={t('exchanges.detail.claim')}>
+                <span className="mono">{selected.claimId}</span>
+              </Field>
+              <Field label={t('exchanges.detail.from')}>
+                <CoChip code={selected.from} />
+              </Field>
+              <Field label={t('exchanges.detail.to')}>
+                <CoChip code={selected.to} />
+              </Field>
+              <Field label={t('exchanges.detail.amount')}>
+                <span className="mono">{formatDzd(selected.amount, locale)}</span>
+              </Field>
+              <Field label={t('exchanges.detail.state')}>
+                <Tag tone={stateTone(selected.state)}>{t(`exchanges.state.${selected.state}` as TranslationKey)}</Tag>
+              </Field>
+              <Field label={t('exchanges.detail.sentAt')}>{new Date(selected.requestSentAt).toLocaleDateString(locale)}</Field>
+            </dl>
+
+            {selected.timer.deadlineAt ? (
+              <div style={{ marginBottom: 'var(--s-4)' }}>
+                <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.deadline')}</strong>
+                <CountdownBar
+                  startAt={selected.requestSentAt}
+                  deadlineAt={selected.timer.deadlineAt}
+                  renderLabel={({ remainingDays, overdue }) => `${remainingDays} ${overdue ? t('exchanges.countdown.overdue') : t('exchanges.countdown.remaining')}`}
+                />
+              </div>
+            ) : null}
+
+            {!canTransition ? <p className="note warn">{t('common.forbidden')}</p> : null}
+
+            <div style={{ marginBottom: 'var(--s-4)' }}>
+              <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.transition.title')}</strong>
+              <label htmlFor="transition-reason" style={{ display: 'block', fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', marginBottom: 4 }}>
+                {t('exchanges.action.reason.label')}
+              </label>
+              <input
+                id="transition-reason"
+                type="text"
+                value={reason}
+                disabled={!canTransition}
+                onChange={(e) => setReason(e.target.value)}
+                style={{ width: '100%', marginBottom: 'var(--s-3)', padding: '6px 10px', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', font: 'inherit', background: 'var(--paper)', color: 'var(--ink)' }}
+              />
+              <div style={{ display: 'flex', gap: 'var(--s-2)', flexWrap: 'wrap' }}>
+                {RECOURS_ALLOWED_ACTIONS[selected.state].map((action) => (
+                  <button
+                    key={action}
+                    type="button"
+                    className="tag a"
+                    style={{ cursor: canTransition ? 'pointer' : 'not-allowed', border: 'none' }}
+                    disabled={!canTransition || transitionMutation.isPending}
+                    onClick={() => transitionMutation.mutate({ id: selected.id, action, reason })}
+                  >
+                    {t(`exchanges.action.${action}` as TranslationKey)}
+                  </button>
+                ))}
+                {RECOURS_ALLOWED_ACTIONS[selected.state].length === 0 ? (
+                  <span style={{ color: 'var(--ink-3)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.action.none')}</span>
+                ) : null}
+              </div>
+            </div>
+
+            <div>
+              <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.transitions')}</strong>
+              {(transitionLog[selected.id]?.length ?? 0) === 0 ? (
+                <p style={{ color: 'var(--ink-3)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.transitions.empty')}</p>
+              ) : (
+                <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {transitionLog[selected.id].map((entry, i) => (
+                    <li key={`${entry.transitionedAt}-${i}`} style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                      <span>{t(`exchanges.state.${entry.state}` as TranslationKey)}</span>
+                      <span className="mono">{new Date(entry.transitionedAt).toLocaleString(locale)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
+        ) : null}
+      </Modal>
     </>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <dt style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>{label}</dt>
+      <dd style={{ margin: 0 }}>{children}</dd>
+    </div>
   );
 }
