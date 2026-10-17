@@ -12,7 +12,7 @@ import { TranslationKey } from '@/i18n/translations';
 import { apiGet } from '@/lib/api-client';
 import { MonitoringCompanyScore, MonitoringScores, MonitoringWeights } from '@/lib/types';
 
-const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
+const PAGE_SIZE = 7; // pagination fixe 7/p — A.5
 
 /**
  * Libellés des 7 critères du scoring composite (B.2 écran 8) — mapping

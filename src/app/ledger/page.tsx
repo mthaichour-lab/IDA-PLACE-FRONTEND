@@ -10,7 +10,7 @@ import { apiGet } from '@/lib/api-client';
 import { useRealtime } from '@/lib/realtime';
 import { LedgerEntry, LedgerVerifyResult } from '@/lib/types';
 
-const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
+const PAGE_SIZE = 7; // pagination fixe 7/p — A.5
 
 // Polling de repli — le back n'émet pas encore `ledger.appended` à ce jour
 // (voir rapport de livraison) ; cet abonnement est prévu par anticipation,

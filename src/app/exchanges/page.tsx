@@ -17,7 +17,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useRealtime } from '@/lib/realtime';
 import { Paginated, RecoursAction, RecoursFilter, RecoursItem, RecoursState, RecoursTransitionResult, RECOURS_ALLOWED_ACTIONS } from '@/lib/types';
 
-const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
+const PAGE_SIZE = 7; // pagination fixe 7/p — A.5
 
 // Polling de repli (B.12) : `recours.timer` n'est pas encore émis par le
 // back (RealtimeModule n'émet que claim.ingested/match.updated/metering.tick

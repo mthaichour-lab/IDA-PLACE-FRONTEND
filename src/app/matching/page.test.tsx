@@ -45,7 +45,7 @@ function mockQueueApi(me: MeResponse, items: MatchQueueItem[]) {
     if (pathname === '/api/v1/matching/thresholds') return THRESHOLDS;
     if (pathname === '/api/v1/matching/queue') {
       const page = Number(url.searchParams.get('page') ?? '1');
-      const pageSize = Number(url.searchParams.get('pageSize') ?? '6');
+      const pageSize = Number(url.searchParams.get('pageSize') ?? '7');
       const start = (page - 1) * pageSize;
       return { page, total: items.length, items: items.slice(start, start + pageSize) };
     }
@@ -54,7 +54,7 @@ function mockQueueApi(me: MeResponse, items: MatchQueueItem[]) {
 }
 
 /**
- * Écran Confrontation & matching (/matching, écran 2) — pagination 6/p et
+ * Écran Confrontation & matching (/matching, écran 2) — pagination 7/p et
  * affichage conditionnel des actions Confirmer/Rejeter/Complément selon le
  * privilège `matchDecide` (B.7 : AUDITEUR_CSA toujours en lecture seule).
  */
@@ -63,15 +63,15 @@ describe('Écran Confrontation & matching (/matching)', () => {
     vi.unstubAllGlobals();
   });
 
-  it('pagine la file à 6 lignes/page (A.5) sur 9 éléments', async () => {
+  it('pagine la file à 7 lignes/page (A.5) sur 9 éléments', async () => {
     const items = Array.from({ length: 9 }, (_, i) => queueItem(i + 1));
     mockQueueApi(ME_WITH_MATCH_DECIDE, items);
 
     renderWithProviders(<MatchingPage />);
 
     await waitFor(() => expect(screen.getByText('ECN-1')).toBeInTheDocument());
-    expect(screen.getByText('ECN-6')).toBeInTheDocument();
-    expect(screen.queryByText('ECN-7')).not.toBeInTheDocument();
+    expect(screen.getByText('ECN-7')).toBeInTheDocument();
+    expect(screen.queryByText('ECN-8')).not.toBeInTheDocument();
   });
 
   it('active Confirmer/Rejeter/Complément pour un utilisateur avec le privilège matchDecide', async () => {
