@@ -31,8 +31,47 @@ const TABS: { key: RecoursFilter; label: TranslationKey }[] = [
   { key: 'OPPOSITION', label: 'exchanges.tab.opposition' },
   { key: 'CONTESTATION', label: 'exchanges.tab.contestation' },
   { key: 'COMMISSION', label: 'exchanges.tab.commission' },
+  { key: 'REGLE', label: 'exchanges.tab.regle' },
+  { key: 'REJETE', label: 'exchanges.tab.rejete' },
   { key: 'FORCLOS', label: 'exchanges.tab.forclos' },
 ];
+
+/** Libellé d'affichage d'un `resolution.kind` (B.3 RecoursModule) — valeurs exactes, voir recours.rules.ts back. */
+const RESOLUTION_LABELS: Record<string, TranslationKey> = {
+  ACCEPTATION_EXPRESSE: 'exchanges.detail.timeline.resolution.ACCEPTATION_EXPRESSE',
+  ACCEPTATION_TACITE_ART10: 'exchanges.detail.timeline.resolution.ACCEPTATION_TACITE_ART10',
+  OPPOSITION_LEVEE: 'exchanges.detail.timeline.resolution.OPPOSITION_LEVEE',
+  OPPOSITION_FONDEE_ART12: 'exchanges.detail.timeline.resolution.OPPOSITION_FONDEE_ART12',
+  DECISION_COMMISSION_FAVORABLE: 'exchanges.detail.timeline.resolution.DECISION_COMMISSION_FAVORABLE',
+  DECISION_COMMISSION_DEFAVORABLE: 'exchanges.detail.timeline.resolution.DECISION_COMMISSION_DEFAVORABLE',
+  FORCLUSION_ART19: 'exchanges.detail.timeline.resolution.FORCLUSION_ART19',
+};
+
+interface TimelineEntry {
+  key: string;
+  label: TranslationKey;
+  at: string;
+  reason?: string;
+}
+
+/**
+ * Fil d'échanges reconstruit à partir des champs RÉELLEMENT persistés
+ * (`requestSentAt`/`opposition`/`contestation`/`commissionAt`/`resolution`)
+ * — pas un historique de transitions à part entière (`RecoursController`
+ * n'expose aucun endpoint dédié, voir HANDOFF.md), mais chaque étape vraiment
+ * survenue est reconstituée honnêtement, triée chronologiquement.
+ */
+function buildTimeline(r: RecoursItem): TimelineEntry[] {
+  const entries: TimelineEntry[] = [{ key: 'annexe2', label: 'exchanges.detail.timeline.annexe2', at: r.requestSentAt }];
+  if (r.opposition) entries.push({ key: 'annexe3', label: 'exchanges.detail.timeline.annexe3', at: r.opposition.raisedAt, reason: r.opposition.reason });
+  if (r.contestation) entries.push({ key: 'annexe4', label: 'exchanges.detail.timeline.annexe4', at: r.contestation.raisedAt, reason: r.contestation.reason });
+  if (r.commissionAt) entries.push({ key: 'commission', label: 'exchanges.detail.timeline.commission', at: r.commissionAt });
+  if (r.resolution) {
+    const label = RESOLUTION_LABELS[r.resolution.kind];
+    if (label) entries.push({ key: 'resolution', label, at: r.resolution.at, reason: r.resolution.note });
+  }
+  return entries.sort((a, b) => a.at.localeCompare(b.at));
+}
 
 function stateTone(state: RecoursState): TagTone {
   if (state === 'FORCLOS' || state === 'REJETE') return 'ko';
@@ -49,13 +88,8 @@ function formatDzd(amount: number, locale: string): string {
   }
 }
 
-function recoursQuery(filter: RecoursFilter, page: number) {
-  return { filter, page, pageSize: PAGE_SIZE };
-}
-
-interface TransitionLogEntry {
-  state: string;
-  transitionedAt: string;
+function recoursQuery(filter: RecoursFilter, page: number, q: string) {
+  return { filter, page, pageSize: PAGE_SIZE, q: q || undefined };
 }
 
 export default function ExchangesPage() {
@@ -66,10 +100,8 @@ export default function ExchangesPage() {
 
   const [filter, setFilter] = useState<RecoursFilter>('TOUS');
   const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<RecoursItem | null>(null);
-  // Historique de transitions côté client, session courante uniquement —
-  // RecoursController n'expose aucun endpoint d'historique (voir HANDOFF).
-  const [transitionLog, setTransitionLog] = useState<Record<string, TransitionLogEntry[]>>({});
 
   const canTransition = hasPrivilege('exchange');
 
@@ -80,8 +112,8 @@ export default function ExchangesPage() {
   });
 
   const listQuery = useQuery({
-    queryKey: ['recours', 'list', filter, page],
-    queryFn: () => apiGet<Paginated<RecoursItem>>('/recours', recoursQuery(filter, page)),
+    queryKey: ['recours', 'list', filter, page, search],
+    queryFn: () => apiGet<Paginated<RecoursItem>>('/recours', recoursQuery(filter, page, search)),
     refetchInterval: POLL_INTERVAL_MS,
   });
 
@@ -99,12 +131,12 @@ export default function ExchangesPage() {
   const transitionMutation = useMutation({
     mutationFn: ({ id, action, reason: r }: { id: string; action: RecoursAction; reason?: string }) =>
       apiPost<RecoursTransitionResult>(`/recours/${id}/transition`, { action, reason: r || undefined }),
-    onSuccess: (result, variables) => {
-      setTransitionLog((prev) => ({
-        ...prev,
-        [variables.id]: [{ state: result.state, transitionedAt: result.transitionedAt }, ...(prev[variables.id] ?? [])],
-      }));
-      setSelected((prev) => (prev && prev.id === variables.id ? { ...prev, state: result.state, timer: result.timer } : prev));
+    onSuccess: async (result, variables) => {
+      // Rafraîchit la fiche complète (opposition/contestation/resolution) plutôt que de
+      // ne retenir que {state, timer} — nécessaire pour que le fil d'échanges reconstruit
+      // (`buildTimeline`) reflète immédiatement la nouvelle étape.
+      const fresh = await apiGet<RecoursItem>(`/recours/${variables.id}`);
+      setSelected((prev) => (prev && prev.id === variables.id ? fresh : prev));
       setReason('');
       toast(t('exchanges.detail.transition.toast.ok'), 'ok');
       void queryClient.invalidateQueries({ queryKey: ['recours'] });
@@ -158,6 +190,27 @@ export default function ExchangesPage() {
       <div className="sheet">
         <div className="sheet-body">
           <Tabs items={TABS.map((tab) => ({ key: tab.key, label: t(tab.label), count: countersQuery.data?.[tab.key] }))} activeKey={filter} onChange={changeFilter} />
+
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+            aria-label={t('exchanges.search.label')}
+            placeholder={t('exchanges.search.label')}
+            style={{
+              width: '100%',
+              margin: 'var(--s-3) 0',
+              padding: '8px 12px',
+              border: '1px solid var(--rule-strong)',
+              borderRadius: 'var(--k-r-s)',
+              font: 'inherit',
+              background: 'var(--paper)',
+              color: 'var(--ink)',
+            }}
+          />
 
           {listQuery.isLoading ? (
             <p>{t('common.loading')}</p>
@@ -251,19 +304,18 @@ export default function ExchangesPage() {
             </div>
 
             <div>
-              <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.transitions')}</strong>
-              {(transitionLog[selected.id]?.length ?? 0) === 0 ? (
-                <p style={{ color: 'var(--ink-3)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.transitions.empty')}</p>
-              ) : (
-                <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {transitionLog[selected.id].map((entry, i) => (
-                    <li key={`${entry.transitionedAt}-${i}`} style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-                      <span>{t(`exchanges.state.${entry.state}` as TranslationKey)}</span>
-                      <span className="mono">{new Date(entry.transitionedAt).toLocaleString(locale)}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.timeline')}</strong>
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {buildTimeline(selected).map((entry) => (
+                  <li key={entry.key} style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                      <strong style={{ color: 'var(--ink)' }}>{t(entry.label)}</strong>
+                      <span className="mono">{new Date(entry.at).toLocaleString(locale)}</span>
+                    </div>
+                    {entry.reason ? <p style={{ margin: '2px 0 0', fontSize: 'var(--k-fs-s)' }}>{entry.reason}</p> : null}
+                  </li>
+                ))}
+              </ul>
             </div>
           </>
         ) : null}

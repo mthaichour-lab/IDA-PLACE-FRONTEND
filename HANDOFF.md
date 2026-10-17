@@ -98,6 +98,40 @@ Voir HANDOFF.md back pour le détail des 2 endpoints additifs :
   Vérifié en navigateur réel (3 recours réglés CAAT/SAA + 1 opposé →
   KPI et matrice corrects, somme "à payer"/"à recevoir" cohérente).
 
+### `/exchanges` rapproché de la capture de référence (2026-10-18)
+
+- **Onglets Réglés/Rejetés ajoutés** — `REGLE`/`REJETE` sont des états
+  réels de `RECOURS_STATES` (déjà filtrables côté API) mais n'étaient
+  jusqu'ici tout simplement pas proposés comme onglets côté front, un
+  oubli pur et simple, pas une dérive. Les onglets exotiques du guide
+  ("Acceptés/silence" vs "Réglés/compensés") restent hors périmètre :
+  leur distinction métier exacte n'est précisée dans aucun des deux
+  documents — deviner une règle de regroupement aurait été inventer une
+  donnée, pas la reconstruire (voir HANDOFF.md back).
+- **Recherche libre ajoutée** (n° recours/dossier/compagnie) via le
+  nouveau paramètre `q` de `GET /recours` (additif, voir HANDOFF.md
+  back).
+- **"Fil d'échanges" reconstruit à partir des champs RÉELLEMENT
+  persistés** (`requestSentAt`/`opposition`/`contestation`/
+  `commissionAt`/`resolution`) — remplace l'ancien `transitionLog`
+  (état React local, perdu au rechargement, ne montrait que `{state,
+  transitionedAt}` sans le motif d'opposition/contestation). Le
+  nouveau fil affiche chaque étape RÉELLEMENT survenue (Annexe 2/3/4,
+  transmission Commission, résolution) avec son motif quand il existe,
+  trié chronologiquement — honnête : pas de noms d'auteur ni d'avatar
+  comme dans la capture (`decidedBy` n'est pas persisté sur `Recours`,
+  voir B.3 back), juste ce qui est réellement là.
+- Après chaque transition, la fiche sélectionnée est rechargée en
+  entier (`GET /recours/:id`) plutôt que de ne mettre à jour que
+  `{state, timer}` — nécessaire pour que le fil reflète immédiatement
+  la nouvelle étape (opposition/contestation/résolution).
+- **Toujours hors périmètre** (voir HANDOFF.md back) : pièces jointes
+  Annexe 2/3/4, numéro de dossier par compagnie, assuré victime nommé,
+  code de barème par dossier.
+- Test composant (`page.test.tsx`) réécrit en conséquence (7 cas).
+  Vérifié en navigateur réel (opposition avec motif réel → fil
+  d'échanges et recherche corrects).
+
 ## ⚠️ Particularité de ce sprint : deux implémentations concurrentes réconciliées
 
 Une **session Claude indépendante**, travaillant en parallèle sur ce même
