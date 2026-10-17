@@ -96,8 +96,37 @@ function UsersTab() {
     onError: () => toast(t('params.users.toast.error'), 'ko'),
   });
 
+  const [editActive, setEditActive] = useState(true);
+  const [editGrant, setEditGrant] = useState<string[]>([]);
+  const [editRevoke, setEditRevoke] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!selected) return;
+    setEditActive(selected.active);
+    setEditGrant(selected.grant);
+    setEditRevoke(selected.revoke);
+  }, [selected?.id]);
+
+  const updateMutation = useMutation({
+    mutationFn: (body: { active: boolean; grant: string[]; revoke: string[] }) => apiPut<PlaceUser>(`/admin/users/${selected!.id}`, body),
+    onSuccess: (updated) => {
+      setSelected(updated);
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+      toast(t('params.users.detail.saved'), 'ok');
+    },
+    onError: () => toast(t('params.users.detail.saveError'), 'ko'),
+  });
+
+  function toggleIn(list: string[], setList: (v: string[]) => void, privilege: string) {
+    setList(list.includes(privilege) ? list.filter((p) => p !== privilege) : [...list, privilege]);
+  }
+
   const pageRows = usersQuery.data?.items ?? [];
   const roles = matrixQuery.data?.roles ?? [];
+  const privileges = useMemo(
+    () => (roles.length && matrixQuery.data ? Object.keys(matrixQuery.data.matrix[roles[0]] ?? {}) : []),
+    [roles, matrixQuery.data],
+  );
 
   const columns: Column<PlaceUser>[] = [
     { key: 'name', header: t('params.users.col.name'), render: (r) => r.name },
@@ -138,7 +167,21 @@ function UsersTab() {
         )}
       </div>
 
-      <Modal open={!!selected} title={`${t('params.users.detail.title')} — ${selected?.name ?? ''}`} onClose={() => setSelected(null)}>
+      <Modal
+        open={!!selected}
+        title={`${t('params.users.detail.title')} — ${selected?.name ?? ''}`}
+        onClose={() => setSelected(null)}
+        footer={
+          <button
+            type="button"
+            disabled={updateMutation.isPending}
+            onClick={() => updateMutation.mutate({ active: editActive, grant: editGrant, revoke: editRevoke })}
+            style={{ padding: '8px 16px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--k-pri)', background: 'var(--k-pri)', color: '#fff', font: 'inherit', cursor: 'pointer' }}
+          >
+            {t('params.users.detail.save')}
+          </button>
+        }
+      >
         {selected ? (
           <>
             <dl style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 'var(--s-4)' }}>
@@ -150,14 +193,32 @@ function UsersTab() {
               </Field>
               <Field label={t('params.users.col.company')}>{selected.companyId ?? '—'}</Field>
               <Field label={t('params.users.col.status')}>
-                <Tag tone={statusTone(selected.active)}>{selected.active ? t('params.users.status.active') : t('params.users.status.suspended')}</Tag>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={editActive} onChange={(e) => setEditActive(e.target.checked)} />
+                  <Tag tone={statusTone(editActive)}>{editActive ? t('params.users.status.active') : t('params.users.status.suspended')}</Tag>
+                </label>
               </Field>
-              <Field label={t('params.users.detail.grant')}>{selected.grant.length ? selected.grant.join(', ') : t('params.users.detail.none')}</Field>
-              <Field label={t('params.users.detail.revoke')}>{selected.revoke.length ? selected.revoke.join(', ') : t('params.users.detail.none')}</Field>
             </dl>
-            <p className="note warn" style={{ fontSize: 'var(--k-fs-xs)' }}>
-              {t('params.users.detail.editNote')}
-            </p>
+
+            <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('params.users.detail.grant')}</strong>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s-2)', marginBottom: 'var(--s-4)' }}>
+              {privileges.map((p) => (
+                <label key={p} className="mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--k-fs-xs)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={editGrant.includes(p)} onChange={() => toggleIn(editGrant, setEditGrant, p)} />
+                  {p}
+                </label>
+              ))}
+            </div>
+
+            <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('params.users.detail.revoke')}</strong>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s-2)' }}>
+              {privileges.map((p) => (
+                <label key={p} className="mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--k-fs-xs)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={editRevoke.includes(p)} onChange={() => toggleIn(editRevoke, setEditRevoke, p)} />
+                  {p}
+                </label>
+              ))}
+            </div>
           </>
         ) : null}
       </Modal>

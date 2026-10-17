@@ -58,6 +58,14 @@ Monitoring incorrecte, type `FraudCase` incorrect) ; connexion temps réel
 personnalisé sur un WebSocket brut — identité dev transmise via `auth`
 désormais).
 
+## Sprint 3 bis
+
+`/params`, onglet Utilisateurs & accès : édition actif/suspendu +
+dérogations grant/revoke (cases à cocher) branchée sur le vrai
+`PUT /admin/users/:id` (réel côté back depuis la réconciliation),
+vérifié en navigateur bout-en-bout (bascule de statut, octroi d'un
+privilège, persistance confirmée après rechargement de la liste).
+
 ## Ce qui est déjà prêt à réutiliser
 
 - **Coque** : `src/components/shell/{Rail,Topbar,MobileBar,AppShell}.tsx`
@@ -83,10 +91,6 @@ désormais).
 
 ## Dette / limites connues (documentées dans le code, pas des bugs)
 
-- **Pas de persistance pour certaines actions d'admin** (`/params`,
-  onglet Utilisateurs) : édition actif/suspendu et dérogations de
-  privilèges non câblées (`PUT /admin/users/:id` existe mais pas branché
-  à ce formulaire).
 - **Pas d'agrégat cross-compagnie** pour les coûts (`/params`) ni pour
   les KPIs `/fraude`/`/monitoring` — dérivés côté front d'une liste
   complète (pageSize large).
