@@ -83,11 +83,15 @@ privilège, persistance confirmée après rechargement de la liste).
 - **Temps réel** : `useRealtime(events, onEvent)` — fonctionne réellement
   dans un navigateur (transmission via `auth`, pas un en-tête). **Toujours**
   combiner avec un `refetchInterval` TanStack de repli.
-- **Tests** : Vitest + React Testing Library (nouveau ce sprint, apporté
-  par la session parallèle) — `npm test`. 15 tests composants sur
-  `/cockpit`, `/import`, `/matching`, `/referential`. Aucun test composant
-  pour les 10 écrans sprint 3 — à faire si besoin, suivre le patron
-  existant (`src/test/render.tsx`, `vitest.setup.ts`).
+- **Tests** : Vitest + React Testing Library — `npm test`. 47 tests
+  composants, les 14 écrans couverts : `/cockpit`, `/import`, `/matching`,
+  `/referential` (apportés par la session parallèle, sprint 3) +
+  `/monitoring`, `/fraude`, `/metering`, `/stats`, `/params`, `/exchanges`,
+  `/monthly`, `/quarter`, `/commission`, `/ledger` (sprint 3 bis, patron
+  existant — `src/test/render.tsx`, `vitest.setup.ts`). 1-2 cas par écran
+  (rendu principal + une règle métier représentative : pagination 7/p,
+  actions autorisées par état, scoping d'un privilège B.7) — pas une
+  couverture exhaustive de chaque branche.
 
 ## Dette / limites connues (documentées dans le code, pas des bugs)
 
