@@ -15,9 +15,51 @@ import { TranslationKey } from '@/i18n/translations';
 import { apiGet, apiPost } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { useRealtime } from '@/lib/realtime';
-import { Paginated, RecoursAction, RecoursFilter, RecoursItem, RecoursState, RecoursTransitionResult, RECOURS_ALLOWED_ACTIONS } from '@/lib/types';
+import {
+  Paginated,
+  RecoursAction,
+  RecoursFilter,
+  RecoursItem,
+  RecoursState,
+  RecoursTransitionResult,
+  SettlementQuarterClosure,
+  RECOURS_ALLOWED_ACTIONS,
+} from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
+
+// Idiome "récupérer tout côté client pour reclasser/re-paginer localement" déjà
+// utilisé par /monitoring (journeys d'une compagnie) et /fraude — même ordre
+// de grandeur, pas une convention inventée ici.
+const FETCH_ALL_PAGE_SIZE = 100_000;
+
+/**
+ * Sous-onglets du filtre REGLE (écran 4 "Échanges Annexes 2/3/4", guide
+ * illustré) — "Accepté/silence" vs "Réglé/compensé". Décision Product Owner
+ * 2026-10-18 : les DEUX atteignent le même état backend `REGLE`
+ * (`RECOURS_STATES`) ; aucune de ces deux étiquettes n'est un état/filtre
+ * backend. La distinction est PUREMENT TEMPORELLE et calculée ICI, côté
+ * client uniquement : un recours réglé (`settledAt`) appartient au trimestre
+ * `quarterOf(settledAt)` ; si CE trimestre a déjà été clôturé (présent dans
+ * `GET /settlement/quarter/closures`), le recours est "Réglé/compensé",
+ * sinon "Accepté/silence" (réglé, en attente de la prochaine compensation
+ * trimestrielle). Ne JAMAIS envoyer cette distinction comme valeur de
+ * `filter` à l'API — `RecoursFilter` (back) ne connaît et ne doit connaître
+ * que les 7 vrais états + 'TOUS'.
+ */
+type RegleSubTab = 'SILENCE' | 'COMPENSATED';
+
+/**
+ * Trimestre AAAA-Qn d'une date ISO — DOIT rester IDENTIQUE à
+ * `isIsoDateInQuarter` (back `settlement.rules.ts`) : UTC, pas de fuseau
+ * local, sinon le croisement avec `/settlement/quarter/closures` serait
+ * incohérent avec ce que le back considère réellement comme clôturé.
+ */
+function quarterOf(iso: string): string {
+  const d = new Date(iso);
+  const q = Math.floor(d.getUTCMonth() / 3) + 1;
+  return `${d.getUTCFullYear()}-Q${q}`;
+}
 
 // Polling de repli (B.12) : `recours.timer` n'est pas encore émis par le
 // back (RealtimeModule n'émet que claim.ingested/match.updated/metering.tick
@@ -103,6 +145,12 @@ export default function ExchangesPage() {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<RecoursItem | null>(null);
 
+  // Sous-onglets REGLE (voir commentaire `RegleSubTab` plus haut) — état
+  // purement local à cet écran, jamais transmis à l'API.
+  const [regleSubTab, setRegleSubTab] = useState<RegleSubTab>('SILENCE');
+  const [reglePage, setReglePage] = useState(1);
+  const isRegleFilter = filter === 'REGLE';
+
   const canTransition = hasPrivilege('exchange');
 
   const countersQuery = useQuery({
@@ -111,20 +159,78 @@ export default function ExchangesPage() {
     refetchInterval: POLL_INTERVAL_MS,
   });
 
+  // Pagination serveur normale (A.5) — pour tous les onglets SAUF REGLE,
+  // dont le comportement change ci-dessous (voir `regleAllQuery`).
   const listQuery = useQuery({
     queryKey: ['recours', 'list', filter, page, search],
     queryFn: () => apiGet<Paginated<RecoursItem>>('/recours', recoursQuery(filter, page, search)),
     refetchInterval: POLL_INTERVAL_MS,
+    enabled: !isRegleFilter,
   });
+
+  /**
+   * Onglet REGLE : il faut voir la population COMPLÈTE avant de pouvoir la
+   * reclasser "Accepté/silence" / "Réglé/compensé" puis la re-paginer côté
+   * client (A.5 — 6 lignes/page — s'applique à CHACUN des deux sous-onglets,
+   * pas à l'ensemble REGLE non trié). D'où un fetch "tout" dédié (même idiome
+   * que /monitoring et /fraude), au lieu de la page serveur de 6 lignes de
+   * `listQuery` ci-dessus. `q` (recherche libre) continue d'être envoyé au
+   * back — seule la pagination change.
+   */
+  const regleAllQuery = useQuery({
+    queryKey: ['recours', 'list', 'REGLE', 'all', search],
+    queryFn: () => apiGet<Paginated<RecoursItem>>('/recours', { filter: 'REGLE', page: 1, pageSize: FETCH_ALL_PAGE_SIZE, q: search || undefined }),
+    refetchInterval: POLL_INTERVAL_MS,
+    enabled: isRegleFilter,
+  });
+
+  /**
+   * Toutes les clôtures trimestrielles jamais enregistrées (place entière,
+   * sans filtre — voir `SettlementQuarterClosure`) : référentiel à faible
+   * churn (une clôture par trimestre par scope, jamais réécrite), laissé au
+   * `staleTime` par défaut du `QueryClient` (15s, voir `query-provider.tsx`)
+   * — aucun autre écran de ce projet ne surcharge `staleTime` par requête,
+   * pas de convention à réinventer ici.
+   */
+  const closuresQuery = useQuery({
+    queryKey: ['settlement', 'quarter', 'closures'],
+    queryFn: () => apiGet<SettlementQuarterClosure[]>('/settlement/quarter/closures'),
+  });
+
+  const closedQuarters = useMemo(() => new Set((closuresQuery.data ?? []).map((c) => c.period)), [closuresQuery.data]);
+
+  /**
+   * Classification CLIENT-SIDE (voir commentaire `RegleSubTab`) : un recours
+   * REGLE sans `settledAt` (ne devrait pas arriver en pratique, mais rien ne
+   * le garantit côté contrat) atterrit dans "Accepté/silence" plutôt que de
+   * planter ou de fabriquer une date — on ne peut pas affirmer qu'il est
+   * compensé sans savoir de quel trimestre il relève.
+   */
+  const { silenceItems, compensatedItems } = useMemo(() => {
+    const silence: RecoursItem[] = [];
+    const compensated: RecoursItem[] = [];
+    for (const item of regleAllQuery.data?.items ?? []) {
+      if (item.settledAt && closedQuarters.has(quarterOf(item.settledAt))) {
+        compensated.push(item);
+      } else {
+        silence.push(item);
+      }
+    }
+    return { silenceItems: silence, compensatedItems: compensated };
+  }, [regleAllQuery.data, closedQuarters]);
+
+  const regleActiveItems = regleSubTab === 'SILENCE' ? silenceItems : compensatedItems;
+  const reglePageItems = useMemo(() => regleActiveItems.slice((reglePage - 1) * PAGE_SIZE, reglePage * PAGE_SIZE), [regleActiveItems, reglePage]);
 
   const onRealtimeEvent = useCallback(() => {
     void listQuery.refetch();
+    void regleAllQuery.refetch();
     void countersQuery.refetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useRealtime(['recours.timer'], onRealtimeEvent);
 
-  const items = listQuery.data?.items ?? [];
+  const items = isRegleFilter ? reglePageItems : listQuery.data?.items ?? [];
 
   const [reason, setReason] = useState('');
 
@@ -149,6 +255,15 @@ export default function ExchangesPage() {
   function changeFilter(next: string) {
     setFilter(next as RecoursFilter);
     setPage(1);
+    // Repart toujours sur "Accepté/silence" page 1 en entrant/quittant REGLE —
+    // même logique de remise à zéro que `page` ci-dessus.
+    setRegleSubTab('SILENCE');
+    setReglePage(1);
+  }
+
+  function changeRegleSubTab(next: string) {
+    setRegleSubTab(next as RegleSubTab);
+    setReglePage(1);
   }
 
   const columns: Column<RecoursItem>[] = useMemo(
@@ -191,12 +306,24 @@ export default function ExchangesPage() {
         <div className="sheet-body">
           <Tabs items={TABS.map((tab) => ({ key: tab.key, label: t(tab.label), count: countersQuery.data?.[tab.key] }))} activeKey={filter} onChange={changeFilter} />
 
+          {isRegleFilter ? (
+            <Tabs
+              items={[
+                { key: 'SILENCE', label: t('exchanges.subtab.silence'), count: silenceItems.length },
+                { key: 'COMPENSATED', label: t('exchanges.subtab.compensated'), count: compensatedItems.length },
+              ]}
+              activeKey={regleSubTab}
+              onChange={changeRegleSubTab}
+            />
+          ) : null}
+
           <input
             type="search"
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
               setPage(1);
+              setReglePage(1);
             }}
             aria-label={t('exchanges.search.label')}
             placeholder={t('exchanges.search.label')}
@@ -212,12 +339,22 @@ export default function ExchangesPage() {
             }}
           />
 
-          {listQuery.isLoading ? (
+          {(isRegleFilter ? regleAllQuery.isLoading || closuresQuery.isLoading : listQuery.isLoading) ? (
             <p>{t('common.loading')}</p>
-          ) : listQuery.error ? (
+          ) : (isRegleFilter ? regleAllQuery.error || closuresQuery.error : listQuery.error) ? (
             <div className="note ko" role="alert">
               <span>{t('common.error')}</span>
-              <button type="button" onClick={() => listQuery.refetch()}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isRegleFilter) {
+                    void regleAllQuery.refetch();
+                    void closuresQuery.refetch();
+                  } else {
+                    void listQuery.refetch();
+                  }
+                }}
+              >
                 {t('common.retry')}
               </button>
             </div>
@@ -225,10 +362,10 @@ export default function ExchangesPage() {
             <Table
               columns={columns}
               rows={items}
-              page={listQuery.data?.page ?? 1}
-              total={listQuery.data?.total ?? 0}
+              page={isRegleFilter ? reglePage : listQuery.data?.page ?? 1}
+              total={isRegleFilter ? regleActiveItems.length : listQuery.data?.total ?? 0}
               pageSize={PAGE_SIZE}
-              onPageChange={setPage}
+              onPageChange={isRegleFilter ? setReglePage : setPage}
               onRowClick={setSelected}
               getRowKey={(r) => r.id}
             />

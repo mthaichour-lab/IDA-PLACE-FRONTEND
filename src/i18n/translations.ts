@@ -327,6 +327,8 @@ const fr = {
   'exchanges.tab.regle': 'Réglés',
   'exchanges.tab.rejete': 'Rejetés',
   'exchanges.tab.forclos': 'Forclos',
+  'exchanges.subtab.silence': 'Accepté/silence',
+  'exchanges.subtab.compensated': 'Réglé/compensé',
   'exchanges.search.label': 'Rechercher : n° recours, dossier, compagnie',
   'exchanges.col.dossier': 'Dossier',
   // ----- Journal scellé (écran 13, Module XI) -----

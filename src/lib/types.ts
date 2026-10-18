@@ -508,6 +508,24 @@ export interface SettlementQuarterSummary {
   opposedCount: number;
 }
 
+/**
+ * Clôtures trimestrielles enregistrées, TOUTES confondues (place entière,
+ * aucun filtre de période) — `GET /settlement/quarter/closures`, forme
+ * exacte de `QuarterlyClosureDto` (back `settlement.dto.ts`). Introduit pour
+ * l'écran 4 "Échanges Annexes 2/3/4" (sous-onglets REGLE) : décision Product
+ * Owner 2026-10-18, distinguer "Accepté/silence" (trimestre du recours réglé
+ * — `RecoursItem.settledAt` — pas encore clôturé) de "Réglé/compensé"
+ * (trimestre déjà clôturé) est PUREMENT côté client (croisement avec cette
+ * liste, voir `quarterOf`/classification dans `exchanges/page.tsx`) :
+ * aucun nouvel état de `RECOURS_STATES` ni filtre backend correspondant.
+ */
+export interface SettlementQuarterClosure {
+  period: string;
+  closedAt: string;
+  closedBy?: string;
+  bordereauRef?: string;
+}
+
 // `PriceGrid`/`PriceGridMetric` (grille tarifaire des règlements, B.8,
 // `GET /pricing/grid`) sont définis plus bas avec `InvoiceLine`/
 // `MeteringInvoice` (section Métrologie) — réutilisés ici par `/quarter`

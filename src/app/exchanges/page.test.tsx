@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { mockFetchRouter, renderWithProviders } from '@/test/render';
-import { MeResponse, RecoursItem } from '@/lib/types';
+import { MeResponse, RecoursItem, SettlementQuarterClosure } from '@/lib/types';
 import ExchangesPage from './page';
 
 const ME_WITH_EXCHANGE: MeResponse = {
@@ -45,6 +45,38 @@ function mockExchangesApi(me: MeResponse, items: RecoursItem[]) {
       const page = Number(url.searchParams.get('page') ?? '1');
       const q = url.searchParams.get('q')?.toLowerCase();
       const filtered = q ? items.filter((r) => [r.id, r.claimId, r.from, r.to].some((v) => v.toLowerCase().includes(q))) : items;
+      return { page, total: filtered.length, items: filtered };
+    }
+    return undefined;
+  });
+}
+
+/**
+ * Variante qui respecte RÉELLEMENT `filter` (contrairement à `mockExchangesApi`
+ * ci-dessus, qui renvoie toujours la même liste quel que soit l'onglet —
+ * suffisant pour les tests existants, pas pour vérifier le sous-classement
+ * REGLE) et mocke `GET /settlement/quarter/closures` — nécessaire pour les
+ * tests de sous-onglets "Accepté/silence" / "Réglé/compensé".
+ */
+function mockExchangesApiWithClosures(me: MeResponse, items: RecoursItem[], closures: SettlementQuarterClosure[]) {
+  mockFetchRouter((pathname, url) => {
+    if (pathname === '/api/v1/me') return me;
+    if (pathname === '/api/v1/settlement/quarter/closures') return closures;
+    if (pathname === '/api/v1/recours/counters') {
+      const counters: Record<string, number> = { TOUS: items.length, EN_ATTENTE: 0, OPPOSITION: 0, CONTESTATION: 0, COMMISSION: 0, REGLE: 0, REJETE: 0, FORCLOS: 0 };
+      for (const r of items) counters[r.state] = (counters[r.state] ?? 0) + 1;
+      return counters;
+    }
+    if (/^\/api\/v1\/recours\/[^/]+$/.test(pathname)) {
+      const id = pathname.split('/').pop();
+      return items.find((r) => r.id === id);
+    }
+    if (pathname === '/api/v1/recours') {
+      const page = Number(url.searchParams.get('page') ?? '1');
+      const filterParam = url.searchParams.get('filter');
+      const q = url.searchParams.get('q')?.toLowerCase();
+      let filtered = filterParam && filterParam !== 'TOUS' ? items.filter((r) => r.state === filterParam) : items;
+      if (q) filtered = filtered.filter((r) => [r.id, r.claimId, r.from, r.to].some((v) => v.toLowerCase().includes(q)));
       return { page, total: filtered.length, items: filtered };
     }
     return undefined;
@@ -137,5 +169,87 @@ describe('Écran Échanges (/exchanges)', () => {
 
     await waitFor(() => expect(screen.getByText('c-2')).toBeInTheDocument());
     expect(screen.queryByText('c-1')).not.toBeInTheDocument();
+  });
+
+  /**
+   * Sous-onglets REGLE "Accepté/silence" / "Réglé/compensé" (décision Product
+   * Owner 2026-10-18) — distinction PUREMENT côté client, à partir du
+   * croisement `settledAt` ↔ `GET /settlement/quarter/closures`, voir
+   * commentaire `RegleSubTab` dans `page.tsx`.
+   */
+  describe('Sous-onglets REGLE "Accepté/silence" / "Réglé/compensé"', () => {
+    const CLOSURES: SettlementQuarterClosure[] = [{ period: '2026-Q1', closedAt: '2026-04-02T08:00:00.000Z', closedBy: 'UAR' }];
+
+    const REGLE_Q1_COMPENSATED = recoursItem({
+      id: 'r-q1',
+      claimId: 'c-q1-compense',
+      state: 'REGLE',
+      settledAt: '2026-02-15T10:00:00.000Z', // 2026-Q1 — clôturé
+      timer: { timerType: 'AUCUN', remainingDays: 0, expired: false },
+    });
+    const REGLE_Q2_SILENCE = recoursItem({
+      id: 'r-q2',
+      claimId: 'c-q2-silence',
+      state: 'REGLE',
+      settledAt: '2026-05-20T10:00:00.000Z', // 2026-Q2 — pas encore clôturé
+      timer: { timerType: 'AUCUN', remainingDays: 0, expired: false },
+    });
+    const REGLE_NO_SETTLED_AT = recoursItem({
+      id: 'r-no-date',
+      claimId: 'c-no-date',
+      state: 'REGLE',
+      settledAt: undefined,
+      timer: { timerType: 'AUCUN', remainingDays: 0, expired: false },
+    });
+    const EN_ATTENTE_ITEM = recoursItem({ id: 'r-attente', claimId: 'c-attente', state: 'EN_ATTENTE' });
+
+    it('affiche les sous-onglets avec les bons compteurs en entrant sur REGLE', async () => {
+      mockExchangesApiWithClosures(ME_WITH_EXCHANGE, [REGLE_Q1_COMPENSATED, REGLE_Q2_SILENCE, REGLE_NO_SETTLED_AT, EN_ATTENTE_ITEM], CLOSURES);
+      renderWithProviders(<ExchangesPage />);
+
+      await waitFor(() => expect(screen.getByRole('tab', { name: /réglés/i })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('tab', { name: /réglés/i }));
+
+      // 2 en silence (Q2 pas clôturé + sans settledAt) / 1 compensé (Q1 clôturé).
+      await waitFor(() => expect(screen.getByRole('tab', { name: /accepté\/silence/i })).toHaveTextContent('2'));
+      expect(screen.getByRole('tab', { name: /réglé\/compensé/i })).toHaveTextContent('1');
+    });
+
+    it('le sous-onglet "Réglé/compensé" n’affiche que les recours dont le trimestre de règlement est clôturé', async () => {
+      mockExchangesApiWithClosures(ME_WITH_EXCHANGE, [REGLE_Q1_COMPENSATED, REGLE_Q2_SILENCE, REGLE_NO_SETTLED_AT], CLOSURES);
+      renderWithProviders(<ExchangesPage />);
+
+      await waitFor(() => expect(screen.getByRole('tab', { name: /réglés/i })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('tab', { name: /réglés/i }));
+
+      await waitFor(() => expect(screen.getByRole('tab', { name: /réglé\/compensé/i })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('tab', { name: /réglé\/compensé/i }));
+
+      await waitFor(() => expect(screen.getByText('c-q1-compense')).toBeInTheDocument());
+      expect(screen.queryByText('c-q2-silence')).not.toBeInTheDocument();
+      expect(screen.queryByText('c-no-date')).not.toBeInTheDocument();
+    });
+
+    it('le sous-onglet "Accepté/silence" affiche le trimestre non clôturé ET le recours sans `settledAt` (défensif, pas de plantage)', async () => {
+      mockExchangesApiWithClosures(ME_WITH_EXCHANGE, [REGLE_Q1_COMPENSATED, REGLE_Q2_SILENCE, REGLE_NO_SETTLED_AT], CLOSURES);
+      renderWithProviders(<ExchangesPage />);
+
+      await waitFor(() => expect(screen.getByRole('tab', { name: /réglés/i })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('tab', { name: /réglés/i }));
+
+      // "Accepté/silence" est le sous-onglet par défaut.
+      await waitFor(() => expect(screen.getByText('c-q2-silence')).toBeInTheDocument());
+      expect(screen.getByText('c-no-date')).toBeInTheDocument();
+      expect(screen.queryByText('c-q1-compense')).not.toBeInTheDocument();
+    });
+
+    it("n'affiche aucun sous-onglet sur un autre onglet de premier niveau (régression) — pagination serveur existante inchangée", async () => {
+      mockExchangesApiWithClosures(ME_WITH_EXCHANGE, [REGLE_Q1_COMPENSATED, REGLE_Q2_SILENCE, EN_ATTENTE_ITEM], CLOSURES);
+      renderWithProviders(<ExchangesPage />);
+
+      await waitFor(() => expect(screen.getByText('c-attente')).toBeInTheDocument());
+      expect(screen.queryByRole('tab', { name: /accepté\/silence/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab', { name: /réglé\/compensé/i })).not.toBeInTheDocument();
+    });
   });
 });
