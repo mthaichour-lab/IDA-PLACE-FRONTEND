@@ -694,6 +694,160 @@ avec la capture était donc présentationnel.
   de tests composants + build uniquement ; à revérifier en navigateur dès
   qu'un port est libre.
 
+### `/cockpit` reconstruit sur la capture de référence écran 1 (2026-10-18, worktree dédié)
+
+Backend préparé en parallèle par l'agent Backend sur ce même sprint —
+`GET /cockpit/summary` étendu de façon PUREMENT ADDITIVE (`kpis`/
+`sparklineDeclarations`/`barresNettes`/`updatedAt` inchangés dans leur
+forme, `kpis` complété de 5 champs frères). Vérifié directement contre
+`cockpit.module.ts` (back, fichier unique contrôleur + agrégation) avant de
+coder contre, pas un contrat deviné.
+
+- **⚠️ Décision Tech Lead reconduite telle quelle — tracker à 3 étapes, PAS
+  5.** `cycleConventionnel.steps` ne porte que `saisie`/`synthese_annexe7`/
+  `cloture_trimestre` : aucune entité de ce backend ne modélise une date de
+  convocation "Réunion UAR" (Art.17) ni un suivi d'exécution "Règlements
+  sous 8 j" (Art.18) — les inventer pour atteindre le compte de 5 de la
+  capture aurait été fabriquer une donnée métier, contraire à C.1. Le
+  tracker rend donc exactement 3 cartes (coche/numéro + libellé + article +
+  détail RÉEL, tous fournis tels quels par le back, aucune traduction
+  nécessaire : ce sont déjà des libellés français persistés) et une note
+  muette en dessous nomme explicitement les 2 étapes absentes et pourquoi.
+  **Couvert par un test exprès** (`page.test.tsx`, "affiche exactement 3
+  étapes réelles (jamais 5)") qui boucle sur les `.cycle-step` rendus et
+  vérifie qu'aucun ne contient "Réunion UAR"/"Règlements sous 8" — une
+  régression qui "compléterait" le tracker à 5 casserait ce test.
+- **Bande calendrier (nouvelle)** : jours du mois courant (`Date` client,
+  pas de requête dédiée), semaine ouvrée algérienne réelle (`GET
+  /referential/calendar`, déjà consommée par `/referential` — jamais une
+  2ᵉ liste de jours fériés inventée ; les jours fériés religieux à date
+  mobile restent absents, même note qu'ailleurs). Légende week-end/jour
+  férié/aujourd'hui + note "calendrier ouvré — délais en jours ouvrés".
+  **Les badges "5ᵉ j.o"/"A7"/"UAR" de la capture sur des jours précis du
+  mois sont volontairement absents** : le "UAR" en particulier marquerait
+  une date de convocation fictive sur l'étape justement exclue ci-dessus —
+  les reproduire aurait réintroduit par la bande calendrier la donnée
+  qu'on refuse d'inventer dans le tracker.
+- **6 KPI de tête** (`Recours en cours`/`Délais dépassés`/`Déclarations
+  reçues (24 h)`/`Appariement automatique`/`Volume brut trimestriel`/
+  `Réduction par netting`) — tous des champs réels de `kpis`. **Écart
+  assumé** : "Déclarations reçues (24 h)" réutilise `kpis.dossiersDuJour`
+  (déclarations créées aujourd'hui, contrat stable existant) — aucun champ
+  back dédié à une fenêtre glissante de 24 h n'existe, et en créer un juste
+  pour ce libellé aurait dupliqué une donnée déjà réelle sous un autre nom.
+  Les 4 anciens KPI du build précédent (`dossiersDuJour` déjà réutilisé
+  ci-dessus, `aApparier`, `enRetard`, `compensationAVenir`) ne sont plus
+  affichés comme tuiles séparées : la capture de référence écran 1 ne les
+  montre pas sous cette forme (`aApparier` redevient `enAttenteAppariement`
+  dans les indicateurs ci-dessous, les deux autres n'ont pas d'équivalent
+  dans la capture) — supprimés plutôt que conservés en doublon muet.
+- **"Indicateurs de place" (§6.8-6.10, nouveau, 10 tuiles)** : grille dédiée
+  `.ind-grid` (5 colonnes, replie à 2 sous 900px) plutôt que `KpiRow`
+  (`repeat(auto-fit,minmax(160px,1fr))`, qui n'aurait pas donné "deux
+  rangées de 5" à la largeur de la capture). Seule "Taux d'appariement"
+  porte une mini barre de progression sous la valeur (capture de
+  référence) — `Kpi` transverse ne supportant qu'un `extra` textuel, rendu
+  dédié `TauxAppariementTile` réutilisant directement `.kpi`/
+  `.score-bar-*`. "Experts actifs / suspendus" et "Adhérents actifs /
+  suspendus" au format `"{actifs} / {suspendus}"` demandé. `null` partout
+  où le back ne peut pas encore calculer un taux/une moyenne → `formatPct`/
+  `formatDays` (même idiome exact que `/monitoring`), jamais `NaN`.
+- **"Positions nettes par compagnie — T{n}"** : remplace `barresNettes`
+  (conservé au contrat, jamais affiché ici) par `positionsNettesQuarter`
+  (vraie compensation trimestrielle, plus précise). `BarChart` transverse
+  ne sait tracer que des barres posées sur une base commune en bas ; un
+  rendu HTML/CSS dédié (`NetPositionsChart`, même esprit que `ScoreBar`/
+  `RevenueShareBar` : piste + remplissage en `%`) trace des barres
+  divergentes centrées sur une ligne de zéro, teal (`--k-pri-2`) si positif,
+  rouge (`--ko`) si négatif. Le "T{n}" du titre vient de la VRAIE période
+  trimestrielle courante (`positionsNettesQuarter.quarter`), pas du "T3"
+  figé de la capture (démo datée différemment).
+- **"Statistiques de la place — déclarations du mois"** : nouveau
+  `LineChart` exporté par `components/ui/BarChart.tsx` (même esprit SVG
+  natif que `Sparkline`/`BarChart`, A.1 : pas de dépendance graphique
+  lourde), avec repères (cercles) par point et libellés de mois en HTML
+  sous le SVG (évite le chevauchement de texte propre à
+  `preserveAspectRatio="none"`). Ligne "Top wilayas (sinistralité) :
+  {noms}" sous le graphe, jointe depuis `topWilayas` (3 entrées réelles).
+- **"Alertes conventionnelles ({count})"** : liste scrollable, une ligne
+  par alerte réelle (`id`/`from`/`to`/`description`/`article`, dérivés des
+  VRAIS dépassements `RecoursItem.timer.expired` et dossiers Commission en
+  retard Art.24 — jamais une alerte inventée). **Écart assumé** : `id` est
+  l'identifiant réel préfixé par le back (`recours-{id}`/`commission-{id}`)
+  affiché tel quel, PAS une référence formatée "REC-2026-00284" comme la
+  capture (aucun champ de référence lisible de ce type n'existe côté back
+  pour ces alertes). Chaque ligne pointe vers `/exchanges` en clair (pas de
+  filtre par recours/dossier — une alerte mélange 2 sources différentes,
+  un filtre dédié aurait sur-construit ce lien pour un gain marginal).
+- **"Flux temps réel"** : le hook `useRealtime` abonnait déjà l'écran à
+  `claim.ingested`/`match.updated`/`metering.tick` mais ne faisait que
+  basculer un badge booléen — il alimente désormais aussi un tampon
+  glissant (12 entrées max, la plus récente en tête, `useState` côté
+  composant) rendu en liste, avec un bouton Pause/Reprendre qui ARRÊTE les
+  ajouts (garde booléenne via un `ref`, pas de désabonnement socket).
+  **Écart assumé important avec le texte du guide illustré** : le
+  commentaire de `realtime.ts` affirmait encore que seul `metering.tick`
+  était émis — FAUX au moment de cette passe, vérifié contre le code réel
+  (`claims.service.ts`/`matching.service.ts`) : `claim.ingested` ET
+  `match.updated` sont RÉELLEMENT émis (`metering.tick`, lui, ne l'est
+  toujours par aucun module). La description de chaque ligne de flux
+  utilise donc UNIQUEMENT les champs réellement présents sur ces deux
+  payloads (`{fileName,totalRows,eligibleCount,ineligibleCount}` pour
+  l'ingestion ; `{item,decision}` OU `{claimId,matchedWith}` selon l'origine
+  pour le matching) — pas les champs de la capture ("CAAR-2026-010269 ⇄
+  CASH-2026-017924 · score 93 · AUTO", wilaya, accusé de réception
+  horodaté...) qui n'existent sur AUCUN des deux payloads réels.
+- Types ajoutés dans `src/lib/types.ts` : `CockpitIndicateursDePlace`,
+  `CockpitPositionsNettesQuarter` (réutilise `SettlementNet` pour
+  `positions`, pas une 2ᵉ forme dupliquée), `CockpitMonthlyDeclaration`,
+  `CockpitTopWilaya`, `CockpitCycleStep`/`CockpitCycleConventionnel`,
+  `CockpitAlerteConventionnelle` ; `CockpitSummary.kpis` complété des 5
+  nouveaux champs frères — tous vérifiés champ par champ contre
+  `cockpit.module.ts` réel.
+- Clés i18n ajoutées dans `translations.ts` (dictionnaire `fr` uniquement) :
+  `cockpit.kpi.{recoursEnCours,delaisDepasses,declarationsRecues24h,
+  appariementAutoPct,volumeBrutT3,reductionNettingPct}`,
+  `cockpit.indicateurs.*`, `cockpit.cycle.*`, `cockpit.calendar.legend.*`
+  (réutilise `referential.calendar.day.*` existant pour les noms de jour),
+  `cockpit.netPositions.*`, `cockpit.stats.*`, `cockpit.alerts.*`,
+  `cockpit.feed.*`, `cockpit.shortcuts.exchangesRegister`,
+  `cockpit.badge.demo`. `cockpit.subtitle` reformulé pour décrire l'écran
+  réel (cycle/alertes/flux/santé) plutôt que l'ancien sous-titre générique.
+  Anciennes clés `cockpit.shortcuts.title`/`.matching`/`.import` laissées en
+  place (inutilisées sur cet écran depuis que "Registre des recours" est le
+  seul raccourci d'en-tête de la capture) mais pas supprimées, par prudence
+  vis-à-vis d'un éventuel autre usage.
+- CSS ajouté dans `globals.css` (même esprit que `.co-card*`/`.ref-nav*`
+  ajoutés par les passes précédentes) : `.grid.g-cockpit2`, `.ind-grid`,
+  `.cycle-step*`, `.cal-*`, `.net-bar-*`, `.alert-*`/`.feed-*`, `.live-dot`.
+  Aucun token de `tokens.css` modifié (couleurs/polices fixes, A.2).
+- **Infra de test** : `vitest.setup.ts` complété d'un export
+  `triggerRealtimeEvent(event, payload)` — le stub `socket.io-client`
+  existant (qui empêchait toute vraie connexion réseau en jsdom) capture
+  désormais aussi les callbacks `socket.on(event, cb)` enregistrés par
+  `useRealtime`, pour que `page.test.tsx` puisse simuler la RÉCEPTION d'un
+  événement temps réel sans ouvrir de WebSocket. `disconnect()` (appelé au
+  démontage) vide le registre ; le cleanup automatique de Testing Library
+  entre deux tests suffit à isoler les tests entre eux. Changement additif,
+  sans effet sur les écrans qui ne l'utilisent pas.
+- `page.test.tsx` entièrement réécrit (8 cas) : les 6 KPI de tête (+ cas
+  `null` → "Aucune donnée.", jamais `NaN`/`null`), les 10 tuiles
+  indicateurs, positions nettes sur `positionsNettesQuarter` (pas
+  `barresNettes`, vérifié absent) avec couleur positif/négatif, tracker à
+  exactement 3 étapes (jamais "Réunion UAR"/"Règlements sous 8" dans une
+  carte réelle), alertes avec chips compagnies + badge article, flux temps
+  réel qui ajoute une entrée puis s'arrête après Pause. **Piège rencontré** :
+  plusieurs valeurs de KPI coïncident avec des numéros de jour affichés par
+  la bande calendrier du même écran (ex. "6", "19") — `getByText` seul est
+  ambigu ; corrigé en scopant chaque assertion via
+  `.closest('.kpi')`/`container.querySelectorAll(...)` plutôt que des
+  requêtes globales par texte brut.
+- Vérifié : `npm run lint` (tsc --noEmit) propre, `npx vitest run` 89/89
+  (14 fichiers), `npm run build` propre (17 routes statiques, `/cockpit`
+  inclus). Pas de serveur dev lancé (ports 3000-3002 potentiellement
+  occupés par d'autres sessions sur cette machine) — vérifié par la suite
+  de tests composants + build uniquement.
+
 ## ⚠️ Particularité de ce sprint : deux implémentations concurrentes réconciliées
 
 Une **session Claude indépendante**, travaillant en parallèle sur ce même

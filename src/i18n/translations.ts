@@ -142,7 +142,8 @@ const fr = {
 
   // ----- Cockpit (écran 1, Module I) -----
   'cockpit.title': 'Cockpit de place',
-  'cockpit.subtitle': "Vue d'ensemble de l'activité de la place IDA — indicateurs, tendances et files du jour.",
+  'cockpit.subtitle': "État du cycle conventionnel, alertes, flux des événements de la place et santé de la plateforme.",
+  'cockpit.badge.demo': 'Démo',
   'cockpit.kpi.dossiersDuJour': 'Dossiers du jour',
   'cockpit.kpi.aApparier': 'À apparier',
   'cockpit.kpi.enRetard': 'En retard',
@@ -152,9 +153,58 @@ const fr = {
   'cockpit.shortcuts.title': 'Raccourcis',
   'cockpit.shortcuts.matching': 'Ouvrir la file de confrontation',
   'cockpit.shortcuts.import': 'Importer des dossiers',
+  'cockpit.shortcuts.exchangesRegister': 'Registre des recours',
   'cockpit.updatedAt': 'Mis à jour',
   'cockpit.live.on': 'Temps réel actif',
   'cockpit.live.off': 'Mode polling (temps réel indisponible)',
+
+  'cockpit.kpi.recoursEnCours': 'Recours en cours',
+  'cockpit.kpi.delaisDepasses': 'Délais dépassés',
+  'cockpit.kpi.declarationsRecues24h': 'Déclarations reçues (24 h)',
+  'cockpit.kpi.appariementAutoPct': 'Appariement automatique',
+  'cockpit.kpi.volumeBrutT3': 'Volume brut trimestriel',
+  'cockpit.kpi.reductionNettingPct': 'Réduction par netting',
+
+  'cockpit.indicateurs.title': 'Indicateurs de place',
+  'cockpit.indicateurs.badge': '§6.8–6.10',
+  'cockpit.indicateurs.declarationsDuMois': 'Déclarations du mois',
+  'cockpit.indicateurs.tauxAppariementPct': "Taux d'appariement",
+  'cockpit.indicateurs.enAttenteAppariement': "En attente d'appariement",
+  'cockpit.indicateurs.tauxHorsIdaPct': 'Taux hors-IDA',
+  'cockpit.indicateurs.delaiMoyenAppariementJours': "Délai moyen d'appariement",
+  'cockpit.indicateurs.recoursForclos': 'Recours forclos',
+  'cockpit.indicateurs.compensationNetteT3': 'Compensation nette trimestrielle',
+  'cockpit.indicateurs.penalitesDeRetard': 'Pénalités de retard',
+  'cockpit.indicateurs.expertsActifsSuspendus': 'Experts actifs / suspendus',
+  'cockpit.indicateurs.adherentsActifsSuspendus': 'Adhérents actifs / suspendus',
+
+  'cockpit.cycle.title': 'Cycle conventionnel en cours',
+  'cockpit.cycle.unavailableNote':
+    "Réunion UAR et règlements sous 8 j : non suivis par ce backend (aucune date de convocation ni d'exécution des virements n'est modélisée) — volontairement absents du suivi ci-dessus plutôt qu'inventés.",
+
+  'cockpit.calendar.legend.weekendPrefix': 'Week-end',
+  'cockpit.calendar.legend.holiday': 'Jour férié',
+  'cockpit.calendar.legend.today': "Aujourd'hui",
+  'cockpit.calendar.legend.note': 'Calendrier ouvré algérien — délais en jours ouvrés.',
+
+  'cockpit.netPositions.title': 'Positions nettes par compagnie',
+  'cockpit.netPositions.empty': 'Aucune position nette pour ce trimestre.',
+
+  'cockpit.stats.title': 'Statistiques de la place — déclarations du mois',
+  'cockpit.stats.topWilayasPrefix': 'Top wilayas (sinistralité)',
+  'cockpit.stats.empty': 'Aucune déclaration à tracer.',
+
+  'cockpit.alerts.title': 'Alertes conventionnelles',
+  'cockpit.alerts.empty': 'Aucune alerte conventionnelle en cours.',
+
+  'cockpit.feed.title': 'Flux temps réel',
+  'cockpit.feed.pause': 'Pause',
+  'cockpit.feed.resume': 'Reprendre',
+  'cockpit.feed.empty': 'Aucun événement reçu pour le moment.',
+  'cockpit.feed.matching': 'Matching',
+  'cockpit.feed.ingestion': 'Ingestion',
+  'cockpit.feed.matching.noCandidate': 'aucune contrepartie trouvée',
+  'cockpit.feed.ingestion.eligibleSuffix': 'éligibles',
 
   // ----- Matching (écran 2, Module A §6.3) -----
   'matching.title': 'Confrontation & matching',

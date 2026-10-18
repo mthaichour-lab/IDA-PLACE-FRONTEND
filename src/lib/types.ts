@@ -105,15 +105,114 @@ export interface EligibilityMotif {
 
 /* ===================== Cockpit (écran 1, Module I) — B.11/HANDOFF ===================== */
 
+/**
+ * Complément additif (2026-10-18, rapprochement du guide illustré, écran 1,
+ * §6.8-6.10) — reflet exact de `CockpitController.computeSummary` (back
+ * `cockpit.module.ts`). Les 10 tuiles "Indicateurs de place" ; chaque champ
+ * `*Pct`/`delaiMoyenAppariementJours` peut être `null` (pas encore de
+ * donnée pour calculer un taux/une moyenne) — jamais une valeur inventée,
+ * rendre un repère "non disponible" côté affichage (voir `formatPct`/
+ * `formatDays`, même idiome que `/monitoring`).
+ */
+export interface CockpitIndicateursDePlace {
+  declarationsDuMois: number;
+  tauxAppariementPct: number | null;
+  enAttenteAppariement: number;
+  tauxHorsIdaPct: number | null;
+  delaiMoyenAppariementJours: number | null;
+  recoursForclos: number;
+  compensationNetteT3: number;
+  penalitesDeRetard: number;
+  expertsActifs: number;
+  expertsSuspendus: number;
+  adherentsActifs: number;
+  adherentsSuspendus: number;
+}
+
+/**
+ * Positions nettes trimestrielles (additif) — remplace `barresNettes`
+ * (conservé ci-dessous pour compatibilité) par la VRAIE compensation
+ * trimestrielle (`SettlementModule`), plus précise qu'un proxy basé sur les
+ * montants de dossiers. `positions` réutilise exactement `SettlementNet`
+ * (même forme que `/settlement/quarter`, back `settlement.service.ts`).
+ */
+export interface CockpitPositionsNettesQuarter {
+  quarter: string;
+  positions: SettlementNet[];
+  grossTotal: number;
+  reductionPct: number;
+}
+
+export interface CockpitMonthlyDeclaration {
+  month: string;
+  declarations: number;
+}
+
+export interface CockpitTopWilaya {
+  code: string;
+  name: string;
+  declarations: number;
+}
+
+/**
+ * "Cycle conventionnel en cours" (additif) — SEULEMENT 3 étapes RÉELLES
+ * (`saisie`/`synthese_annexe7`/`cloture_trimestre`) : le guide illustré en
+ * montre 5, mais "Réunion UAR" (convocation Art.17) et "Règlements sous 8j"
+ * (exécution Art.18) ne sont trackées par AUCUNE entité de ce backend (pas
+ * de date de convocation, pas de suivi d'exécution des virements) — jamais
+ * inventées pour coller au compte de la capture. Voir doc de classe
+ * `CockpitController` (back) et HANDOFF.md.
+ */
+export interface CockpitCycleStep {
+  key: string;
+  label: string;
+  article: string;
+  done: boolean;
+  detail?: string;
+}
+
+export interface CockpitCycleConventionnel {
+  period: string;
+  quarter: string;
+  steps: CockpitCycleStep[];
+}
+
+/**
+ * Alertes dérivées des VRAIS dépassements (`RecoursItem.timer.expired` et
+ * dossiers de commission en dépassement Art.24) — jamais une alerte
+ * inventée. `id` est l'identifiant réel préfixé par le back
+ * (`recours-{id}`/`commission-{id}`), pas une référence formatée à part.
+ */
+export interface CockpitAlerteConventionnelle {
+  id: string;
+  from: string;
+  to: string;
+  description: string;
+  article: string;
+  detectedAt: string;
+}
+
 export interface CockpitSummary {
   kpis: {
     dossiersDuJour: number;
     aApparier: number;
     enRetard: number;
     compensationAVenir: number;
+    recoursEnCours: number;
+    delaisDepasses: number;
+    appariementAutoPct: number | null;
+    volumeBrutT3: number;
+    reductionNettingPct: number;
   };
   sparklineDeclarations: number[];
   barresNettes: { company: string; net: number }[];
+  indicateursDePlace: CockpitIndicateursDePlace;
+  positionsNettesQuarter: CockpitPositionsNettesQuarter;
+  monthlyDeclarations: CockpitMonthlyDeclaration[];
+  topWilayas: CockpitTopWilaya[];
+  cycleConventionnel: CockpitCycleConventionnel;
+  alertesConventionnelles: CockpitAlerteConventionnelle[];
+  commissionOverdue15dCount: number;
   updatedAt: string;
 }
 
