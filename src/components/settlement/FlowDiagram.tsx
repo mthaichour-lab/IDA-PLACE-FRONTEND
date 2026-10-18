@@ -15,6 +15,8 @@ export interface FlowDiagramProps {
   formatAmount: (amount: number) => string;
   /** Message d'état vide (même idiome que `common.noData` ailleurs sur cette page), affiché si le tableau pertinent au mode courant est vide. */
   emptyLabel: string;
+  /** Libellé du nœud central en mode "multilateral" (`t('quarter.flow.hub')`, côté appelant — composant non lié à `useI18n` pour rester testable en isolation). */
+  hubLabel: string;
   size?: number;
 }
 
@@ -72,7 +74,7 @@ function formatSigned(amount: number, formatAmount: (n: number) => string): stri
  * États vides honnêtes (jamais un diagramme fabriqué) : aucune compagnie
  * pertinente pour le mode courant (`net`/`positions` vide) → `emptyLabel`.
  */
-export function FlowDiagram({ mode, net, positions, formatAmount, emptyLabel, size = 380 }: FlowDiagramProps) {
+export function FlowDiagram({ mode, net, positions, formatAmount, emptyLabel, hubLabel, size = 380 }: FlowDiagramProps) {
   const cx = size / 2;
   const cy = size / 2;
   const nodeRadius = 24;
@@ -134,7 +136,7 @@ export function FlowDiagram({ mode, net, positions, formatAmount, emptyLabel, si
           style={{ position: 'absolute', left: `${(cx / size) * 100}%`, top: `${(cy / size) * 100}%`, transform: 'translate(-50%, -50%)', textAlign: 'center' }}
         >
           <span className="mono" style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', fontWeight: 600 }}>
-            La place
+            {hubLabel}
           </span>
         </div>
         {nodes.map((node) => (

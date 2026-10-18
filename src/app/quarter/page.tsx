@@ -271,6 +271,7 @@ export default function QuarterPage() {
                 positions={data.positions}
                 formatAmount={(amount) => formatDzd(amount, locale)}
                 emptyLabel={t('common.noData')}
+                hubLabel={t('quarter.flow.hub')}
               />
             </div>
           </div>
