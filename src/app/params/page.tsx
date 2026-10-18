@@ -3,19 +3,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
-import { CompanyPeriodPicker } from '@/components/metering/CompanyPeriodPicker';
 import { PriceGridEditor } from '@/components/metering/PriceGridEditor';
-import { BarChart } from '@/components/ui/BarChart';
+import { Kpi, KpiRow } from '@/components/ui/Kpi';
 import { Modal } from '@/components/ui/Modal';
 import { Table, Column } from '@/components/ui/Table';
 import { Tabs } from '@/components/ui/Tabs';
 import { Tag } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
+import { TranslationKey } from '@/i18n/translations';
 import { apiGet, apiPost, apiPut } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { buildRecentPeriods } from '@/lib/period-options';
-import { CompanyView, MeteringInvoice, Paginated, PlaceUser, PriceGrid, RolesMatrixResponse } from '@/lib/types';
+import { Paginated, PlaceMeteringSummary, PlaceUser, PriceGrid, RolesMatrixResponse } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 const PERIODS = buildRecentPeriods(12);
@@ -24,6 +24,45 @@ type ParamsTab = 'users' | 'roles' | 'costs';
 
 function statusTone(active: boolean) {
   return active ? ('ok' as const) : ('warn' as const);
+}
+
+/** Libellé humain d'un rôle (`ROLES`, back `roles-privileges.ts`) — clé `params.role.<ROLE>` (B.7). Repli sur la clé brute si aucune traduction n'existe (ne jamais fabriquer de libellé). */
+function roleLabel(t: (k: TranslationKey) => string, role: string): string {
+  const key = `params.role.${role}` as TranslationKey;
+  const label = t(key);
+  return label === key ? role : label;
+}
+
+/** Libellé humain d'un privilège (`PRIVILEGES`, back `roles-privileges.ts`) — clé `params.privilege.<key>` (B.7). Même repli que `roleLabel`. */
+function privilegeLabel(t: (k: TranslationKey) => string, priv: string): string {
+  const key = `params.privilege.${priv}` as TranslationKey;
+  const label = t(key);
+  return label === key ? priv : label;
+}
+
+/** "Mois AAAA" localisé à partir d'une période `AAAA-MM` (dashboard coûts, écran 14) — `timeZone: 'UTC'` pour éviter tout écart SSR/client. */
+function periodLabel(period: string, locale: string): string {
+  const [y, m] = period.split('-').map(Number);
+  const d = new Date(Date.UTC(y, (m || 1) - 1, 1));
+  return d.toLocaleDateString(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
+/** Montant DA — même formateur que `/metering` (écran 10), dupliqué ici par cohérence avec le reste de l'app (pas de util partagé pour ça, voir HANDOFF.md). */
+function formatDzd(amount: number, locale: string): string {
+  try {
+    return new Intl.NumberFormat(locale, { style: 'currency', currency: 'DZD', maximumFractionDigits: 0 }).format(amount);
+  } catch {
+    return `${amount.toLocaleString()} DA`;
+  }
+}
+
+/** Barre horizontale non colorée (pas de seuil bon/mauvais, contrairement à `ScoreBar`) — "Poids revenu" du dashboard coûts place entière, sizée directement par `revenueSharePct` (0-100). */
+function RevenueShareBar({ pct }: { pct: number }) {
+  return (
+    <div className="score-bar-track" style={{ minWidth: 100 }}>
+      <div className="score-bar-fill" style={{ width: `${Math.max(0, Math.min(100, pct))}%`, background: 'var(--k-pri-2)' }} />
+    </div>
+  );
 }
 
 export default function ParamsPage() {
@@ -80,10 +119,29 @@ function UsersTab() {
     queryFn: () => apiGet<Paginated<PlaceUser>>('/admin/users', { page, pageSize: PAGE_SIZE }),
   });
 
+  // KPIs (4 tuiles, capture de référence) : pas d'agrégat dédié côté API —
+  // un second appel pleine page sert uniquement au décompte actif/suspendu,
+  // jamais affiché tel quel comme liste (même idiome que `casesAllQuery` de
+  // `/fraude`, B.11 : la liste affichée reste la page courante, paginée serveur).
+  const usersAllQuery = useQuery({
+    queryKey: ['admin', 'users', 'all'],
+    queryFn: () => apiGet<Paginated<PlaceUser>>('/admin/users', { page: 1, pageSize: 10_000 }),
+  });
+
   const matrixQuery = useQuery({
     queryKey: ['admin', 'roles', 'matrix'],
     queryFn: () => apiGet<RolesMatrixResponse>('/admin/roles/matrix'),
   });
+
+  const kpis = useMemo(() => {
+    const allUsers = usersAllQuery.data?.items ?? [];
+    return {
+      total: usersAllQuery.data?.total ?? usersQuery.data?.total ?? 0,
+      active: allUsers.filter((u) => u.active).length,
+      suspended: allUsers.filter((u) => !u.active).length,
+      roles: matrixQuery.data?.roles.length ?? 0,
+    };
+  }, [usersAllQuery.data, usersQuery.data, matrixQuery.data]);
 
   const createMutation = useMutation({
     mutationFn: (body: Partial<PlaceUser>) => apiPost<PlaceUser>('/admin/users', body),
@@ -117,6 +175,19 @@ function UsersTab() {
     onError: () => toast(t('params.users.detail.saveError'), 'ko'),
   });
 
+  // Bascule actif/suspendu directement depuis la ligne (capture de
+  // référence : bouton "Suspendre"/"Activer" dans le tableau, pas besoin
+  // d'ouvrir la modale) — même mutation PUT que la fiche détail, mais
+  // déclenchée avec l'utilisateur de la ligne plutôt que `selected`.
+  const toggleActiveMutation = useMutation({
+    mutationFn: (user: PlaceUser) => apiPut<PlaceUser>(`/admin/users/${user.id}`, { active: !user.active, grant: user.grant, revoke: user.revoke }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+      toast(t('params.users.toast.toggled'), 'ok');
+    },
+    onError: () => toast(t('params.users.toast.error'), 'ko'),
+  });
+
   function toggleIn(list: string[], setList: (v: string[]) => void, privilege: string) {
     setList(list.includes(privilege) ? list.filter((p) => p !== privilege) : [...list, privilege]);
   }
@@ -131,134 +202,169 @@ function UsersTab() {
   const columns: Column<PlaceUser>[] = [
     { key: 'name', header: t('params.users.col.name'), render: (r) => r.name },
     { key: 'email', header: t('params.users.col.email'), render: (r) => <span className="mono">{r.email}</span> },
-    { key: 'role', header: t('params.users.col.role'), render: (r) => <span className="mono">{r.role}</span> },
+    { key: 'role', header: t('params.users.col.role'), render: (r) => <Tag tone="a">{roleLabel(t, r.role)}</Tag> },
     { key: 'company', header: t('params.users.col.company'), render: (r) => r.companyId ?? '—' },
     {
       key: 'status',
       header: t('params.users.col.status'),
       render: (r) => <Tag tone={statusTone(r.active)}>{r.active ? t('params.users.status.active') : t('params.users.status.suspended')}</Tag>,
     },
+    {
+      key: 'actions',
+      header: t('params.users.col.actions'),
+      render: (r) => (
+        <button
+          type="button"
+          disabled={toggleActiveMutation.isPending}
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleActiveMutation.mutate(r);
+          }}
+          style={{
+            padding: '4px 10px',
+            borderRadius: 'var(--k-r-s)',
+            border: `1px solid ${r.active ? 'var(--ko)' : 'var(--ok)'}`,
+            background: 'var(--paper)',
+            color: r.active ? 'var(--ko)' : 'var(--ok)',
+            font: 'inherit',
+            fontSize: 'var(--k-fs-xs)',
+            cursor: 'pointer',
+          }}
+        >
+          {r.active ? t('params.users.action.suspend') : t('params.users.action.activate')}
+        </button>
+      ),
+    },
   ];
 
   return (
-    <div className="sheet">
-      <div className="sheet-head">
-        <span>{t('params.users.title')}</span>
-        <button
-          type="button"
-          onClick={() => setCreateOpen(true)}
-          style={{ padding: '6px 12px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--k-pri)', background: 'var(--k-pri)', color: '#fff', font: 'inherit', cursor: 'pointer' }}
-        >
-          {t('params.users.create')}
-        </button>
-      </div>
-      <div className="sheet-body">
-        {usersQuery.isLoading ? (
-          <p>{t('common.loading')}</p>
-        ) : usersQuery.error ? (
-          <div className="note ko" role="alert">
-            <span>{t('common.error')}</span>
-            <button type="button" onClick={() => usersQuery.refetch()}>
-              {t('common.retry')}
-            </button>
-          </div>
-        ) : (
-          <Table columns={columns} rows={pageRows} page={page} total={usersQuery.data?.total ?? 0} pageSize={PAGE_SIZE} onPageChange={setPage} onRowClick={setSelected} getRowKey={(r) => r.id} />
-        )}
-      </div>
+    <div>
+      <KpiRow>
+        <Kpi value={kpis.total} label={t('params.users.kpi.total')} />
+        <Kpi value={kpis.active} label={t('params.users.kpi.active')} />
+        <Kpi value={kpis.suspended} label={t('params.users.kpi.suspended')} />
+        <Kpi value={kpis.roles} label={t('params.users.kpi.roles')} />
+      </KpiRow>
 
-      <Modal
-        open={!!selected}
-        title={`${t('params.users.detail.title')} — ${selected?.name ?? ''}`}
-        onClose={() => setSelected(null)}
-        footer={
+      <div className="sheet" style={{ marginTop: 'var(--s-5)' }}>
+        <div className="sheet-head">
+          <span>{t('params.users.title')}</span>
           <button
             type="button"
-            disabled={updateMutation.isPending}
-            onClick={() => updateMutation.mutate({ active: editActive, grant: editGrant, revoke: editRevoke })}
-            style={{ padding: '8px 16px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--k-pri)', background: 'var(--k-pri)', color: '#fff', font: 'inherit', cursor: 'pointer' }}
+            onClick={() => setCreateOpen(true)}
+            style={{ padding: '6px 12px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--k-pri)', background: 'var(--k-pri)', color: '#fff', font: 'inherit', cursor: 'pointer' }}
           >
-            {t('params.users.detail.save')}
+            {t('params.users.create')}
           </button>
-        }
-      >
-        {selected ? (
-          <>
-            <dl style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 'var(--s-4)' }}>
-              <Field label={t('params.users.col.email')}>
-                <span className="mono">{selected.email}</span>
-              </Field>
-              <Field label={t('params.users.col.role')}>
-                <span className="mono">{selected.role}</span>
-              </Field>
-              <Field label={t('params.users.col.company')}>{selected.companyId ?? '—'}</Field>
-              <Field label={t('params.users.col.status')}>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={editActive} onChange={(e) => setEditActive(e.target.checked)} />
-                  <Tag tone={statusTone(editActive)}>{editActive ? t('params.users.status.active') : t('params.users.status.suspended')}</Tag>
-                </label>
-              </Field>
-            </dl>
-
-            <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('params.users.detail.grant')}</strong>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s-2)', marginBottom: 'var(--s-4)' }}>
-              {privileges.map((p) => (
-                <label key={p} className="mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--k-fs-xs)', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={editGrant.includes(p)} onChange={() => toggleIn(editGrant, setEditGrant, p)} />
-                  {p}
-                </label>
-              ))}
-            </div>
-
-            <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('params.users.detail.revoke')}</strong>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s-2)' }}>
-              {privileges.map((p) => (
-                <label key={p} className="mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--k-fs-xs)', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={editRevoke.includes(p)} onChange={() => toggleIn(editRevoke, setEditRevoke, p)} />
-                  {p}
-                </label>
-              ))}
-            </div>
-          </>
-        ) : null}
-      </Modal>
-
-      <Modal
-        open={createOpen}
-        title={t('params.users.create.title')}
-        onClose={() => setCreateOpen(false)}
-        footer={
-          <button
-            type="button"
-            disabled={createMutation.isPending || !form.name || !form.email || !form.role}
-            onClick={() => createMutation.mutate({ name: form.name, email: form.email, role: form.role, companyId: form.companyId || undefined })}
-            style={{ padding: '8px 16px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--k-pri)', background: 'var(--k-pri)', color: '#fff', font: 'inherit', cursor: 'pointer' }}
-          >
-            {t('params.users.field.submit')}
-          </button>
-        }
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-3)' }}>
-          <LabeledInput label={t('params.users.field.name')} value={form.name} onChange={(v) => setForm((f) => ({ ...f, name: v }))} />
-          <LabeledInput label={t('params.users.field.email')} value={form.email} onChange={(v) => setForm((f) => ({ ...f, email: v }))} type="email" />
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
-            {t('params.users.field.role')}
-            <select
-              value={form.role}
-              onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
-              style={{ font: 'inherit', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', padding: '6px 10px', background: 'var(--paper)', color: 'var(--ink)' }}
-            >
-              <option value="">—</option>
-              {roles.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-          </label>
-          <LabeledInput label={t('params.users.field.company')} value={form.companyId} onChange={(v) => setForm((f) => ({ ...f, companyId: v }))} />
         </div>
-      </Modal>
+        <div className="sheet-body">
+          {usersQuery.isLoading ? (
+            <p>{t('common.loading')}</p>
+          ) : usersQuery.error ? (
+            <div className="note ko" role="alert">
+              <span>{t('common.error')}</span>
+              <button type="button" onClick={() => usersQuery.refetch()}>
+                {t('common.retry')}
+              </button>
+            </div>
+          ) : (
+            <Table columns={columns} rows={pageRows} page={page} total={usersQuery.data?.total ?? 0} pageSize={PAGE_SIZE} onPageChange={setPage} onRowClick={setSelected} getRowKey={(r) => r.id} />
+          )}
+        </div>
+
+        <Modal
+          open={!!selected}
+          title={`${t('params.users.detail.title')} — ${selected?.name ?? ''}`}
+          onClose={() => setSelected(null)}
+          footer={
+            <button
+              type="button"
+              disabled={updateMutation.isPending}
+              onClick={() => updateMutation.mutate({ active: editActive, grant: editGrant, revoke: editRevoke })}
+              style={{ padding: '8px 16px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--k-pri)', background: 'var(--k-pri)', color: '#fff', font: 'inherit', cursor: 'pointer' }}
+            >
+              {t('params.users.detail.save')}
+            </button>
+          }
+        >
+          {selected ? (
+            <>
+              <dl style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 'var(--s-4)' }}>
+                <Field label={t('params.users.col.email')}>
+                  <span className="mono">{selected.email}</span>
+                </Field>
+                <Field label={t('params.users.col.role')}>
+                  <span className="mono">{selected.role}</span>
+                </Field>
+                <Field label={t('params.users.col.company')}>{selected.companyId ?? '—'}</Field>
+                <Field label={t('params.users.col.status')}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={editActive} onChange={(e) => setEditActive(e.target.checked)} />
+                    <Tag tone={statusTone(editActive)}>{editActive ? t('params.users.status.active') : t('params.users.status.suspended')}</Tag>
+                  </label>
+                </Field>
+              </dl>
+
+              <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('params.users.detail.grant')}</strong>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s-2)', marginBottom: 'var(--s-4)' }}>
+                {privileges.map((p) => (
+                  <label key={p} className="mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--k-fs-xs)', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={editGrant.includes(p)} onChange={() => toggleIn(editGrant, setEditGrant, p)} />
+                    {p}
+                  </label>
+                ))}
+              </div>
+
+              <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('params.users.detail.revoke')}</strong>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s-2)' }}>
+                {privileges.map((p) => (
+                  <label key={p} className="mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--k-fs-xs)', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={editRevoke.includes(p)} onChange={() => toggleIn(editRevoke, setEditRevoke, p)} />
+                    {p}
+                  </label>
+                ))}
+              </div>
+            </>
+          ) : null}
+        </Modal>
+
+        <Modal
+          open={createOpen}
+          title={t('params.users.create.title')}
+          onClose={() => setCreateOpen(false)}
+          footer={
+            <button
+              type="button"
+              disabled={createMutation.isPending || !form.name || !form.email || !form.role}
+              onClick={() => createMutation.mutate({ name: form.name, email: form.email, role: form.role, companyId: form.companyId || undefined })}
+              style={{ padding: '8px 16px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--k-pri)', background: 'var(--k-pri)', color: '#fff', font: 'inherit', cursor: 'pointer' }}
+            >
+              {t('params.users.field.submit')}
+            </button>
+          }
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-3)' }}>
+            <LabeledInput label={t('params.users.field.name')} value={form.name} onChange={(v) => setForm((f) => ({ ...f, name: v }))} />
+            <LabeledInput label={t('params.users.field.email')} value={form.email} onChange={(v) => setForm((f) => ({ ...f, email: v }))} type="email" />
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
+              {t('params.users.field.role')}
+              <select
+                value={form.role}
+                onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+                style={{ font: 'inherit', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', padding: '6px 10px', background: 'var(--paper)', color: 'var(--ink)' }}
+              >
+                <option value="">—</option>
+                {roles.map((r) => (
+                  <option key={r} value={r}>
+                    {roleLabel(t, r)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <LabeledInput label={t('params.users.field.company')} value={form.companyId} onChange={(v) => setForm((f) => ({ ...f, companyId: v }))} />
+          </div>
+        </Modal>
+      </div>
     </div>
   );
 }
@@ -344,20 +450,25 @@ function RolesTab() {
           <table className="t">
             <thead>
               <tr>
-                <th>Rôle</th>
-                {privileges.map((p) => (
-                  <th key={p} className="mono" style={{ textAlign: 'center' }}>
-                    {p}
+                <th>{t('params.roles.col.privilege')}</th>
+                {roles.map((role) => (
+                  <th key={role} style={{ textAlign: 'center' }}>
+                    {roleLabel(t, role)}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {roles.map((role) => (
-                <tr key={role}>
-                  <td className="mono">{role}</td>
-                  {privileges.map((p) => (
-                    <td key={p} style={{ textAlign: 'center' }}>
+              {privileges.map((p) => (
+                <tr key={p}>
+                  <td>
+                    <strong style={{ display: 'block' }}>{privilegeLabel(t, p)}</strong>
+                    <span className="mono" style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}>
+                      {p}
+                    </span>
+                  </td>
+                  {roles.map((role) => (
+                    <td key={role} style={{ textAlign: 'center' }}>
                       <input
                         type="checkbox"
                         checked={!!draft[role]?.[p]}
@@ -390,23 +501,23 @@ function RolesTab() {
 /* ===================== Coûts & tarification ===================== */
 
 function CostsTab() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { hasPrivilege } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [company, setCompany] = useState('CAAT');
   const [period, setPeriod] = useState(PERIODS[0]);
   const canEditGrid = hasPrivilege('grid');
 
-  const companiesQuery = useQuery({
-    queryKey: ['referential', 'companies', 'all'],
-    queryFn: () => apiGet<Paginated<CompanyView>>('/referential/companies', { page: 1, pageSize: 50 }),
-  });
-
-  const invoiceQuery = useQuery({
-    queryKey: ['metering', 'invoice', company, period],
-    queryFn: () => apiGet<MeteringInvoice>(`/metering/${company}/${period}`),
-    enabled: !!company && !!period,
+  // Dashboard place entière (pas de sélecteur compagnie, écran 14,
+  // sous-onglet Coûts & tarification) — `GET /metering/place-summary/
+  // {period}`, additif, somme de la facture mock de chaque adhérent RÉEL
+  // (voir `metering.service.ts` back, `placeSummary`). Remplace l'ancienne
+  // vue "revenu par inducteur (compagnie sélectionnée)" + `CompanyPeriodPicker`
+  // (toujours utilisé par `/metering`, pas retiré du composant partagé).
+  const summaryQuery = useQuery({
+    queryKey: ['metering', 'place-summary', period],
+    queryFn: () => apiGet<PlaceMeteringSummary>(`/metering/place-summary/${period}`),
+    enabled: !!period,
   });
 
   const gridQuery = useQuery({
@@ -423,29 +534,93 @@ function CostsTab() {
     onError: () => toast(t('metering.toast.gridError'), 'ko'),
   });
 
-  const companies = companiesQuery.data?.items ?? [];
-  const invoice = invoiceQuery.data;
+  const summary = summaryQuery.data;
 
   return (
     <>
       <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
         <div className="sheet-head">
-          <span>{t('params.costs.revenue.title')}</span>
-          <CompanyPeriodPicker companies={companies} company={company} onCompanyChange={setCompany} period={period} onPeriodChange={setPeriod} periods={PERIODS} />
+          <span>
+            {t('params.costs.dashboard.title')}
+            {summary ? ` (${periodLabel(summary.period, locale)})` : null}
+          </span>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
+            {t('metering.selector.period')}
+            <select
+              value={period}
+              onChange={(e) => setPeriod(e.target.value)}
+              style={{ font: 'inherit', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', padding: '6px 10px', background: 'var(--paper)', color: 'var(--ink)' }}
+            >
+              {PERIODS.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
         <div className="sheet-body">
-          <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginTop: 0 }}>{t('params.costs.revenue.note')}</p>
-          {invoiceQuery.isLoading ? (
+          {summaryQuery.isLoading ? (
             <p>{t('common.loading')}</p>
-          ) : invoiceQuery.error || !invoice ? (
+          ) : summaryQuery.error || !summary ? (
             <div className="note ko" role="alert">
               <span>{t('common.error')}</span>
-              <button type="button" onClick={() => invoiceQuery.refetch()}>
+              <button type="button" onClick={() => summaryQuery.refetch()}>
                 {t('common.retry')}
               </button>
             </div>
           ) : (
-            <BarChart data={invoice.lines.map((l) => ({ label: l.label, value: l.amount }))} />
+            <>
+              <KpiRow>
+                <Kpi value={formatDzd(summary.revenueTotal, locale)} label={t('params.costs.kpi.revenue')} />
+                <Kpi value={formatDzd(summary.subscriptionTotal, locale)} label={t('params.costs.kpi.subscription')} extra={`${summary.adherentCount} ${t('params.costs.kpi.adherents')}`} />
+                <Kpi value={formatDzd(summary.consumptionTotal, locale)} label={t('params.costs.kpi.consumption')} />
+                <Kpi value={summary.inducerCount} label={t('params.costs.kpi.inducers')} />
+              </KpiRow>
+
+              <div className="t-wrap" style={{ marginTop: 'var(--s-4)' }}>
+                <table className="t">
+                  <thead>
+                    <tr>
+                      <th>{t('params.costs.col.inducer')}</th>
+                      <th>{t('params.costs.col.measured')}</th>
+                      <th>{t('params.costs.col.billable')}</th>
+                      <th>{t('params.costs.col.weight')}</th>
+                      <th>{t('params.costs.col.revenue')}</th>
+                      <th>{t('params.costs.col.share')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summary.lines.map((l) => (
+                      <tr key={l.metric}>
+                        <td>
+                          <strong style={{ display: 'block' }}>{l.label}</strong>
+                          <span className="mono" style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}>
+                            {l.unit}
+                          </span>
+                        </td>
+                        <td className="mono">{l.measured.toLocaleString(locale)}</td>
+                        <td className="mono">{l.facturable.toLocaleString(locale)}</td>
+                        <td>
+                          <RevenueShareBar pct={l.revenueSharePct} />
+                        </td>
+                        <td className="mono">{formatDzd(l.amountHT, locale)}</td>
+                        <td className="mono">{l.revenueSharePct} %</td>
+                      </tr>
+                    ))}
+                    <tr>
+                      <td colSpan={4} style={{ fontWeight: 600 }}>
+                        {t('params.costs.totalRow')}
+                      </td>
+                      <td className="mono" style={{ fontWeight: 600 }}>
+                        {formatDzd(summary.consumptionTotal, locale)}
+                      </td>
+                      <td />
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       </div>

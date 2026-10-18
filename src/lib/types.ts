@@ -652,6 +652,37 @@ export interface MeteringHistory {
   points: MeteringHistoryPoint[];
 }
 
+/**
+ * Dashboard des coûts place entière (écran 14 "Coûts & tarification",
+ * sous-onglet Paramétrage) — `GET /metering/place-summary/{period}`,
+ * additif, forme exacte de `MeteringService.placeSummary()` (back
+ * `metering.service.ts`) : somme, pour chaque adhérent RÉEL de la place
+ * (`adherentCount`, via `AdherentsService`), de la même facture mensuelle
+ * mock que `/metering/{company}/{period}` (contrat `MeteringInvoice`
+ * ci-dessus, inchangé). `revenueSharePct` = part de `amountHT` dans
+ * `consumptionTotal` (0-100, somme à 100 sur l'ensemble des lignes).
+ */
+export interface PlaceMeteringSummaryLine {
+  metric: string;
+  label: string;
+  unit: string;
+  measured: number;
+  facturable: number;
+  amountHT: number;
+  revenueSharePct: number;
+}
+
+export interface PlaceMeteringSummary {
+  period: string;
+  gridVersion: string;
+  adherentCount: number;
+  subscriptionTotal: number;
+  consumptionTotal: number;
+  revenueTotal: number;
+  inducerCount: number;
+  lines: PlaceMeteringSummaryLine[];
+}
+
 /* ===================== Statistiques de la place (écran 11, Module H §6.10) =====================
  * Forme exacte de `WilayaStatDto`/`MonthlyStatDto`/`StatsSummaryDto` (back
  * `stats.service.ts`) — agrégation RÉELLE depuis ClaimsModule +

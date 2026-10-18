@@ -459,6 +459,70 @@ contrat deviné.
   table de facture/les tuiles — non modifiés, conformément au périmètre
   de cette passe.
 
+### `/params` rapproché des 3 captures de référence (2026-10-18, worktree dédié)
+
+Backend déjà préparé au moment de cette passe (`GET /metering/place-summary/
+{period}`, additif, mergé dans `ida-place-backend` — voir le doc-comment de
+`MeteringService.placeSummary()` et la route dans `metering.module.ts`) :
+vérifié directement contre le code, pas un contrat deviné.
+
+- **Onglet "Utilisateurs & accès" — 4 KPI ajoutés** (utilisateurs/actifs/
+  suspendus/rôles) : total et rôles depuis les endpoints déjà consommés
+  (`usersQuery.total`, `matrixQuery.roles.length`), actifs/suspendus
+  comptés côté front via un second appel pleine page (`usersAllQuery`,
+  `pageSize: 10_000`), même idiome que `casesAllQuery` de `/fraude` — la
+  liste affichée reste la page courante paginée serveur (6/p), ce second
+  appel ne sert JAMAIS de liste affichée.
+- **Action "Suspendre"/"Activer" ajoutée directement dans la ligne**
+  (capture de référence) — réutilise la même mutation `PUT /admin/users/
+  {id}` que la fiche détail (`{active, grant, revoke}`, grant/revoke de
+  l'utilisateur conservés tels quels), déclenchée avec `stopPropagation`
+  pour ne pas ouvrir la modale de détail au clic sur le bouton.
+- **Colonne "Rôle" (onglet Utilisateurs) et en-têtes de la matrice
+  (onglet Rôles) passés en libellé humain** (`Tag` pour la colonne, texte
+  simple pour les en-têtes) plutôt que la constante technique brute
+  (`OPERATEUR_PLACE`, etc., toujours visible ailleurs — ex. fiche détail,
+  sélecteur de création) — nouvelle fonction `roleLabel()`, clés
+  `params.role.<ROLE>` (6, une par `Role` de `roles-privileges.ts` back).
+- **Onglet "Rôles & privilèges" transposé** : rôles en colonnes, privilège
+  en ligne (libellé en gras + clé technique en dessous, texte atténué),
+  au lieu de l'inverse. Même état/mutation inchangés (`draft`, `toggle`,
+  `dirty`, enregistrer/réinitialiser, `AUDITEUR_CSA` toujours lecture
+  seule) — pure restructuration de template, aucune logique touchée.
+  Nouvelle fonction `privilegeLabel()`, clés `params.privilege.<key>` (17,
+  une par `Privilege` de `roles-privileges.ts` back — liste vérifiée dans
+  ce fichier, pas devinée depuis la capture). Note explicative existante
+  (`params.roles.auditorNote`) étendue plutôt que dupliquée pour couvrir
+  à la fois "cochez une cellule…" et la règle Auditeur CSA déjà présente.
+- **Onglet "Coûts & tarification" reconstruit en dashboard place
+  entière** : remplace le `CompanyPeriodPicker` + `BarChart` par
+  compagnie par 4 KPI (revenu mensuel HT, abonnements · N adhérents,
+  consommation hors forfait, inducteurs de coût) + un tableau des 12
+  inducteurs (mesuré/facturable/poids revenu — barre pleine largeur
+  dédiée `RevenueShareBar`, non colorée par seuil contrairement à
+  `ScoreBar`/revenu HT/% conso.) + ligne de total "Consommation hors
+  forfait", à partir du nouvel endpoint place entière. `CompanyPeriodPicker`
+  n'est PAS retiré du dépôt (toujours utilisé par `/metering`) — seulement
+  plus importé ici. La "Grille tarifaire paramétrable" (`PriceGridEditor`)
+  reste identique, non touchée.
+- Type ajouté dans `src/lib/types.ts` : `PlaceMeteringSummary`/
+  `PlaceMeteringSummaryLine` — additif, `MeteringInvoice`/`PriceGrid`
+  (contrats figés) inchangés.
+- Clés i18n ajoutées dans `translations.ts` (dictionnaire `fr`
+  uniquement) : `params.users.kpi.*`, `params.users.action.*`,
+  `params.users.toast.toggled`, `params.role.*` (6), `params.roles.col.
+  privilege`, `params.privilege.*` (17), `params.costs.*` (dashboard/KPI/
+  colonnes/total). Les clés mortes `params.costs.revenue.title`/`.note`
+  (vue par compagnie retirée) ont été remplacées en place plutôt que
+  laissées comme documentation obsolète.
+- Test composant (`page.test.tsx`) étendu (4 cas ajoutés) : les 4 KPI
+  Utilisateurs avec comptes exacts, bascule actif/suspendu depuis la
+  ligne (sans ouvrir la modale), matrice transposée (en-têtes de colonnes
+  = rôles, lignes = libellé + clé privilège) avec cocher/enregistrer
+  encore fonctionnel, 4 KPI + tableau des inducteurs de l'onglet Coûts.
+  Suite complète (lint/vitest/build) rejouée après coup : 74/74 tests,
+  build propre.
+
 ## ⚠️ Particularité de ce sprint : deux implémentations concurrentes réconciliées
 
 Une **session Claude indépendante**, travaillant en parallèle sur ce même
