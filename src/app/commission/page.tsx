@@ -3,22 +3,35 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
+import { CoChip } from '@/components/ui/CoChip';
+import { Kpi, KpiRow } from '@/components/ui/Kpi';
 import { Modal } from '@/components/ui/Modal';
 import { Table, Column } from '@/components/ui/Table';
+import { Tabs } from '@/components/ui/Tabs';
 import { Tag, TagTone } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { apiGet, apiPost } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
-import { CommissionCase, CommissionCaseStatus, CommissionPenaltyResult, CommissionPvSignResult, Paginated } from '@/lib/types';
+import { CommissionCase, CommissionCaseStatus, CommissionPenaltyResult, CommissionPvSignResult, CommissionSummary, Paginated, Sanction } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
+
+type CommissionTab = 'role' | 'sanctions';
 
 function statusTone(status: CommissionCaseStatus): TagTone {
   if (status === 'PRONONCE') return 'ok';
   if (status === 'EN_DELIBERE') return 'warn';
   return 'a';
+}
+
+function formatDzd(amount: number, locale: string): string {
+  try {
+    return new Intl.NumberFormat(locale, { style: 'currency', currency: 'DZD', maximumFractionDigits: 0 }).format(amount);
+  } catch {
+    return `${amount.toLocaleString()} DA`;
+  }
 }
 
 interface LocalDecision {
@@ -32,7 +45,9 @@ export default function CommissionPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const [tab, setTab] = useState<CommissionTab>('role');
   const [page, setPage] = useState(1);
+  const [sanctionsPage, setSanctionsPage] = useState(1);
   const [selected, setSelected] = useState<CommissionCase | null>(null);
   const [penaltyCompany, setPenaltyCompany] = useState<'A' | 'B'>('A');
   const [penaltyAmount, setPenaltyAmount] = useState('');
@@ -47,12 +62,30 @@ export default function CommissionPage() {
   const canPenalty = hasPrivilege('penaltyOrder');
   const canSignPv = hasPrivilege('pvSign');
 
+  // KPI de synthèse additif (`GET /commission/summary`, codé par le Tech
+  // Lead en parallèle sur ce sprint) — voir HANDOFF.md et `src/lib/types.ts`.
+  const summaryQuery = useQuery({
+    queryKey: ['commission', 'summary'],
+    queryFn: () => apiGet<CommissionSummary>('/commission/summary'),
+  });
+
   const casesQuery = useQuery({
     queryKey: ['commission', 'cases', page],
     queryFn: () => apiGet<Paginated<CommissionCase>>('/commission/cases', { page, pageSize: PAGE_SIZE }),
   });
 
   const pageRows = casesQuery.data?.items ?? [];
+
+  // `GET /commission/sanctions` existe déjà côté back (réel) mais n'était
+  // jusqu'ici tout simplement pas affiché côté front — pas une limite de
+  // données, un oubli pur et simple (voir HANDOFF.md).
+  const sanctionsQuery = useQuery({
+    queryKey: ['commission', 'sanctions', sanctionsPage],
+    queryFn: () => apiGet<Paginated<Sanction>>('/commission/sanctions', { page: sanctionsPage, pageSize: PAGE_SIZE }),
+    enabled: tab === 'sanctions',
+  });
+
+  const sanctionRows = sanctionsQuery.data?.items ?? [];
 
   const penaltyMutation = useMutation({
     mutationFn: ({ id, companyCode, amount, reason }: { id: string; companyCode: string; amount: number; reason: string }) =>
@@ -85,33 +118,100 @@ export default function CommissionPage() {
     [t, locale],
   );
 
+  const sanctionColumns: Column<Sanction>[] = useMemo(
+    () => [
+      {
+        key: 'companyCode',
+        header: t('commission.sanctions.col.company'),
+        render: (s) => (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <CoChip code={s.companyCode} /> <span className="mono">{s.companyCode}</span>
+          </span>
+        ),
+      },
+      { key: 'amount', header: t('commission.sanctions.col.amount'), render: (s) => <span className="mono">{s.amount !== undefined ? formatDzd(s.amount, locale) : '—'}</span> },
+      { key: 'reason', header: t('commission.sanctions.col.reason'), render: (s) => s.reason },
+      { key: 'orderedAt', header: t('commission.sanctions.col.orderedAt'), render: (s) => new Date(s.orderedAt).toLocaleDateString(locale) },
+      { key: 'orderedBy', header: t('commission.sanctions.col.orderedBy'), render: (s) => s.orderedBy },
+    ],
+    [t, locale],
+  );
+
   const selectedDecision = selected ? decisions[selected.id] : undefined;
 
   return (
     <>
       <FolioHeader badge="Module E · §6.7" title={t('commission.title')} subtitle={t('commission.subtitle')} />
 
-      <div className="sheet">
+      {summaryQuery.isLoading ? (
+        <p>{t('common.loading')}</p>
+      ) : summaryQuery.error || !summaryQuery.data ? (
+        <div className="note ko" role="alert">
+          <span>{t('common.error')}</span>
+          <button type="button" onClick={() => summaryQuery.refetch()}>
+            {t('common.retry')}
+          </button>
+        </div>
+      ) : (
+        <KpiRow>
+          <Kpi value={summaryQuery.data.pendingCount} label={t('commission.kpi.pendingCount')} />
+          <Kpi value={summaryQuery.data.overdue15dCount} label={t('commission.kpi.overdue15dCount')} />
+          <Kpi value={summaryQuery.data.recoursFondesCount} label={t('commission.kpi.recoursFondesCount')} />
+          <Kpi value={summaryQuery.data.oppositionsFondeesCount} label={t('commission.kpi.oppositionsFondeesCount')} />
+        </KpiRow>
+      )}
+
+      <div className="sheet" style={{ marginTop: 'var(--s-5)' }}>
         <div className="sheet-body">
-          {casesQuery.isLoading ? (
+          <Tabs
+            items={[
+              { key: 'role', label: t('commission.tab.role') },
+              { key: 'sanctions', label: t('commission.tab.sanctions') },
+            ]}
+            activeKey={tab}
+            onChange={(key) => setTab(key as CommissionTab)}
+          />
+
+          {tab === 'role' ? (
+            casesQuery.isLoading ? (
+              <p>{t('common.loading')}</p>
+            ) : casesQuery.error ? (
+              <div className="note ko" role="alert">
+                <span>{t('common.error')}</span>
+                <button type="button" onClick={() => casesQuery.refetch()}>
+                  {t('common.retry')}
+                </button>
+              </div>
+            ) : (
+              <Table
+                columns={columns}
+                rows={pageRows}
+                page={page}
+                total={casesQuery.data?.total ?? 0}
+                pageSize={PAGE_SIZE}
+                onPageChange={setPage}
+                onRowClick={setSelected}
+                getRowKey={(r) => r.id}
+              />
+            )
+          ) : sanctionsQuery.isLoading ? (
             <p>{t('common.loading')}</p>
-          ) : casesQuery.error ? (
+          ) : sanctionsQuery.error ? (
             <div className="note ko" role="alert">
               <span>{t('common.error')}</span>
-              <button type="button" onClick={() => casesQuery.refetch()}>
+              <button type="button" onClick={() => sanctionsQuery.refetch()}>
                 {t('common.retry')}
               </button>
             </div>
           ) : (
             <Table
-              columns={columns}
-              rows={pageRows}
-              page={page}
-              total={casesQuery.data?.total ?? 0}
+              columns={sanctionColumns}
+              rows={sanctionRows}
+              page={sanctionsPage}
+              total={sanctionsQuery.data?.total ?? 0}
               pageSize={PAGE_SIZE}
-              onPageChange={setPage}
-              onRowClick={setSelected}
-              getRowKey={(r) => r.id}
+              onPageChange={setSanctionsPage}
+              getRowKey={(s) => s.id}
             />
           )}
         </div>

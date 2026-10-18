@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { mockFetchRouter, renderWithProviders } from '@/test/render';
-import { CommissionCase, CommissionPenaltyResult, MeResponse } from '@/lib/types';
+import { CommissionCase, CommissionPenaltyResult, CommissionSummary, MeResponse, Sanction } from '@/lib/types';
 import CommissionPage from './page';
 
 const ME_WITH_BOTH: MeResponse = {
@@ -32,10 +32,38 @@ function commissionCase(overrides: Partial<CommissionCase> = {}): CommissionCase
   };
 }
 
-function mockCommissionApi(me: MeResponse, cases: CommissionCase[], onPenalty?: (id: string) => CommissionPenaltyResult) {
+const SUMMARY: CommissionSummary = {
+  pendingCount: 5,
+  overdue15dCount: 2,
+  recoursFondesCount: 2,
+  oppositionsFondeesCount: 2,
+};
+
+function sanction(overrides: Partial<Sanction> = {}): Sanction {
+  return {
+    id: 'san-1',
+    commissionCaseId: 'cc-1',
+    companyCode: 'CAAT',
+    type: 'AVERTISSEMENT',
+    amount: undefined,
+    reason: 'Retard de saisie',
+    orderedAt: new Date().toISOString(),
+    orderedBy: 'Membre Commission (dev)',
+    ...overrides,
+  };
+}
+
+function mockCommissionApi(
+  me: MeResponse,
+  cases: CommissionCase[],
+  onPenalty?: (id: string) => CommissionPenaltyResult,
+  sanctions: Sanction[] = [],
+) {
   mockFetchRouter((pathname) => {
     if (pathname === '/api/v1/me') return me;
+    if (pathname === '/api/v1/commission/summary') return SUMMARY;
     if (pathname === '/api/v1/commission/cases') return { page: 1, total: cases.length, items: cases };
+    if (pathname === '/api/v1/commission/sanctions') return { page: 1, total: sanctions.length, items: sanctions };
     const penaltyMatch = /^\/api\/v1\/commission\/cases\/(.+)\/penalty$/.exec(pathname);
     if (penaltyMatch && onPenalty) return onPenalty(penaltyMatch[1]);
     const pvMatch = /^\/api\/v1\/commission\/cases\/(.+)\/pv-sign$/.exec(pathname);
@@ -54,12 +82,14 @@ describe('Écran Commission (/commission)', () => {
     vi.unstubAllGlobals();
   });
 
-  it('affiche la file des dossiers en commission avec leur statut', async () => {
+  it('affiche la file des dossiers en commission avec leur phase (libellé relabellisé, A.4/guide)', async () => {
     mockCommissionApi(ME_WITH_BOTH, [commissionCase()]);
     renderWithProviders(<CommissionPage />);
 
     await waitFor(() => expect(screen.getByText('r-1')).toBeInTheDocument());
-    expect(screen.getByText('En délibéré')).toBeInTheDocument();
+    // EN_DELIBERE -> "Audience" (relabellisage d'affichage, voir HANDOFF.md ;
+    // la valeur `status` et la logique métier restent inchangées).
+    expect(screen.getByText('Audience')).toBeInTheDocument();
   });
 
   it("refuse le prononcé d'une pénalité et la signature du PV pour AUDITEUR_CSA (lecture seule, B.7)", async () => {
@@ -87,5 +117,24 @@ describe('Écran Commission (/commission)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Prononcer' }));
 
     await waitFor(() => expect(screen.getByText('Pénalité prononcée.')).toBeInTheDocument());
+  });
+
+  it('affiche les KPI de synthèse (affaires pendantes, hors délai, recours/oppositions fondés)', async () => {
+    mockCommissionApi(ME_WITH_BOTH, [commissionCase()]);
+    renderWithProviders(<CommissionPage />);
+
+    await waitFor(() => expect(screen.getByText('5')).toBeInTheDocument());
+    expect(screen.getAllByText('2').length).toBeGreaterThan(0);
+  });
+
+  it("affiche le registre des sanctions dans l'onglet dédié (compagnie, motif, date, auteur)", async () => {
+    mockCommissionApi(ME_WITH_BOTH, [commissionCase()], undefined, [sanction()]);
+    renderWithProviders(<CommissionPage />);
+
+    await waitFor(() => expect(screen.getByText('r-1')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('tab', { name: 'Sanctions' }));
+
+    await waitFor(() => expect(screen.getByText('Retard de saisie')).toBeInTheDocument());
+    expect(screen.getByText('Membre Commission (dev)')).toBeInTheDocument();
   });
 });

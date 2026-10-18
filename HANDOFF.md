@@ -132,6 +132,86 @@ Voir HANDOFF.md back pour le détail des 2 endpoints additifs :
   Vérifié en navigateur réel (opposition avec motif réel → fil
   d'échanges et recherche corrects).
 
+### `/monthly` et `/commission` rapprochés de la capture de référence (2026-10-18)
+
+Backend préparé en parallèle par deux agents différents (voir plus bas) :
+`/monthly` par un agent Backend dans un autre worktree (pas encore mergé au
+moment de cette passe front, forme fixée avec lui avant de coder contre) ;
+`/commission/summary` et `/commission/sanctions` par le Tech Lead lui-même,
+déjà mergés et réels au moment de cette passe (vérifiés directement contre
+`commission.dto.ts`/`commission.controller.ts` back avant d'écrire le front
+et les tests — pas de contrat deviné).
+
+- **`/monthly` — KPI de synthèse** (`GET /settlement/monthly/:period/summary`) :
+  recours intégrés, montant de la synthèse, exclus — oppositions (RG-06),
+  échéance de saisie. Le KPI d'échéance est intitulé "Échéance de saisie"
+  (pas "5e jour ouvré" comme dans la capture) : `MonthlySummaryDto`
+  (back `settlement.dto.ts`) documente explicitement que `insertionDeadline`
+  est un calcul en jours CALENDAIRES (AAAA-MM-05), pas ouvrés — aucun
+  calendrier de jours fériés algériens disponible ; afficher "jour ouvré"
+  aurait été une affirmation fausse. Une mention "Jour calendaire · Art. 16"
+  est affichée à la place en `extra` du KPI.
+- **`/monthly` — "Synthèse Annexe 7 — créanciers / débiteurs"** (nouvelle
+  section, `GET /settlement/monthly/:period/annexe7`) : tableau par paire
+  orientée créancier→débiteur (`CoChip`, nombre, montant), SANS netting —
+  chaque paire telle quelle, contrairement à `/quarter` qui nette. `
+  SettlementMonthly` (contrat figé) inchangé.
+- **`/monthly` — tableau "Complétude de la saisie par compagnie"** conservé
+  tel quel (déjà branché sur de vraies données, pas retouché).
+- **`/monthly` — hors périmètre, documenté plutôt que bricolé** : le
+  pipeline "Avancement du lot" à 5 étapes nommées (Saisie compagnies /
+  Synthèse Annexe 7 / Annexe 8 / Transmission / Scellement) visible dans la
+  capture. Aucune entité de workflow de clôture mensuelle n'existe côté
+  back pour ça (pas de dates d'étapes, pas de statut par étape) — construire
+  un faux pipeline avec des dates bidon aurait été inventer une donnée.
+- **`/commission` — KPI de synthèse** (`GET /commission/summary`, réel,
+  Tech Lead) : affaires pendantes, hors délai 15j (Art. 24), recours jugés
+  fondés, oppositions jugées fondées (Art. 12, indépendant des dossiers de
+  commission).
+- **`/commission` — onglets ajoutés** (`Tabs`, même composant que
+  `/exchanges`) : "Rôle des affaires" (tableau existant, inchangé) et
+  "Sanctions" (nouveau — `GET /commission/sanctions`, qui existait déjà
+  côté back et était réel, mais n'était jusqu'ici tout simplement pas
+  affiché côté front : un oubli pur et simple de ce sprint-ci, pas une
+  limite de données). Colonnes : compagnie sanctionnée (`CoChip`), montant
+  (`—` si absent, ex. simple avertissement non financier), motif, date,
+  auteur (`orderedBy`).
+- **`/commission` — colonne "Phase" relabellisée** : seul le LIBELLÉ
+  affiché change (clé i18n `commission.status.*`), la valeur `status` et
+  toute la logique (tri, filtre, `statusTone`) restent inchangées.
+  Correspondance appliquée telle que demandée par le Tech Lead :
+  `A_INSTRUIRE` → "Instruction", `EN_DELIBERE` → "Audience", `PRONONCE` →
+  "Concilié". **Le Product Owner valide cette correspondance en parallèle**
+  — si son rapport la contredit, ne pas la redéfaire soi-même : juste
+  changer les 3 valeurs de ces clés dans `translations.ts` (dictionnaire
+  `fr` uniquement, AR/EN auto-dérivés).
+- **`/commission` — hors périmètre, documenté plutôt que bricolé** :
+  onglets "Adhésions & retraits" et "Plafond conventionnel" (aucune entité
+  back pour ni l'un ni l'autre) ; fil de pièces échangées contradictoirement
+  avec rapporteur nommé dans la capture (aucune donnée source — même limite
+  déjà documentée pour le fil d'échanges `/exchanges`, pas de `rapporteur`
+  ni de pièces jointes dans `CommissionCase`/`SanctionViewDto`).
+- Types ajoutés dans `src/lib/types.ts` : `SettlementMonthlySummary`,
+  `SettlementMonthlyAnnexe7`(Pair), `CommissionSummary`, `Sanction` — tous
+  additifs, les contrats figés `SettlementMonthly`/`CommissionCase` ne
+  changent pas de forme.
+- Tests composants (`page.test.tsx`) mis à jour (2 cas ajoutés par écran,
+  même esprit que les sections précédentes) : KPI de synthèse + nouvelle
+  section pour `/monthly` ; KPI de synthèse + registre des sanctions dans
+  son onglet pour `/commission`. Le test existant vérifiant l'ancien
+  libellé "En délibéré" a été mis à jour pour "Audience".
+- **Point de vigilance pour le Tech Lead** : `/settlement/monthly/:period/
+  summary` et `/annexe7` sont codés contre la forme de `MonthlySummaryDto`/
+  `Annexe7Dto` trouvée dans `ida-place-backend-wt-dev/src/settlement/dto/
+  settlement.dto.ts` (worktree de l'agent Backend en parallèle, PAS encore
+  mergé dans `ida-place-backend` au moment de cette passe front, et les
+  routes correspondantes n'étaient pas encore câblées dans
+  `settlement.controller.ts` de ce worktree non plus) — à revérifier une
+  fois son travail mergé, avant de faire confiance à ce front sans retest.
+  `/commission/summary` et `/commission/sanctions`, eux, étaient déjà réels
+  et mergés dans `ida-place-backend` (checkout principal) au moment de
+  cette passe — vérifiés directement contre le code, pas un contrat deviné.
+
 ## ⚠️ Particularité de ce sprint : deux implémentations concurrentes réconciliées
 
 Une **session Claude indépendante**, travaillant en parallèle sur ce même

@@ -267,6 +267,39 @@ export interface SettlementMonthly {
   companies: SettlementMonthlyCompany[];
 }
 
+/**
+ * Compléments additifs (`GET /settlement/monthly/:period/summary`,
+ * `GET /settlement/monthly/:period/annexe7`) — `SettlementMonthly` ci-dessus
+ * reste le contrat figé inchangé (back `settlement.service.ts`). Backend
+ * préparé en parallèle (autre worktree, pas encore mergé au moment de cette
+ * passe front) — forme fixée avec l'agent Backend (`MonthlySummaryDto`/
+ * `Annexe7Dto`, `settlement.dto.ts`), à revérifier après merge.
+ */
+export interface SettlementMonthlySummary {
+  period: string;
+  /** Recours RÉGLÉS dont le règlement (ou, à défaut, l'envoi) tombe dans le mois. */
+  settledCount: number;
+  totalAmount: number;
+  /** Recours actuellement en opposition — exclus du circuit, toutes périodes confondues (RG-06). */
+  excludedOppositionCount: number;
+  /** Échéance de saisie, ISO simple (AAAA-MM-05) — jour CALENDAIRE (pas ouvré, aucun calendrier de jours fériés algériens disponible). */
+  insertionDeadline: string;
+}
+
+export interface SettlementMonthlyAnnexe7Pair {
+  from: string;
+  to: string;
+  /** Nombre de recours réglés pour cette paire orientée créancier→débiteur. */
+  count: number;
+  totalAmount: number;
+}
+
+/** Paires créancier(from)→débiteur(to) EXACTES, non nettées — pas de netting, contrairement à `/settlement/quarter`. */
+export interface SettlementMonthlyAnnexe7 {
+  period: string;
+  pairs: SettlementMonthlyAnnexe7Pair[];
+}
+
 /* ===================== Compensation trimestrielle (écran 6, Module D §6.6) — B.2/B.3 =====================
  * Forme exacte de `QuarterlySettlementDto` (back `settlement.dto.ts`).
  */
@@ -371,6 +404,43 @@ export interface CommissionPenaltyResult {
 }
 
 export interface CommissionPvSignResult extends CommissionCase {}
+
+/**
+ * KPI de synthèse (`GET /commission/summary`, additif) — codé par le Tech
+ * Lead en parallèle sur ce même sprint ; forme vérifiée contre
+ * `CommissionSummaryDto` réel (back `commission.dto.ts`, déjà mergé au
+ * moment de cette passe front).
+ */
+export interface CommissionSummary {
+  /** Dossiers non encore tranchés (status A_INSTRUIRE ou EN_DELIBERE). */
+  pendingCount: number;
+  /** Parmi les dossiers pendants, ceux ouverts depuis plus de 15 jours (Art. 24). */
+  overdue15dCount: number;
+  /** Dossiers PRONONCE avec décision RECOURS_FONDE. */
+  recoursFondesCount: number;
+  /** Oppositions réputées fondées à défaut de contestation (Art. 12, RecoursModule — indépendant des dossiers de commission). */
+  oppositionsFondeesCount: number;
+}
+
+export type SanctionType = 'PENALITE_FINANCIERE' | 'AVERTISSEMENT' | 'SUSPENSION';
+
+/**
+ * `GET /commission/sanctions` (réel, déjà existant avant cette passe —
+ * jusqu'ici jamais affiché côté front, voir HANDOFF.md). Forme exacte de
+ * `SanctionViewDto` (back `commission.dto.ts`) — enregistrement séparé lié
+ * par `commissionCaseId`, pas embarqué dans `CommissionCase`.
+ */
+export interface Sanction {
+  id: string;
+  commissionCaseId?: string;
+  companyCode: string;
+  type: SanctionType;
+  /** Absent pour une sanction non financière (ex. AVERTISSEMENT). */
+  amount?: number;
+  reason: string;
+  orderedAt: string;
+  orderedBy: string;
+}
 
 /* ===================== Journal scellé (écran 13, Module XI) — B.2/B.3 =====================
  * Reflet de `LedgerModule` — chaînage SHA-256 réel (`hash(n)=f(event,hash(n-1))`,
