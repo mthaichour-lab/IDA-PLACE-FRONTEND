@@ -484,18 +484,62 @@ export interface MonitoringComponentValue {
   sampleSize: number;
 }
 
+/**
+ * Compléments additifs (écran 8, guide illustré) — `MonitoringCompanyScore`/
+ * `MonitoringScores` ci-dessus restent le contrat figé inchangé, complétés
+ * sans suppression de champ (back `monitoring.scoring.ts`/`monitoring.service.ts`).
+ * `profile` : comptes/taux BRUTS réels (sens d'affichage du guide, ex.
+ * "Silences" = taux brut, PAS l'inverse du score de conformité `details.silences`).
+ */
+export interface MonitoringCompanyProfile {
+  onTimeResponsePct: number | null;
+  avgResponseDays: number | null;
+  oppositionsEmisesCount: number;
+  oppositionsSubiesCount: number;
+  silencesCount: number;
+  contestationsCount: number;
+  forclosCount: number;
+  silencesRatePct: number | null;
+  oppositionsRatePct: number | null;
+}
+
 export interface MonitoringCompanyScore {
   code: string;
   /** `null` si toutes les composantes sont `NON_DISPONIBLE` pour cette compagnie. */
   score: number | null;
+  /** Note lettrée dérivée de `score` (affichage uniquement) — `null` si `score` est `null`. */
+  grade: 'A' | 'B' | 'C' | 'D' | null;
   rank: number;
   details: Record<keyof MonitoringWeights, MonitoringComponentValue>;
+  profile: MonitoringCompanyProfile;
 }
 
 export interface MonitoringScores {
   weights: MonitoringWeights;
   companies: MonitoringCompanyScore[];
   notes: string[];
+  /** Fenêtre Art.10 réellement configurée (jours) — RecoursService.getTimerConfig().silenceDays, PAS les "10 j" du guide illustré (voir HANDOFF.md). */
+  silenceDays: number;
+  /** Seuil (%) au-delà duquel le bandeau "oppositions fréquentes" (§6.8) s'affiche pour une compagnie. */
+  oppositionAlertThresholdPct: number;
+}
+
+/** `GET /monitoring/companies/:code/journeys` — une étape RÉELLEMENT persistée du parcours d'un recours (voir `buildRecoursJourneySteps`, back `recours.rules.ts`). Un recours a 1 à 5 étapes réelles, JAMAIS un compte fixe 8/11 (voir HANDOFF.md). */
+export interface MonitoringJourneyStep {
+  key: 'annexe2' | 'annexe3' | 'annexe4' | 'commission' | 'resolution';
+  at: string;
+}
+
+/** "Vue par dossier — parcours complet" (écran 8), scopée à une compagnie. */
+export interface MonitoringJourney {
+  id: string;
+  claimId: string;
+  direction: 'EMIS' | 'RECU';
+  counterparty: string;
+  amount: number;
+  state: string;
+  steps: MonitoringJourneyStep[];
+  requestSentAt: string;
 }
 
 /* ===================== Anti-fraude (écran 9, Module G §6.9) — mock ===================== */

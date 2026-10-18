@@ -284,9 +284,15 @@ a {
   grid-template-columns: 2fr 1fr 1fr;
 }
 
+/* Profil de conformité (écran 8, Monitoring) : radar (gauche, largeur fixe-ish) + tuiles/vue par dossier (droite, flexible) — mêmes règles de repli que g-side/g-side2 ci-dessous. */
+.grid.g-mon {
+  grid-template-columns: minmax(360px, 480px) 1fr;
+}
+
 @media (max-width: 1020px) {
   .grid.g-side,
-  .grid.g-side2 {
+  .grid.g-side2,
+  .grid.g-mon {
     grid-template-columns: 1fr;
   }
 }

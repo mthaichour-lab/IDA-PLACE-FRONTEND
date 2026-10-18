@@ -236,6 +236,106 @@ et les tests — pas de contrat deviné).
   front sur ce port sans toucher au 3000 (occupé par une appli sans
   rapport sur cette machine de dev).
 
+### `/monitoring` rapproché de la capture de référence (2026-10-18)
+
+Backend préparé en parallèle par l'agent Backend (worktree dédié,
+`monitoring.scoring.ts`/`monitoring.service.ts`/`monitoring.module.ts`,
+déjà mergé dans `ida-place-backend` au moment de cette passe front —
+vérifié directement contre le code, pas un contrat deviné) :
+`MonitoringCompanyResult` complété avec `grade`/`profile`, et nouvel
+endpoint `GET /monitoring/companies/:code/journeys`.
+
+- **Classement — nouvelles colonnes** : Note (lettre A/B/C/D dérivée du
+  score composite, `gradeFromScore`, seuils documentés côté back comme
+  hypothèse non chiffrée par le dossier technique), puis les taux BRUTS
+  réels par compagnie (Délais/Silences/Opp. émises en %, Délai moy. en
+  jours, Forclos en nombre, Données en %) — depuis le nouveau `profile`
+  de chaque compagnie, PAS les scores composite inversés de `details`
+  (les deux représentent des notions voisines dans des sens opposés,
+  voir le commentaire en tête de `monitoring.scoring.ts` : "Silences"
+  dans le classement est le taux brut réel de silences, pas l'inverse du
+  score de conformité).
+- **"Profil — {compagnie}"** (nouvelle section) : radar 7 axes (nouveau
+  composant transverse `RadarChart.tsx`, SVG natif, même esprit que
+  `BarChart`/`Sparkline` — pas de librairie graphique), un axe par
+  composante du score composite (`details.*.value`, 0-100, sens "plus
+  haut = meilleur"), score composite affiché en grand au centre. Les 8
+  tuiles associées (`Kpi`) viennent de `profile.*`
+  (comptes/taux bruts) + `details.qualiteDonnees.value` pour "Qualité
+  des données" (qui, contrairement à silences/oppositions, est déjà un
+  taux dans le même sens que le score — pas de représentation brute
+  séparée côté back, donc pas de duplication inventée).
+- **Bandeau "Oppositions fréquentes" conditionnel** : affiché quand
+  `profile.oppositionsRatePct` de la compagnie sélectionnée dépasse
+  `oppositionAlertThresholdPct` (nouveau champ renvoyé par
+  `GET /monitoring/scores`, seuil non chiffré par le dossier technique —
+  hypothèse back à valider avec l'UAR, voir `monitoring.scoring.ts`).
+- **"Vue par dossier — parcours complet"** (nouvelle section, scopée à
+  la compagnie sélectionnée, pagination 6/p + recherche libre
+  côté front sur recours/dossier/contrepartie — même pattern que les
+  autres écrans qui dérivent un classement d'une liste complète,
+  pageSize large, déjà documenté plus bas dans "Dette / limites
+  connues") : colonnes Recours (id + n° dossier), Sens (`émis
+  →`/`reçu ←` + contrepartie), Parcours inter-compagnies, État (même
+  mapping état→tonalité que `/exchanges`, `stateTone`).
+- **Deux écarts volontaires avec la capture de référence du guide
+  illustré, documentés plutôt que forcés** :
+  1. La capture affiche "Réponses dans les 10 j". La vraie fenêtre
+     Art. 10 configurée dans l'app (`RecoursService.getTimerConfig().
+     silenceDays`) est 30 j par défaut, utilisée partout ailleurs pour
+     les mêmes recours (`/exchanges`, `CountdownBar`). Dupliquer un
+     second "10 j" en dur ici aurait créé une incohérence interne avec
+     le reste de l'app pour la même notion. Le libellé de la tuile est
+     donc construit dynamiquement : `"Réponses dans les {silenceDays}
+     j"`, avec `silenceDays` renvoyé par l'API (nouveau champ top-level
+     de `GET /monitoring/scores`).
+  2. La capture affiche un compte de pastilles fixe par dossier ("8
+     étapes", "11 étapes"), ce qui suggère une taxonomie procédurale
+     détaillée des Annexes 2/3/4 qu'aucun des deux documents de
+     référence (dossier technique, guide illustré) ne définit
+     explicitement. Plutôt que d'inventer des étapes non documentées
+     pour reproduire ces chiffres, `GET /monitoring/companies/:code/
+     journeys` renvoie les SEULES étapes réellement persistées par
+     recours (`buildRecoursJourneySteps`, back `recours.rules.ts` —
+     1 à 5 étapes selon l'historique réel : Annexe 2 toujours présente,
+     puis Annexe 3/4/Commission/résolution si et seulement si elles ont
+     réellement eu lieu). La colonne "Parcours inter-compagnies" affiche
+     donc exactement ce nombre de pastilles (toutes pleines, puisque ce
+     sont des étapes déjà survenues) + `"{N} étapes"`, N variant par
+     dossier — jamais un compte fixe 8/11.
+- Types ajoutés dans `src/lib/types.ts` : `MonitoringCompanyProfile`,
+  `MonitoringJourneyStep`, `MonitoringJourney` — additifs,
+  `MonitoringCompanyScore`/`MonitoringScores` (contrat figé) seulement
+  complétés (`grade`/`profile`, `silenceDays`/`oppositionAlertThresholdPct`),
+  jamais retouchés en forme.
+- Nouveau composant transverse : `src/components/ui/RadarChart.tsx`.
+  Nouvelle classe de mise en page `.grid.g-mon` (`globals.css`, même
+  esprit que `g-side`/`g-side2` — radar à gauche en largeur fixe-ish,
+  tuiles + vue par dossier à droite en largeur flexible, repli sur une
+  colonne sous 1020px).
+- L'ancien bloc "Pondérations du scoring" (sheet séparée) et le panneau
+  de détail générique (décomposition par critère + lien vers la file de
+  confrontation) ont été retirés : les pondérations sont déjà listées
+  dans le sous-titre de l'écran (texte rapproché du guide illustré), et
+  le panneau générique est remplacé par les sections réelles
+  (Profil/tuiles/bandeau/vue par dossier) ci-dessus. Clés i18n
+  `monitoring.panel.*`/`monitoring.weights.title` devenues obsolètes
+  retirées de `translations.ts` (dictionnaire `fr`, scope confirmé
+  propre à cet écran avant suppression).
+- Test composant (`page.test.tsx`) réécrit en conséquence (7 cas) :
+  classement avec note + taux bruts, repère "non disponible" sur une
+  composante `NON_DISPONIBLE`, radar/tuiles de la compagnie sélectionnée
+  par défaut (libellé dynamique `silenceDays`), bandeau conditionnel
+  (affiché/masqué selon le seuil), nombre RÉEL d'étapes par dossier (pas
+  8/11 fixe), pagination 6/p de la vue par dossier. `npm run lint` /
+  `npx vitest run` (64/64) / `npm run build` tous propres après cette
+  passe.
+- **Hors périmètre, pas de données source** : logos réels des compagnies
+  dans le classement (toujours `CoChip` — pastille colorée + code, même
+  limite documentée pour `/quarter`), export Excel du classement et de
+  la vue par dossier (boutons visibles dans la capture, aucun endpoint
+  d'export côté back pour cet écran).
+
 ## ⚠️ Particularité de ce sprint : deux implémentations concurrentes réconciliées
 
 Une **session Claude indépendante**, travaillant en parallèle sur ce même
