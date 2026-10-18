@@ -211,6 +211,30 @@ et les tests — pas de contrat deviné).
   `/commission/summary` et `/commission/sanctions`, eux, étaient déjà réels
   et mergés dans `ida-place-backend` (checkout principal) au moment de
   cette passe — vérifiés directement contre le code, pas un contrat deviné.
+- **Revue Tech Lead (2026-10-18) — complétée et mergée** : `SanctionType`
+  complété avec `'PENALITE_FINANCIERE'` (manquait par rapport à l'énum
+  réelle du back, `commission.rules.ts` → `SANCTION_TYPES`) ; sans impact
+  runtime (aucune branche sur `.type` dans `commission/page.tsx`) mais
+  nécessaire pour la justesse de typage, les pénalités (déjà créées via
+  `POST /commission/cases/:id/penalty`) partageant le même registre que
+  les sanctions. Suite complète (lint/vitest/build) rejouée après le
+  correctif : 60/60 tests, build propre. Mergé dans `master`
+  (`sprint4-frontend-team` → `master`, commit `3fe88f0` puis merge). Le
+  point de vigilance ci-dessus est résolu : le travail de l'agent Backend
+  est désormais mergé dans `ida-place-backend` (checkout principal),
+  `MonthlySummaryDto`/`Annexe7Dto` confirmés identiques entre front et
+  back champ à champ. **Vérifié en navigateur réel** (3001/3002, jamais
+  3000) : recours réglé + recours en opposition créés via l'API, dossier
+  de commission avec une pénalité (`PENALITE_FINANCIERE`, montant) et une
+  sanction (`AVERTISSEMENT`, sans montant) — `/monthly` affiche les 4 KPI
+  et la ligne Annexe 7 attendue, `/commission` affiche les 4 KPI, la phase
+  "Instruction" relabellisée, et l'onglet Sanctions avec les deux types de
+  sanction correctement rendus (montant `—` pour l'avertissement).
+  **Note d'environnement dev** : `CORS_ORIGIN` du back est en dur sur
+  `http://localhost:3000` par défaut (`main.ts`) — le faire pointer vers
+  `http://localhost:3002` (variable d'env `CORS_ORIGIN`) pour tester le
+  front sur ce port sans toucher au 3000 (occupé par une appli sans
+  rapport sur cette machine de dev).
 
 ## ⚠️ Particularité de ce sprint : deux implémentations concurrentes réconciliées
 
