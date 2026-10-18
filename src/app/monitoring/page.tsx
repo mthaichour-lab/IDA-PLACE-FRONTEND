@@ -117,7 +117,7 @@ export default function MonitoringPage() {
       { key: 'rank', header: t('monitoring.col.rank'), render: (r) => <span className="mono">#{r.rank}</span> },
       { key: 'company', header: t('monitoring.col.company'), render: (r) => <CoChip code={r.code} /> },
       { key: 'score', header: t('monitoring.col.score'), render: (r) => renderScore(r.score, t) },
-      { key: 'grade', header: t('monitoring.col.grade'), render: (r) => <span className={`tag ${gradeTone(r.grade)}`}>• {r.grade ?? '—'}</span> },
+      { key: 'grade', header: t('monitoring.col.grade'), render: (r) => <Tag tone={gradeTone(r.grade)}>• {r.grade ?? '—'}</Tag> },
       { key: 'delaisPct', header: t('monitoring.col.delaisPct'), render: (r) => <span className="mono">{formatPct(r.profile.onTimeResponsePct, t)}</span> },
       { key: 'silencesPct', header: t('monitoring.col.silencesPct'), render: (r) => <span className="mono">{formatPct(r.profile.silencesRatePct, t)}</span> },
       { key: 'oppEmisesPct', header: t('monitoring.col.oppEmisesPct'), render: (r) => <span className="mono">{formatPct(r.profile.oppositionsRatePct, t)}</span> },
