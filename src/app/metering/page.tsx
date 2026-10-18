@@ -4,8 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
 import { CompanyPeriodPicker } from '@/components/metering/CompanyPeriodPicker';
+import { ConsumptionHistoryChart } from '@/components/metering/ConsumptionHistoryChart';
 import { PriceGridEditor } from '@/components/metering/PriceGridEditor';
-import { BarChart } from '@/components/ui/BarChart';
 import { Table, Column } from '@/components/ui/Table';
 import { Tag } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
@@ -14,7 +14,7 @@ import { apiGet, apiPut } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { buildRecentPeriods } from '@/lib/period-options';
 import { useRealtime } from '@/lib/realtime';
-import { CompanyView, InvoiceLine, MeteringInvoice, Paginated, PriceGrid } from '@/lib/types';
+import { CompanyView, InvoiceLine, MeteringHistory, MeteringInvoice, Paginated, PriceGrid } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 const POLL_INTERVAL_MS = 20_000; // repli polling (B.12) — voir /cockpit
@@ -37,6 +37,7 @@ export default function MeteringPage() {
   const [company, setCompany] = useState('CAAT');
   const [period, setPeriod] = useState(PERIODS[0]);
   const [invoicePage, setInvoicePage] = useState(1);
+  const [historyMetric, setHistoryMetric] = useState('claimsIngested'); // "Dossiers ingérés" — sélection par défaut du guide illustré (écran 10)
 
   const canEditGrid = hasPrivilege('grid');
 
@@ -57,6 +58,17 @@ export default function MeteringPage() {
     queryFn: () => apiGet<PriceGrid>('/pricing/grid'),
   });
 
+  // Historique "Consommation mensuelle" (écran 10, guide illustré) — 10 mois
+  // d'une métrique sélectionnable, additif (`GET
+  // /metering/{company}/{period}/history/{metric}`, MOCK déterministe
+  // côté back, voir types.ts). Indépendante de `invoiceQuery` : on affiche
+  // l'historique même si la facture du mois en cours est encore en chargement.
+  const historyQuery = useQuery({
+    queryKey: ['metering', 'history', company, period, historyMetric],
+    queryFn: () => apiGet<MeteringHistory>(`/metering/${company}/${period}/history/${historyMetric}`),
+    enabled: !!company && !!period && !!historyMetric,
+  });
+
   const onRealtimeEvent = useCallback(() => {
     void invoiceQuery.refetch();
   }, [invoiceQuery]);
@@ -75,6 +87,18 @@ export default function MeteringPage() {
 
   const companies = companiesQuery.data?.items ?? [];
   const invoice = invoiceQuery.data;
+  const companyLabel = companies.find((c) => c.code === company)?.name ?? company;
+  const gridMetrics = gridQuery.data?.metrics ?? [];
+  const selectedHistoryMetric = gridMetrics.find((m) => m.metric === historyMetric);
+
+  const historySelectStyle: React.CSSProperties = {
+    font: 'inherit',
+    border: '1px solid var(--rule-strong)',
+    borderRadius: 'var(--k-r-s)',
+    padding: '6px 10px',
+    background: 'var(--paper)',
+    color: 'var(--ink)',
+  };
 
   const invoiceColumns: Column<InvoiceLine>[] = useMemo(
     () => [
@@ -153,10 +177,38 @@ export default function MeteringPage() {
 
           <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
             <div className="sheet-head">
-              <span>{t('metering.chart.title')}</span>
+              <span>
+                {t('metering.history.title')} — {companyLabel}
+              </span>
             </div>
             <div className="sheet-body">
-              <BarChart data={invoice.lines.map((l) => ({ label: l.label, value: l.amount }))} />
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', maxWidth: 260, marginBottom: 'var(--s-4)' }}>
+                {t('metering.history.metric')}
+                <select style={historySelectStyle} value={historyMetric} onChange={(e) => setHistoryMetric(e.target.value)}>
+                  {gridMetrics.map((m) => (
+                    <option key={m.metric} value={m.metric}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {historyQuery.isLoading ? (
+                <p>{t('common.loading')}</p>
+              ) : historyQuery.error || !historyQuery.data ? (
+                <div className="note ko" role="alert">
+                  <span>{t('common.error')}</span>
+                  <button type="button" onClick={() => historyQuery.refetch()}>
+                    {t('common.retry')}
+                  </button>
+                </div>
+              ) : (
+                <ConsumptionHistoryChart
+                  points={historyQuery.data.points}
+                  quota={selectedHistoryMetric?.includedQuota ?? 0}
+                  unit={selectedHistoryMetric?.unit ?? ''}
+                />
+              )}
             </div>
           </div>
 

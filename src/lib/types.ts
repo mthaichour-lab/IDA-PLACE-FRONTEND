@@ -635,6 +635,23 @@ export interface MeteringInvoice {
   status: InvoiceStatus;
 }
 
+/**
+ * Historique mensuel d'une métrique (graphe "Consommation mensuelle",
+ * écran 10 guide illustré) — `GET /metering/{company}/{period}/history/
+ * {metric}`, additif, MOCK déterministe côté back (voir
+ * `metering.service.ts`, `buildMeasuredHistory`), PAS une vraie série
+ * temporelle collectée.
+ */
+export interface MeteringHistoryPoint {
+  period: string;
+  value: number;
+}
+
+export interface MeteringHistory {
+  metric: string;
+  points: MeteringHistoryPoint[];
+}
+
 /* ===================== Statistiques de la place (écran 11, Module H §6.10) =====================
  * Forme exacte de `WilayaStatDto`/`MonthlyStatDto`/`StatsSummaryDto` (back
  * `stats.service.ts`) — agrégation RÉELLE depuis ClaimsModule +

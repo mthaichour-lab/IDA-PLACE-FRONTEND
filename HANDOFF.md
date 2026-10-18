@@ -415,6 +415,50 @@ contrat deviné.
   + build, pas en navigateur réel ; à revérifier en navigateur dès qu'un
   port est libre.
 
+### `/metering` rapproché de la capture de référence (2026-10-18, worktree dédié)
+
+Backend déjà préparé au moment de cette passe (`GET /metering/{company}/
+{period}/history/{metric}`, additif, mergé dans `ida-place-backend` —
+voir ARCHITECTURE.md et le doc-comment de `metering.service.ts`,
+`buildMeasuredHistory`) : vérifié directement contre le code, pas un
+contrat deviné.
+
+- **"Consommation mensuelle — {Compagnie}" (nouvelle section)** —
+  remplace l'ancien graphe de répartition du montant facturable par
+  inducteur (qui n'existe pas dans la capture de référence) par un
+  sélecteur de métrique (`PriceGrid.metrics`, défaut `claimsIngested` —
+  "Dossiers ingérés", comme le guide illustré) + un graphe 10 mois de
+  cette métrique, avec ligne de quota inclus en pointillés et dernier
+  mois (courant, partiel) rendu plus clair à l'opacité — composant dédié
+  `components/metering/ConsumptionHistoryChart.tsx` (SVG natif, pas de
+  librairie graphique, même esprit que `components/ui/BarChart.tsx` —
+  pas une extension de celui-ci : la ligne de référence et son étiquette
+  n'ont de sens que pour ce graphe-ci, les autres usages de `BarChart`
+  comme `/stats` n'en ont pas besoin).
+- **Showback "coût d'infrastructure attribué" (CPU/Mémoire/Stockage/
+  Réseau/Messagerie) volontairement PAS construit**, ni section ni
+  "hors périmètre" visible sur l'écran : aucune donnée de coût
+  d'infrastructure réelle n'existe côté back (voir ARCHITECTURE.md,
+  ligne `MeteringModule`) — à la différence de la facture TARIF-2026.01
+  (prix réels appliqués à une mesure mockée), fabriquer des montants DA
+  de showback aurait été de la pure invention. Le nouveau graphe prend
+  donc toute la largeur de la ligne plutôt que de laisser un bloc vide à
+  droite.
+- Type ajouté dans `src/lib/types.ts` : `MeteringHistoryPoint`/
+  `MeteringHistory` — additif, `MeteringInvoice`/`PriceGrid` (contrats
+  figés) inchangés.
+- Clés i18n ajoutées dans `translations.ts` (dictionnaire `fr`
+  uniquement) : `metering.history.*`. L'ancienne clé `metering.chart.title`
+  a été retirée (son seul usage, l'ancien graphe, a été remplacé).
+- Test composant (`page.test.tsx`) étendu (3 cas ajoutés) : sélecteur par
+  défaut sur "Dossiers ingérés", changement de métrique déclenchant un
+  nouvel appel `/history/{metric}` avec mise à jour de la ligne de quota
+  affichée, absence de toute section "Showback". Suite complète (lint/
+  vitest/build) rejouée après coup : 63/63 tests, build propre.
+- Pas de bug pré-existant trouvé dans `PriceGridEditor.tsx` ni dans la
+  table de facture/les tuiles — non modifiés, conformément au périmètre
+  de cette passe.
+
 ## ⚠️ Particularité de ce sprint : deux implémentations concurrentes réconciliées
 
 Une **session Claude indépendante**, travaillant en parallèle sur ce même
