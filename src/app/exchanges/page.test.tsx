@@ -47,6 +47,8 @@ function mockExchangesApi(me: MeResponse, items: RecoursItem[]) {
       const filtered = q ? items.filter((r) => [r.id, r.claimId, r.from, r.to].some((v) => v.toLowerCase().includes(q))) : items;
       return { page, total: filtered.length, items: filtered };
     }
+    // AttachmentsPanel (QUESTIONS_UAR.md §9) — aucune pièce jointe dans ces tests, pas le sujet ici.
+    if (pathname === '/api/v1/documents') return [];
     return undefined;
   });
 }
@@ -156,6 +158,22 @@ describe('Écran Échanges (/exchanges)', () => {
     await waitFor(() => expect(screen.getByText('Annexe 2 — Demande d’indemnisation')).toBeInTheDocument());
     expect(screen.getByText('Annexe 3 — Avis d’opposition motivé')).toBeInTheDocument();
     expect(screen.getByText('Montant contesté')).toBeInTheDocument();
+  });
+
+  /**
+   * QUESTIONS_UAR.md §9, décision Product Owner 2026-10-18 — vérifie
+   * uniquement que `AttachmentsPanel` est bien monté dans le détail du
+   * recours (pas sa couverture exhaustive, voir `AttachmentsPanel.test.tsx`).
+   */
+  it('affiche la section « Pièces jointes » dans le détail d’un recours', async () => {
+    mockExchangesApi(ME_WITH_EXCHANGE, [recoursItem()]);
+    renderWithProviders(<ExchangesPage />);
+
+    await waitFor(() => expect(screen.getByText('c-1')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('c-1').closest('tr')!);
+
+    await waitFor(() => expect(screen.getByText('Pièces jointes (Annexes 2/3/4)')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Aucune pièce jointe.')).toBeInTheDocument());
   });
 
   it('filtre la liste par recherche libre (n° recours, dossier, compagnie)', async () => {

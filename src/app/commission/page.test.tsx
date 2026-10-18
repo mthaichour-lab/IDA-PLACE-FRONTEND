@@ -68,6 +68,8 @@ function mockCommissionApi(
     if (penaltyMatch && onPenalty) return onPenalty(penaltyMatch[1]);
     const pvMatch = /^\/api\/v1\/commission\/cases\/(.+)\/pv-sign$/.exec(pathname);
     if (pvMatch) return { ...cases.find((c) => c.id === pvMatch[1])!, pv: { signedBy: 'dev-commission', signedAt: new Date().toISOString(), ref: 'PV-2026-1' } };
+    // AttachmentsPanel (QUESTIONS_UAR.md §9) — aucune pièce jointe dans ces tests, pas le sujet ici.
+    if (pathname === '/api/v1/documents') return [];
     return undefined;
   });
 }
@@ -125,6 +127,22 @@ describe('Écran Commission (/commission)', () => {
 
     await waitFor(() => expect(screen.getByText('5')).toBeInTheDocument());
     expect(screen.getAllByText('2').length).toBeGreaterThan(0);
+  });
+
+  /**
+   * QUESTIONS_UAR.md §9, décision Product Owner 2026-10-18 — vérifie
+   * uniquement que `AttachmentsPanel` est bien monté dans le détail du
+   * dossier (pas sa couverture exhaustive, voir `AttachmentsPanel.test.tsx`).
+   */
+  it('affiche la section « Pièces jointes » dans le détail d’un dossier de commission', async () => {
+    mockCommissionApi(ME_WITH_BOTH, [commissionCase()]);
+    renderWithProviders(<CommissionPage />);
+
+    await waitFor(() => expect(screen.getByText('r-1')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('r-1').closest('tr')!);
+
+    await waitFor(() => expect(screen.getByText('Pièces jointes (PV de commission)')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Aucune pièce jointe.')).toBeInTheDocument());
   });
 
   it("affiche le registre des sanctions dans l'onglet dédié (compagnie, motif, date, auteur)", async () => {

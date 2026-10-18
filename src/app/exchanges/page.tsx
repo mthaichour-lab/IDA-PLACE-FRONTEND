@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
+import { AttachmentsPanel } from '@/components/documents/AttachmentsPanel';
 import { CoChip } from '@/components/ui/CoChip';
 import { CountdownBar } from '@/components/ui/CountdownBar';
 import { Modal } from '@/components/ui/Modal';
@@ -464,6 +465,16 @@ export default function ExchangesPage() {
                   </li>
                 ))}
               </ul>
+            </div>
+
+            {/*
+              QUESTIONS_UAR.md §9, décision Product Owner 2026-10-18 : pièces
+              manuelles (Annexe 2/3/4) attachées à CE recours — jamais à un
+              CommissionCase depuis cet écran (voir `AttachmentsPanel`).
+            */}
+            <div style={{ marginTop: 'var(--s-4)', paddingTop: 'var(--s-4)', borderTop: '1px solid var(--rule)' }}>
+              <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.attachments')}</strong>
+              <AttachmentsPanel recoursId={selected.id} />
             </div>
           </>
         ) : null}

@@ -645,6 +645,7 @@ const fr = {
   'exchanges.detail.transition.title': 'Faire transiter vers',
   'exchanges.detail.transition.toast.ok': 'Transition enregistrée.',
   'exchanges.detail.transition.toast.error': "La transition n'a pas pu être enregistrée.",
+  'exchanges.detail.attachments': 'Pièces jointes (Annexes 2/3/4)',
 
   // ----- Cycle mensuel (écran 5, Module C §6.5) -----
   'monthly.title': 'Cycle mensuel',
@@ -750,6 +751,18 @@ const fr = {
   'commission.decision.pvSigned': 'PV signé',
   'commission.forbidden.penalty': "Vous n'avez pas le privilège requis (penaltyOrder) pour prononcer une pénalité.",
   'commission.forbidden.pvSign': "Vous n'avez pas le privilège requis (pvSign) pour signer le PV.",
+  'commission.detail.attachments': 'Pièces jointes (PV de commission)',
+
+  // ----- Pièces jointes transverses (QUESTIONS_UAR.md §9, décision Product Owner 2026-10-18) -----
+  'documents.attachments.title': 'Pièces jointes',
+  'documents.attachments.empty': 'Aucune pièce jointe.',
+  'documents.attachments.uploadLabel': 'Ajouter une pièce (PDF, JPEG, PNG, WEBP — 15 Mo max)',
+  'documents.attachments.uploadButton': 'Déposer la pièce',
+  'documents.attachments.uploading': 'Dépôt en cours…',
+  'documents.attachments.uploadedBy': 'Déposée par',
+  'documents.attachments.download': 'Télécharger',
+  'documents.attachments.toast.uploadOk': 'Pièce jointe déposée.',
+  'documents.attachments.toast.uploadError': "Le dépôt de la pièce a échoué.",
 } as const;
 
 export type TranslationKey = keyof typeof fr;

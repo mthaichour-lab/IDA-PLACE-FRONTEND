@@ -923,3 +923,21 @@ export interface RolesMatrixResponse {
   roles: string[];
   matrix: RoleMatrix;
 }
+
+/* ===================== Pièces jointes (QUESTIONS_UAR.md §9, décision Product Owner 2026-10-18) ===================== */
+
+/**
+ * Pièce attachée à un `Recours` (écran 4) ou un `CommissionCase` (écran 7) —
+ * réponse de `GET /documents?recoursId=X|commissionCaseId=Y`, reflet exact de
+ * `DocumentViewDto` (back `documents/dto/document.dto.ts`).
+ */
+export interface DocumentView {
+  id: string;
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  uploadedBy: string;
+  uploadedAt: string;
+  /** URL pré-signée à durée courte — recalculée à chaque appel, ne jamais la mémoriser au-delà du rendu courant. */
+  url: string;
+}

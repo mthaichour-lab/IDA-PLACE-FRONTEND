@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
+import { AttachmentsPanel } from '@/components/documents/AttachmentsPanel';
 import { CoChip } from '@/components/ui/CoChip';
 import { Kpi, KpiRow } from '@/components/ui/Kpi';
 import { Modal } from '@/components/ui/Modal';
@@ -314,6 +315,16 @@ export default function CommissionPage() {
                   {t('commission.action.pvSign')}
                 </button>
               </div>
+            </div>
+
+            {/*
+              QUESTIONS_UAR.md §9, décision Product Owner 2026-10-18 : pièces
+              manuelles (PV de commission) attachées à CE dossier — jamais à un
+              Recours depuis cet écran (voir `AttachmentsPanel`).
+            */}
+            <div style={{ marginTop: 'var(--s-4)', paddingTop: 'var(--s-4)', borderTop: '1px solid var(--rule)' }}>
+              <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('commission.detail.attachments')}</strong>
+              <AttachmentsPanel commissionCaseId={selected.id} />
             </div>
           </>
         ) : null}
