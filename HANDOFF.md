@@ -1223,6 +1223,35 @@ règlement") — ajoutée sous "Matrice des positions brutes", avant
   passe (consigne explicite de la session : vérification texte seule, le
   Tech Lead refera lui-même la vérification navigateur réelle avant
   merge).
+- **Revue Tech Lead** : petit correctif avant merge — `quarter.flow.hub`
+  (clé i18n déjà ajoutée par l'agent) n'était en fait jamais utilisée,
+  `FlowDiagram` codait "La place" en dur. Ajout d'une prop `hubLabel`
+  (le composant reste volontairement non lié à `useI18n`, pour rester
+  testable en isolation) fournie par `page.tsx` via `t('quarter.flow.hub')`.
+  Re-vérifié après correctif : lint/vitest(98)/build toujours verts.
+  Mergé dans `master` (`92ee883`).
+- **Vérification navigateur réelle faite par le Tech Lead** (texte seul,
+  `get_page_text`/`read_page` — pas de capture d'écran, consigne
+  explicite de la session) : backend isolé démarré sur le port 3003
+  (3001 déjà occupé par un processus non identifié — probablement une
+  session concurrente — jamais arrêté ni réutilisé, voir
+  `project_ida_place` mémoire), frontend sur 3002 avec
+  `NEXT_PUBLIC_API_URL=http://localhost:3003`. 4 recours créés et réglés
+  entre 4 compagnies (CASH→CAAT 290k, CAAT→SAA 190k, CAAT→CAAR 180k,
+  SAA→CAAT 210k) pour peupler `data.positions`/`data.net` avec du netting
+  bilatéral réel à vérifier (CAAT↔SAA se nette à 20k net SAA→CAAT).
+  Résultat conforme à l'API dans les deux modes : "Flux de règlement
+  entre les 4 compagnies" (titre dynamique, pas "5" en dur), mode
+  multilatéral par défaut avec "La place" + 4 nœuds aux montants signés
+  exacts (CAAR +180 000, CAAT +130 000, CASH −290 000, SAA −20 000,
+  somme nulle comme attendu), bascule Bilatéral avec exactement 3 flèches
+  aux montants exacts (180 000 / 290 000 / 20 000 DZD), sans hub. Seules
+  erreurs console observées : websocket `realtime.ts` vers le port 3001
+  (bundle Turbopack mis en cache d'une session précédente, fichier non
+  modifié par ce changement, sans rapport avec cette fonctionnalité) et
+  le HMR du port 3002 — aucune des deux n'affecte les données REST
+  affichées, qui proviennent bien du backend 3003 (confirmé par la
+  correspondance exacte avec les montants créés manuellement).
 
 ## Scripts
 
