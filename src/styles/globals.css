@@ -619,3 +619,125 @@ a {
   border: 1px dashed var(--rule-strong);
   border-radius: var(--k-r-l);
 }
+
+/* ===================== Référentiel — master-detail (écran 12) ===================== */
+
+.grid.g-ref {
+  grid-template-columns: minmax(300px, 360px) 1fr;
+}
+
+@media (max-width: 1020px) {
+  .grid.g-ref {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ref-nav {
+  display: flex;
+  flex-direction: column;
+}
+
+.ref-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-4) var(--s-5);
+  border: none;
+  border-bottom: 1px solid var(--rule);
+  background: none;
+  font: inherit;
+  text-align: start;
+  color: inherit;
+  cursor: pointer;
+}
+
+.ref-nav-item:last-child {
+  border-bottom: none;
+}
+
+.ref-nav-item.active {
+  background: var(--k-soft);
+}
+
+.ref-nav-icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--k-r-s);
+  background: var(--k-mint);
+  color: var(--k-pri);
+  font-size: var(--k-fs-xs);
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+.ref-nav-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ref-nav-title {
+  font-weight: 600;
+}
+
+.ref-nav-sub {
+  font-size: var(--k-fs-xs);
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ref-nav-chevron {
+  flex-shrink: 0;
+  color: var(--ink-3);
+}
+
+/* Compagnies adhérentes — liste de cartes (écran 12), remplace un `.t` classique : chaque ligne porte trop de métadonnées hétérogènes pour des colonnes fixes. */
+
+.co-card-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.co-card {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-4) 0;
+  border-bottom: 1px solid var(--rule);
+  flex-wrap: wrap;
+}
+
+.co-card:last-child {
+  border-bottom: none;
+}
+
+.co-card-id {
+  flex: 1;
+  min-width: 220px;
+}
+
+.co-card-name {
+  font-weight: 600;
+}
+
+.co-card-meta {
+  font-size: var(--k-fs-xs);
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+
+.co-card-agencies {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--k-fs-s);
+  color: var(--ink-2);
+  white-space: nowrap;
+}

@@ -34,6 +34,13 @@ export interface CompanyView {
   status: CompanyStatus;
   apiKeyMasked: string;
   delayOverrides?: Record<string, unknown>;
+  /** Date d'adhésion (écran 12) — additif, réutilise `Company.createdAt` (back). */
+  createdAt: string;
+  correspondentName?: string;
+  correspondentPhone?: string;
+  correspondentEmail?: string;
+  /** Répartition réelle des agences par type (DG/DR/AG) — additif, écran 12 ("1 DG · 3 DR · 8 agences"). */
+  agencyCounts: { DG: number; DR: number; AG: number };
 }
 
 export type AgencyType = 'DG' | 'DR' | 'AG';
@@ -64,6 +71,36 @@ export interface ExpertView {
   specialties: string[];
   companies: string[];
   status: ExpertStatus;
+}
+
+/**
+ * Paramètres de la convention / calendrier ouvré / barème des motifs
+ * (écran 12, "Référentiel de place") — additif, forme exacte de
+ * `ConventionParams`/`PublicHoliday`/`EligibilityMotif` (back
+ * `referential-reference-data.ts`), `GET /referential/convention|
+ * calendar|motifs`.
+ */
+export interface ConventionParams {
+  version: string;
+  silenceDays: number;
+  oppositionDays: number;
+  forclusionMonths: number;
+  maxAmountDA: number;
+}
+
+export interface PublicHoliday {
+  date: string;
+  label: string;
+}
+
+export interface PlaceCalendar {
+  weekendDays: string[];
+  fixedHolidays: PublicHoliday[];
+}
+
+export interface EligibilityMotif {
+  article: string;
+  label: string;
 }
 
 /* ===================== Cockpit (écran 1, Module I) — B.11/HANDOFF ===================== */

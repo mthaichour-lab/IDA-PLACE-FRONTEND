@@ -523,6 +523,103 @@ vérifié directement contre le code, pas un contrat deviné.
   Suite complète (lint/vitest/build) rejouée après coup : 74/74 tests,
   build propre.
 
+### `/referential` rapproché de la capture de référence (2026-10-18, worktree dédié)
+
+Backend préparé en parallèle par l'agent Backend sur ce même sprint
+(`CompanyViewDto` complété avec `createdAt`/`correspondentName|Phone|Email`/
+`agencyCounts`, nouvelles routes `GET /referential/convention|calendar|
+motifs`) — vérifié directement contre `company.dto.ts`/
+`adherents.controller.ts`/`adherents.service.ts`/
+`referential-reference-data.ts` réels avant de coder contre, pas un contrat
+deviné.
+
+- **Remplacement intégral du layout à onglets par un maître-détail** : une
+  nav verticale de 6 sections à gauche (`grid g-ref`, même idiome que
+  `g-mon`/`g-side` de `/monitoring` — narrow-ish + flexible, nouvelle classe
+  ajoutée à `globals.css` plutôt qu'une réutilisation trompeuse de `g-mon`),
+  contenu de la section sélectionnée à droite. Chaque ligne de nav porte un
+  monogramme (même esprit que `rail-icon` du `Rail` — "pas de librairie
+  d'icônes imposée", A.1), un titre et un sous-titre dérivé de données
+  réelles (ex. "{N} membres · statuts d'adhésion"), jamais un texte figé.
+- **Compagnies adhérentes — liste de cartes** (`.co-card-list`/`.co-card`,
+  nouvelles classes) remplace le `Table` à colonnes : logo-chip, nom + code,
+  ligne de métadonnées "{nameAr} · adhérente depuis le {date} · {DG} DG ·
+  {DR} DR · {AG} agences[· correspondant {nom}]" — le fragment correspondant
+  est entièrement ABSENT (pas de placeholder) quand `correspondentName` est
+  vide, couvert par un test explicite. Badge "{AG} Agences" (le compte de
+  agences de type AG spécifiquement, pas le total des 3 types). Boutons
+  "Nouvel adhérent"/"Modifier l'adhérent" gardés par `hasPrivilege('refedit')`
+  (même garde que le back, `@Privileges('refedit')`) — formulaire
+  création/édition réutilisé entre les deux modales (`CompanyFormFields`).
+- **Bouton "Excel" de la capture délibérément PAS construit** : aucune route
+  d'export back-end (`GET /referential/companies.xlsx` ou équivalent)
+  n'existe — fabriquer un bouton qui ne ferait rien, ou un export côté front
+  sans données à exporter proprement, aurait été une fonctionnalité
+  décorative plutôt que réelle (règle d'or C.1). Seul "Nouvel adhérent"
+  (réellement branché sur `POST /referential/companies`) est présent dans
+  l'en-tête de la section.
+- **Section "Paramètres de la convention"** (nouvelle) : version, plafond
+  Art.4, délais Art.10/12/19 — valeurs réelles de `GET /referential/
+  convention`, elles-mêmes la RÉUTILISATION des constantes déjà réelles de
+  `RecoursModule`/`EligibilityModule` (jamais une 2ᵉ constante dupliquée,
+  voir doc-comment back `getConventionParams`).
+- **Section "Calendrier ouvré"** (nouvelle) : week-end légal (Vendredi/
+  Samedi) + jours fériés à date FIXE 2026-2027, table paginée 6/p. Note
+  explicite en pied de section paraphrasant le doc-comment de
+  `referential-reference-data.ts` : les jours fériés religieux à date
+  mobile (Aïd el-Fitr, Aïd el-Adha, Mawlid Ennabaoui, 1er Moharram,
+  Achoura) sont volontairement absents, leur date dépendant de
+  l'observation lunaire et n'étant confirmée par arrêté officiel qu'à
+  l'approche de l'événement — jamais une date devinée pour ressembler à la
+  capture.
+- **Section "Barème & motifs"** (nouvelle) : catalogue RÉEL de
+  `GET /referential/motifs` (11 entrées, `eligibility.rules.ts`), table
+  paginée 6/p. **Écart assumé avec la capture** : le guide illustré affiche
+  "17 cas · motif interdit RG-01" — aucune taxonomie numérotée/codée "RG-01"
+  n'existe dans ce moteur de règles (7 catégories d'articles réelles,
+  11 motifs). Le compte et les libellés affichés sont les VRAIS (11, sans
+  code), pas 17/RG-01 inventés pour coller à la capture ; une note discrète
+  en pied de section le documente côté UI.
+- **Sous-titre d'en-tête (`FolioHeader`) reformulé** : la capture décrit un
+  "référentiel versionné... avec historique" — ce projet n'a ni versioning
+  ni historique des paramètres de la convention (juste la valeur courante),
+  ni de notion de "sanctions" liée aux experts. Le sous-titre a donc été
+  réécrit pour rester exact (liste les 6 sections réelles) plutôt que de
+  reprendre tel quel un texte qui survend des fonctionnalités absentes.
+- **Agences/Experts** : tableaux `Table` existants conservés tels quels
+  (flat list suffisante, pas de vue arborescente DG/DR/AG construite — la
+  capture ne l'exige pas clairement). Colonne "Compagnie" ajoutée côté
+  Agences (jointure `companyId` → `CoChip`, via une requête `/referential/
+  companies?pageSize=100` dédiée à la carte id→compagnie, l'API agences ne
+  renvoyant que l'id). Sous-titre nav Experts : "suspensions" uniquement,
+  pas "performance" — aucune métrique de performance d'expert n'existe nulle
+  part dans ce codebase (ni dossiers traités, ni affectations trackées) ;
+  inventer un chiffre ici aurait été fabriquer une donnée.
+- Types ajoutés dans `src/lib/types.ts` : `CompanyView` complété
+  (`createdAt`, `correspondentName?/Phone?/Email?`, `agencyCounts`, tous
+  additifs) + nouveaux `ConventionParams`/`PublicHoliday`/`PlaceCalendar`/
+  `EligibilityMotif` (reflet exact des DTO back).
+- Clés i18n ajoutées dans `translations.ts` (dictionnaire `fr` uniquement,
+  `ar`/`en` restent les placeholders auto-dérivés) : `referential.nav.*`,
+  `referential.company.{create,edit,card,field,toast}.*`,
+  `referential.status.*`, `referential.agency.col.*`,
+  `referential.expert.col.*`, `referential.convention.*`,
+  `referential.calendar.*`, `referential.motifs.*`.
+- `page.test.tsx` entièrement réécrit (8 cas) : les 6 sections de nav et la
+  bascule de contenu au clic, pagination 6/p sur les compagnies, ligne de
+  métadonnées complète avec correspondant PUIS sans correspondent (cas de
+  non-régression explicite demandé), clé API jamais en clair, paramètres de
+  convention réels, calendrier (week-end + jours fériés + note mobile),
+  catalogue de motifs réel (et absence de "RG-01"). `company()` du test de
+  `/metering` mis à jour avec les mêmes champs additifs (changement de type
+  partagé, sinon le build cassait pour cet écran non concerné par cette
+  passe).
+- Vérifié : `npm run lint` (tsc --noEmit) propre, `npx vitest run` 75/75
+  (14 fichiers), `npm run build` propre (17 routes statiques, `/referential`
+  inclus). Pas de serveur dev lancé (ports 3000-3002 potentiellement occupés
+  par d'autres sessions sur cette machine) — vérification faite par la
+  suite de tests composants + build, pas en navigateur réel.
+
 ## ⚠️ Particularité de ce sprint : deux implémentations concurrentes réconciliées
 
 Une **session Claude indépendante**, travaillant en parallèle sur ce même

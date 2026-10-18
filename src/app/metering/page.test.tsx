@@ -13,7 +13,20 @@ const ME: MeResponse = {
 const COMPANIES: Paginated<CompanyView> = {
   page: 1,
   total: 1,
-  items: [{ id: 'co-1', code: 'CAAT', name: 'CAAT', color: '#111', kind: 'INSURER', feedMode: 'API', status: 'ACTIF', apiKeyMasked: '****' }],
+  items: [
+    {
+      id: 'co-1',
+      code: 'CAAT',
+      name: 'CAAT',
+      color: '#111',
+      kind: 'INSURER',
+      feedMode: 'API',
+      status: 'ACTIF',
+      apiKeyMasked: '****',
+      createdAt: '2025-12-15T00:00:00.000Z',
+      agencyCounts: { DG: 1, DR: 3, AG: 8 },
+    },
+  ],
 };
 
 const GRID: PriceGrid = {
