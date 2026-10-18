@@ -573,6 +573,48 @@ pas faire confiance à `types.ts` existant sans le recomparer.
   tenu en mémoire pour la session courante (même limite que le journal
   `/import`).
 
+### Revue Tech Lead + vérification navigateur réelle — `/monitoring`, `/fraude`, `/metering` (2026-10-18)
+
+Les 3 écrans ci-dessus (agents Frontend, chacun dans son propre worktree)
+ont été revus, mergés (rebase sur `origin/master` à chaque fois — les 3
+worktrees avaient divergé avant le merge du précédent), re-vérifiés
+(`lint`/`vitest`/`build`) puis testés en navigateur réel (ports 3001/3002,
+jamais 3000) avec des données manufacturées : 9 dossiers importés via
+`POST /claims/import` (CSV déclenchant les 6 détections de `/fraude`,
+y compris la nouvelle `VELOCITE_ADHERENT`), 3 recours créés/réglés/opposés
+entre CAAT/SAA/CASH pour `/monitoring`.
+
+- **Bug trouvé et corrigé en navigateur réel** (`monitoring.scoring.ts`
+  back, `computeMonitoringProfile`) : `onTimeResponsePct` affichait des
+  valeurs > 100 % (ex. 200 %) dès qu'une compagnie avait plus de recours
+  répondus par une opposition (réponse explicite, mais pas encore
+  "résolue") que de recours effectivement résolus — le numérateur et le
+  dénominateur portaient sur deux populations différentes. Corrigé pour
+  utiliser la même population ("répondue" : réponse explicite OU silence
+  Art.10 expiré) des deux côtés. Test de régression ajouté côté back.
+  Vérifié de nouveau en navigateur après correction : CAAT/SAA affichent
+  désormais 100 % (jamais plus), le reste de l'écran inchangé.
+- `/monitoring` : classement (note, taux bruts), radar + 8 tuiles
+  (libellé dynamique "Réponses dans les 30 j"), "Vue par dossier" avec le
+  nombre réel d'étapes par recours — tout confirmé correct en navigateur.
+- `/fraude` : 9 cas détectés sur les 6 types (dont `VELOCITE_ADHERENT`),
+  colonnes Plaque/Adhérent correctes, panneau docké avec sections de
+  signaux groupées par catégorie et descriptions composées des vrais
+  champs `details` (ex. "N° e-constat ECN-SHARED-01 réutilisé sur 2
+  déclarations divergentes") — confirmé correct en navigateur.
+- `/metering` : graphe "Consommation mensuelle" avec sélecteur de
+  métrique, ligne de quota en pointillés, changement de métrique
+  déclenchant bien un nouvel appel `/history/{metric}` — confirmé correct
+  en navigateur. Pas de section Showback (comme prévu).
+- **Piège d'environnement répété** : au redémarrage du back avec
+  `CORS_ORIGIN`, bien s'assurer qu'aucun process frontend ne tourne déjà
+  sur le port 3001 (Next.js replie automatiquement sur le premier port
+  libre s'il trouve le 3000 occupé, ce qui peut voler le 3001 au backend
+  si les deux sont lancés dans le mauvais ordre/sans vérifier `netstat`
+  entre les deux démarrages) — toujours relancer le back D'ABORD, vérifier
+  qu'il écoute bien sur 3001, PUIS lancer le front avec `PORT=3002`
+  explicite.
+
 ## Scripts
 
 | Script | Rôle |
