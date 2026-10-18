@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { mockFetchRouter, renderWithProviders } from '@/test/render';
-import { MeResponse, SettlementMonthly, SettlementMonthlyCompany } from '@/lib/types';
+import { MeResponse, SettlementMonthly, SettlementMonthlyAnnexe7, SettlementMonthlyCompany, SettlementMonthlySummary } from '@/lib/types';
 import MonthlyPage from './page';
 
 const ME_WITH_SYNTH: MeResponse = {
@@ -16,6 +16,19 @@ const ME_WITHOUT_SYNTH: MeResponse = {
   privileges: [],
 };
 
+const SUMMARY: SettlementMonthlySummary = {
+  period: '2026-10',
+  settledCount: 16,
+  totalAmount: 1_622_300,
+  excludedOppositionCount: 17,
+  insertionDeadline: '2026-11-05',
+};
+
+const ANNEXE7: SettlementMonthlyAnnexe7 = {
+  period: '2026-10',
+  pairs: [{ from: 'CASH', to: 'SAA', count: 3, totalAmount: 311_550 }],
+};
+
 function company(overrides: Partial<SettlementMonthlyCompany> = {}): SettlementMonthlyCompany {
   return { code: 'CAAT', claimsCount: 12, resolvedCount: 10, totalAmount: 800_000, status: 'EN_COURS', ...overrides };
 }
@@ -27,6 +40,8 @@ function mockMonthlyApi(me: MeResponse, companies: SettlementMonthlyCompany[], o
       const period = pathname.split('/')[4];
       return onClose ? onClose(period) : undefined;
     }
+    if (/^\/api\/v1\/settlement\/monthly\/[\d-]+\/summary$/.test(pathname)) return SUMMARY;
+    if (/^\/api\/v1\/settlement\/monthly\/[\d-]+\/annexe7$/.test(pathname)) return ANNEXE7;
     if (/^\/api\/v1\/settlement\/monthly\/[\d-]+$/.test(pathname)) return { period: '2026-10', companies } as SettlementMonthly;
     return undefined;
   });
@@ -79,5 +94,23 @@ describe('Écran Cycle mensuel (/monthly)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Générer le bordereau' }));
 
     await waitFor(() => expect(screen.getByText('Bordereau généré.')).toBeInTheDocument());
+  });
+
+  it('affiche les KPI de synthèse mensuelle (recours intégrés, montant, exclus, échéance)', async () => {
+    mockMonthlyApi(ME_WITH_SYNTH, [company()]);
+    renderWithProviders(<MonthlyPage />);
+
+    await waitFor(() => expect(screen.getByText('16')).toBeInTheDocument());
+    expect(screen.getByText(/1\s?622\s?300/)).toBeInTheDocument();
+    expect(screen.getByText('17')).toBeInTheDocument();
+  });
+
+  it("affiche la synthèse Annexe 7 par paire créancier/débiteur, sans netting", async () => {
+    mockMonthlyApi(ME_WITH_SYNTH, [company()]);
+    renderWithProviders(<MonthlyPage />);
+
+    await waitFor(() => expect(screen.getAllByText('CASH').length).toBeGreaterThan(0));
+    expect(screen.getAllByText('SAA').length).toBeGreaterThan(0);
+    expect(screen.getByText(/311\s?550/)).toBeInTheDocument();
   });
 });

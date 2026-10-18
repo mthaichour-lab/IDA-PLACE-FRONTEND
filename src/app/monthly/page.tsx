@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
 import { CoChip } from '@/components/ui/CoChip';
+import { Kpi, KpiRow } from '@/components/ui/Kpi';
 import { Table, Column } from '@/components/ui/Table';
 import { Tag } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
@@ -11,7 +12,7 @@ import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { apiGet, apiPost } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
-import { SettlementMonthly, SettlementMonthlyCompany } from '@/lib/types';
+import { SettlementMonthly, SettlementMonthlyAnnexe7, SettlementMonthlyCompany, SettlementMonthlySummary } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 
@@ -42,6 +43,19 @@ export default function MonthlyPage() {
   const monthlyQuery = useQuery({
     queryKey: ['settlement', 'monthly', period],
     queryFn: () => apiGet<SettlementMonthly>(`/settlement/monthly/${period}`),
+  });
+
+  // Compléments additifs (`/summary`, `/annexe7`) — voir HANDOFF.md et
+  // `src/lib/types.ts` : `SettlementMonthly` ci-dessus reste le contrat figé
+  // inchangé, ces deux endpoints vivent sur des routes séparées.
+  const summaryQuery = useQuery({
+    queryKey: ['settlement', 'monthly', period, 'summary'],
+    queryFn: () => apiGet<SettlementMonthlySummary>(`/settlement/monthly/${period}/summary`),
+  });
+
+  const annexe7Query = useQuery({
+    queryKey: ['settlement', 'monthly', period, 'annexe7'],
+    queryFn: () => apiGet<SettlementMonthlyAnnexe7>(`/settlement/monthly/${period}/annexe7`),
   });
 
   // Clôture par compagnie — forme réelle : `POST /settlement/monthly/:period/close`
@@ -126,7 +140,79 @@ export default function MonthlyPage() {
         </div>
       </div>
 
+      {summaryQuery.isLoading ? (
+        <p>{t('common.loading')}</p>
+      ) : summaryQuery.error || !summaryQuery.data ? (
+        <div className="note ko" role="alert">
+          <span>{t('common.error')}</span>
+          <button type="button" onClick={() => summaryQuery.refetch()}>
+            {t('common.retry')}
+          </button>
+        </div>
+      ) : (
+        <KpiRow>
+          <Kpi value={summaryQuery.data.settledCount} label={t('monthly.kpi.settledCount')} />
+          <Kpi value={formatDzd(summaryQuery.data.totalAmount, locale)} label={t('monthly.kpi.totalAmount')} />
+          <Kpi value={summaryQuery.data.excludedOppositionCount} label={t('monthly.kpi.excludedOppositionCount')} />
+          <Kpi
+            value={new Date(summaryQuery.data.insertionDeadline).toLocaleDateString(locale)}
+            label={t('monthly.kpi.insertionDeadline')}
+            extra={t('monthly.kpi.insertionDeadline.extra')}
+          />
+        </KpiRow>
+      )}
+
+      <div className="sheet" style={{ marginTop: 'var(--s-5)', marginBottom: 'var(--s-5)' }}>
+        <div className="sheet-head">
+          <span>{t('monthly.annexe7.title')}</span>
+        </div>
+        <div className="sheet-body">
+          {annexe7Query.isLoading ? (
+            <p>{t('common.loading')}</p>
+          ) : annexe7Query.error || !annexe7Query.data ? (
+            <div className="note ko" role="alert">
+              <span>{t('common.error')}</span>
+              <button type="button" onClick={() => annexe7Query.refetch()}>
+                {t('common.retry')}
+              </button>
+            </div>
+          ) : annexe7Query.data.pairs.length === 0 ? (
+            <p style={{ color: 'var(--ink-3)' }}>{t('common.noData')}</p>
+          ) : (
+            <div className="t-wrap">
+              <table className="t">
+                <thead>
+                  <tr>
+                    <th>{t('monthly.annexe7.col.creditor')}</th>
+                    <th>{t('monthly.annexe7.col.debtor')}</th>
+                    <th>{t('monthly.annexe7.col.count')}</th>
+                    <th>{t('monthly.annexe7.col.amount')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {annexe7Query.data.pairs.map((pair) => (
+                    <tr key={`${pair.from}|${pair.to}`}>
+                      <td style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <CoChip code={pair.from} /> <span className="mono">{pair.from}</span>
+                      </td>
+                      <td style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <CoChip code={pair.to} /> <span className="mono">{pair.to}</span>
+                      </td>
+                      <td className="mono">{pair.count}</td>
+                      <td className="mono">{formatDzd(pair.totalAmount, locale)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="sheet">
+        <div className="sheet-head">
+          <span>{t('monthly.completeness.title')}</span>
+        </div>
         <div className="sheet-body">
           {monthlyQuery.isLoading ? (
             <p>{t('common.loading')}</p>
