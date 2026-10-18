@@ -186,15 +186,26 @@ export default function ExchangesPage() {
 
   /**
    * Toutes les clôtures trimestrielles jamais enregistrées (place entière,
-   * sans filtre — voir `SettlementQuarterClosure`) : référentiel à faible
-   * churn (une clôture par trimestre par scope, jamais réécrite), laissé au
-   * `staleTime` par défaut du `QueryClient` (15s, voir `query-provider.tsx`)
-   * — aucun autre écran de ce projet ne surcharge `staleTime` par requête,
-   * pas de convention à réinventer ici.
+   * sans filtre — voir `SettlementQuarterClosure`).
+   *
+   * Revue Testeur (2026-10-18) : `staleTime` seul ne suffit PAS ici — il ne
+   * fait que dire qu'une valeur en cache peut être réutilisée sans
+   * reconfirmation, il ne déclenche aucun re-fetch en arrière-plan tant que
+   * le composant reste monté sans remount/refocus. Un opérateur resté sur
+   * `/exchanges` pendant qu'un trimestre est clôturé ailleurs (autre onglet,
+   * autre session) voyait donc un classement "Accepté/silence" figé
+   * indéfiniment sans rechargement manuel — confirmé en vérification réelle
+   * (`read_network_requests` sur 30s : `recours?filter=REGLE` re-interrogé,
+   * `settlement/quarter/closures` jamais). Même `refetchInterval` que les
+   * autres requêtes de cet écran (`listQuery`/`regleAllQuery`/
+   * `countersQuery`) — référentiel à faible churn, mais pas figé pour
+   * autant : une clôture peut survenir à tout moment pendant qu'on regarde
+   * cet écran.
    */
   const closuresQuery = useQuery({
     queryKey: ['settlement', 'quarter', 'closures'],
     queryFn: () => apiGet<SettlementQuarterClosure[]>('/settlement/quarter/closures'),
+    refetchInterval: POLL_INTERVAL_MS,
   });
 
   const closedQuarters = useMemo(() => new Set((closuresQuery.data ?? []).map((c) => c.period)), [closuresQuery.data]);

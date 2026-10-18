@@ -1253,6 +1253,48 @@ règlement") — ajoutée sous "Matrice des positions brutes", avant
   affichées, qui proviennent bien du backend 3003 (confirmé par la
   correspondance exacte avec les montants créés manuellement).
 
+### `/exchanges` — sous-onglets REGLE "Accepté/silence" / "Réglé/compensé" (2026-10-18, équipe 4 rôles : Tech Lead + Backend + Frontend + Testeur)
+
+Point 6 de `QUESTIONS_UAR.md` (backend) — décision Product Owner (l'utilisateur
+réel, pas simulée) : la distinction entre les deux sous-onglets du guide
+illustré est PUREMENT TEMPORELLE (trimestre du recours réglé déjà clôturé ou
+non), pas un nouvel état `RECOURS_STATES`, aucun nouveau champ sur `Recours`.
+
+- **Backend** (agent dédié, worktree) : nouvel endpoint additif
+  `GET /settlement/quarter/closures` (toutes les clôtures trimestrielles,
+  place entière, voir HANDOFF backend).
+- **Frontend** (agent dédié, worktree) : sur l'onglet REGLE de `/exchanges`,
+  deux sous-onglets calculés CÔTÉ CLIENT (`quarterOf(settledAt)` croisé
+  avec la liste des clôtures) — population REGLE complète récupérée en un
+  seul appel (`pageSize: 100_000`, même idiome que `/monitoring`/`/fraude`)
+  puis re-paginée localement par sous-onglet (6/p, A.5) ; tous les autres
+  onglets de premier niveau gardent la pagination serveur existante
+  inchangée.
+- **Testeur** (agent dédié, vérification réelle en navigateur, texte seul —
+  jamais de capture d'écran) : séquence avant/après clôture vérifiée de bout
+  en bout (recours créé+réglé → visible en "Accepté/silence" → trimestre
+  clôturé via l'API → visible en "Réglé/compensé" après rechargement),
+  montants/compteurs exacts, régression des autres onglets confirmée propre.
+  **Trouvaille réelle (pas un crash, un vrai problème de fraîcheur)** :
+  `closuresQuery` n'avait PAS de `refetchInterval` contrairement aux 3
+  autres requêtes de cet écran — `staleTime` seul ne déclenche aucun
+  re-fetch en arrière-plan tant que le composant reste monté, donc un
+  opérateur resté sur `/exchanges` pendant qu'un trimestre est clôturé
+  ailleurs (autre onglet/session) voyait un classement figé indéfiniment
+  sans rechargement manuel. Confirmé par `read_network_requests` sur une
+  fenêtre de 30s : `recours?filter=REGLE` re-interrogé plusieurs fois,
+  `settlement/quarter/closures` jamais. Corrigé par le Tech Lead
+  (`refetchInterval: POLL_INTERVAL_MS`, même valeur que les 3 autres
+  requêtes de cet écran) — jamais corrigé par le Testeur lui-même,
+  conformément à son rôle (remonte, ne corrige jamais).
+- Vérifié après correctif : `tsc --noEmit` propre, 102/102 tests (Vitest),
+  build réussi.
+- 2 autres points du guide (onglets Commission "Adhésions & retraits"/
+  "Plafond conventionnel", pipeline "Avancement du lot" de `/quarter`)
+  explicitement REPORTÉS par décision du Product Owner — aucune donnée/
+  processus documenté pour construire un workflow réel sans l'inventer,
+  voir `QUESTIONS_UAR.md` §7/§8 (backend).
+
 ## Scripts
 
 | Script | Rôle |
