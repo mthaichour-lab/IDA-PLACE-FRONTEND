@@ -850,6 +850,36 @@ entre CAAT/SAA/CASH pour `/monitoring`.
   qu'il écoute bien sur 3001, PUIS lancer le front avec `PORT=3002`
   explicite.
 
+### Revue Tech Lead + vérification navigateur réelle — `/referential`, `/params`, `/ledger` (2026-10-18)
+
+Les 3 écrans ci-dessus (agents Frontend, chacun dans son propre worktree)
+ont été revus, rebasés sur `origin/master` (conflits HANDOFF.md uniquement
+— sections datées côte à côte, jamais de conflit de code) puis mergés,
+re-vérifiés (`lint`/`vitest`/`build`) puis testés en navigateur réel
+(ports 3001/3002, jamais 3000).
+
+- **Bug réel trouvé et corrigé en navigateur réel** (back,
+  `metering.module.ts`) : le dashboard "Coûts & tarification" de
+  `/params` affichait "NaN DZD"/"undefined adhérents" partout.
+  `GET /metering/place-summary/:period` était déclarée APRÈS
+  `GET /metering/:company/:period` — Nest/Express matche les routes dans
+  l'ordre de déclaration, donc `place-summary` était capturé comme valeur
+  de `:company` par la route générique, jamais atteinte. Corrigé côté back
+  (réordonnancement des routes, commit `fa8ed26`) — aucun changement front
+  nécessaire. Revérifié en navigateur après correction : les 4 KPI et le
+  tableau des 12 inducteurs affichent les vraies valeurs (1 092 350 DZD,
+  5 adhérents, etc.).
+- `/referential` : les 6 sections (Compagnies/Agences/Experts/Convention/
+  Calendrier/Motifs) confirmées correctes en navigateur — fragment
+  correspondant bien absent quand non renseigné, convention/calendrier/
+  motifs alimentés par les vraies valeurs back.
+- `/params` : KPI Utilisateurs corrects, matrice Rôles × privilèges
+  transposée avec libellés humains conformes à la capture, dashboard
+  Coûts correct après le correctif ci-dessus.
+- `/ledger` : liste en cartes avec numérotation décroissante, filtre par
+  type (avec décomptes), "Vérifier l'intégrité" fonctionnel — tous
+  confirmés corrects en navigateur.
+
 ## Scripts
 
 | Script | Rôle |
