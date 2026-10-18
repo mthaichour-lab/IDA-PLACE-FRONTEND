@@ -1253,6 +1253,45 @@ règlement") — ajoutée sous "Matrice des positions brutes", avant
   affichées, qui proviennent bien du backend 3003 (confirmé par la
   correspondance exacte avec les montants créés manuellement).
 
+### Pièces jointes Recours/Commission — `AttachmentsPanel` (2026-10-18, équipe 4 rôles : Tech Lead + Backend + Frontend + Testeur)
+
+QUESTIONS_UAR.md §9 (backend) — décision Product Owner réelle : dépôt
+MANUEL de pièces (Annexe 2/3/4, PV de commission) sur un `Recours` ou un
+`CommissionCase`, jamais de génération automatique de PDF.
+
+- **Composant transverse** `src/components/documents/AttachmentsPanel.tsx`
+  — props en union exclusive TypeScript (`recoursId` XOR
+  `commissionCaseId`, imposé dès la compilation). Liste réelle via `GET
+  /documents?recoursId=X|commissionCaseId=Y`, lien de téléchargement =
+  vraie URL pré-signée reçue de l'API (jamais construite côté front).
+  Contrôle de dépôt (input fichier + bouton) visible UNIQUEMENT si
+  `hasPrivilege('insert')` — réutilise `apiPostForm` (même idiome que
+  `/import`), toast d'erreur sur 400/403/404 sans jamais planter.
+- Intégré dans le détail de `/exchanges` (`recoursId={selected.id}`,
+  section "Pièces jointes (Annexes 2/3/4)") et `/commission`
+  (`commissionCaseId={selected.id}`, section "Pièces jointes (PV de
+  commission)") — même style de titre de section que "Fil d'échanges"
+  déjà présent sur ces écrans.
+- QUESTIONS_UAR.md §11/§12 (backend, privilèges `closeQuarter`/
+  `onboardCompany`) : AUCUN changement frontend nécessaire — l'écran
+  `/quarter` et le formulaire de création de compagnie existants
+  affichent déjà le message d'erreur générique du back sur un 403, sans
+  rien coder de spécifique côté client.
+- Revue Tech Lead avant merge : une clé i18n inutilisée
+  (`documents.attachments.download`, jamais référencée — le nom de
+  fichier sert directement de lien) retirée.
+- Vérifié : `tsc --noEmit` propre, 109/109 tests (Vitest, 7 nouveaux),
+  build réussi.
+- **Vérification Testeur en navigateur/API réel (texte seul)** — PASS :
+  upload réel confirmé (liste rafraîchie, lien de téléchargement non
+  vide après rechargement), 403 cross-tenant confirmé (compagnie tierce,
+  upload ET lecture), variante CommissionCase également vérifiée, aucune
+  erreur console. Limitation notée par le Testeur : le masquage du
+  bouton de dépôt pour un rôle sans `insert` n'a pas pu être revérifié
+  EN NAVIGATEUR dans cette session (le panneau de prévisualisation reste
+  figé sur `OPERATEUR_PLACE`) — couvert uniquement par
+  `AttachmentsPanel.test.tsx`, pas par cette passe navigateur réelle.
+
 ### `/exchanges` — sous-onglets REGLE "Accepté/silence" / "Réglé/compensé" (2026-10-18, équipe 4 rôles : Tech Lead + Backend + Frontend + Testeur)
 
 Point 6 de `QUESTIONS_UAR.md` (backend) — décision Product Owner (l'utilisateur
