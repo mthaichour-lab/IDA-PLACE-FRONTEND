@@ -620,6 +620,80 @@ deviné.
   par d'autres sessions sur cette machine) — vérification faite par la
   suite de tests composants + build, pas en navigateur réel.
 
+### `/ledger` rapproché de la capture de référence (2026-10-18, worktree dédié)
+
+Passe de restylage PURE : aucun changement back nécessaire. Vérifié
+directement contre `ledger.controller.ts`/`ledger.service.ts` (back) avant
+de coder contre — `GET /ledger` renvoie déjà la liste COMPLÈTE non paginée
+(triée `seq ASC`), filtrable seulement par `from`/`to` (pas de filtre par
+`type` côté back) ; `GET /ledger/verify` existe déjà tel quel. Tout l'écart
+avec la capture était donc présentationnel.
+
+- **Tableau `Table` (7 colonnes) remplacé par une liste de cartes** : icône
+  (badge rond coloré, variée par mot-clé du `type` — contient `MATCH` →
+  icône "lien" teintée `--k-pri` ; contient `INGEST`/`CLAIM` → icône
+  "bac de réception" teintée `--ok` ; tout autre `type` → simple pastille
+  neutre, AUCUN type inventé) puis titre "#{séquence} {Type} · {réf}" en
+  gras, puis description "{résumé} — {auteur}" en texte atténué, puis à
+  droite l'horodatage et "{empreinte} ← {empreinte précédente}" (réutilise
+  `truncHash` existant).
+- **Numéro de séquence (`#1806`, décroissant)** dérivé UNIQUEMENT de la
+  position de l'entrée dans la liste complète renvoyée par l'API (déjà
+  triée `seq ASC` côté back) — `entries.map((e,i) => ({...e, seq: i+1}))`
+  puis affichage dans l'ordre inverse (la plus récente en tête). Aucun
+  champ `seq` ajouté côté back : purement dérivé côté front, comme demandé.
+  Le numéro reste celui de la place entière même après filtrage type/texte
+  (jamais recalculé sur la vue filtrée).
+- **Filtre par type (nouveau, 100% client)** : select "Tous les types (N)"
+  + une option par valeur distincte de `type` réellement présente dans la
+  liste chargée, avec son décompte — calculé depuis le tableau `entries`
+  déjà récupéré (aucun nouvel appel, le back ne filtre pas par type).
+- **Recherche libre (nouveau, 100% client)** : filtre sur
+  `ref`/`actor`/`hash`/`prevHash`, insensible à la casse.
+- **En-tête restylé** : "Vérifier l'intégrité" est désormais un VRAI bouton
+  (plus seulement un tag passif) qui force un `refetch()` immédiat de
+  `GET /ledger/verify` au clic (toast ok/ko avec le résultat), en PLUS du
+  polling 30 s déjà en place (conservé — jamais l'un sans l'autre). Le
+  résultat reste aussi affiché en tag à côté du bouton, comme avant.
+- **Bouton "Page du journal" de la capture : désactivé plutôt qu'une fausse
+  destination.** Aucun endpoint/route back ne correspond à une "page du
+  journal" dédiée (pas plus qu'une page d'impression/export dédiée) — plutôt
+  que d'inventer un lien vers nulle part, le bouton est rendu `disabled`
+  avec un `title` expliquant pourquoi (voir `ledger.page.tooltip`). À
+  remplacer par un vrai lien le jour où un tel endpoint existe.
+- **Export CSV** : comportement conservé, mais exporte désormais les
+  entrées FILTRÉES (type + recherche, en plus de `from`/`to` déjà en
+  place) plutôt que la liste brute non filtrée — plus honnête vis-à-vis du
+  libellé existant "Export CSV généré depuis les entrées affichées".
+- Pagination 6/page conservée (A.5), appliquée à la liste filtrée, rendue
+  en cartes avec la même barre de pagination (`.pager`) qu'avant plutôt
+  que via le composant `Table` générique (devenu inadapté à une liste de
+  cartes).
+- Clés i18n ajoutées dans `translations.ts` (dictionnaire `fr` uniquement) :
+  `ledger.verify.cta`, `ledger.list.title`, `ledger.list.entriesSuffix`,
+  `ledger.filter.allTypes`, `ledger.search.placeholder`,
+  `ledger.page.label`, `ledger.page.tooltip`. Clés retirées (devenues
+  inutiles, l'ancien tableau colonnes disparaissant) : `ledger.verify.title`
+  et les 7 `ledger.col.*`.
+- Test composant (`page.test.tsx`) réécrit (10 cas) : rendu carte (titre/
+  description/colonne de droite), numérotation décroissante depuis le
+  total, clic sur "Vérifier l'intégrité" déclenchant un appel réseau
+  supplémentaire, "Page du journal" désactivé, filtre par type (décompte +
+  restriction), recherche libre (réf/acteur/empreinte), pagination 6/page.
+  **Piège rencontré** : la ligne de titre mélange texte brut et `<span
+  className="mono">` imbriqués — `getByText` par défaut ne concatène que
+  les nœuds texte DIRECTS d'un élément (pas ceux des enfants), donc une
+  correspondance de chaîne exacte sur le texte complet échoue
+  silencieusement ("text is broken up by multiple elements") ; corrigé en
+  comparant `element.textContent` via un matcher fonction (`fullText`
+  helper du fichier de test) plutôt qu'une chaîne/regex simple.
+- Vérifié : `npm run lint` (tsc --noEmit) propre, `npx vitest run` 76/76
+  (14 fichiers), `npm run build` propre (17 routes statiques, `/ledger`
+  inclus). Pas de serveur dev lancé (ports 3000-3002 potentiellement
+  occupés par d'autres sessions sur cette machine) — vérifié par la suite
+  de tests composants + build uniquement ; à revérifier en navigateur dès
+  qu'un port est libre.
+
 ## ⚠️ Particularité de ce sprint : deux implémentations concurrentes réconciliées
 
 Une **session Claude indépendante**, travaillant en parallèle sur ce même
