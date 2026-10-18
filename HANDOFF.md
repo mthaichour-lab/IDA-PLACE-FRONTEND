@@ -1100,6 +1100,44 @@ posée explicitement par le Tech Lead après vérification du code back).
    assertions négatives explicites (pas de "Conducteur"/modèle de
    véhicule/"choc" nulle part dans le DOM).
 
+### Revue Tech Lead + vérification navigateur réelle — `/cockpit`, `/matching` (2026-10-18)
+
+Les 2 derniers écrans du guide (agents Frontend, chacun dans son propre
+worktree) ont été revus, rebasés sur `origin/master` (0 conflit pour
+`/matching` ; `/cockpit` mergé juste avant), re-vérifiés
+(`lint`/`vitest`/`build`) puis testés en navigateur réel (ports 3001/3002,
+jamais 3000) avec des données manufacturées (import CSV de 9 lignes,
+confirmation manuelle d'un appariement via `POST /matching/:id/decide`).
+
+- `/cockpit` : cycle conventionnel confirmé à **exactement 3 étapes**
+  (Saisie mensuelle ✓ / Synthèse Annexe 7 / Compensation trimestrielle),
+  avec la note explicite sur Réunion UAR/règlements 8j non suivis. Les 10
+  tuiles "Indicateurs de place" et les KPI du bandeau correspondent
+  exactement à la réponse de `GET /cockpit/summary`. "Positions nettes T4"
+  affiche honnêtement "Aucune position nette pour ce trimestre" (aucune
+  compensation exécutée dans les données de test) plutôt qu'une valeur
+  inventée. Flux temps réel affiche "Aucun événement reçu" (aucun socket
+  émis pendant la session de vérification) — état vide honnête, pas un
+  flux fabriqué.
+- `/matching` : file de 9 éléments cohérente avec l'import (2 Auto dont un
+  à score 100 par e-constat partagé, 6 À confirmer, 1 confirmé
+  manuellement pendant la vérification → `CONFIRME_MANUEL`). Panneau de
+  détail vérifié sur `ECN-CAL-08`/`ECN-CAL-09` : fractions réelles
+  (`0/35`, `0/15`, `0/15`, `0/10`, `10/10`, jamais une valeur graduée),
+  sous-descriptions concordant/discordant cohérentes avec les critères
+  booléens réels. "Vue de confrontation" : badges Concordant/Discordant
+  corrects champ par champ (wilaya concordante 09/09, date et e-constat
+  discordants, plaques/polices discordantes via le booléen réel de
+  l'algorithme). Cartes Véhicule A/B : uniquement Dossier/Identité
+  assuré/Immatriculation/Canal, confirmé en navigateur qu'aucun champ
+  "Conducteur"/modèle/choc n'apparaît. "Décidé par" affiche correctement
+  l'auteur et l'horodatage réels de la confirmation manuelle faite pendant
+  la vérification.
+
+Les 14 écrans du guide `Guide_IDA_Place.docx` sont désormais tous
+reconstruits et vérifiés (code + navigateur réel, texte seul — pas de
+capture d'écran, consigne explicite de l'utilisateur).
+
 ## Scripts
 
 | Script | Rôle |
