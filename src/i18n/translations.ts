@@ -760,7 +760,6 @@ const fr = {
   'documents.attachments.uploadButton': 'Déposer la pièce',
   'documents.attachments.uploading': 'Dépôt en cours…',
   'documents.attachments.uploadedBy': 'Déposée par',
-  'documents.attachments.download': 'Télécharger',
   'documents.attachments.toast.uploadOk': 'Pièce jointe déposée.',
   'documents.attachments.toast.uploadError': "Le dépôt de la pièce a échoué.",
 } as const;
