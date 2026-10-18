@@ -101,4 +101,88 @@ describe('Écran Confrontation & matching (/matching)', () => {
 
     await waitFor(() => expect(screen.getByRole('tab', { name: /tous/i })).toHaveTextContent('9'));
   });
+
+  /**
+   * B.5 : l'algorithme réel (`matching.scoring.ts` back) n'accorde jamais de
+   * crédit partiel — un critère pondéré donne son poids plein ou zéro. Le
+   * panneau doit refléter ça honnêtement (fraction poids/poids ou 0/poids),
+   * jamais une valeur graduée fabriquée (ex. "21/35" de la capture de
+   * référence, qui n'existe dans aucune donnée réelle).
+   */
+  it('affiche un critère pondéré vrai en fraction réelle 35/35 — jamais une valeur partielle', async () => {
+    const vrai = queueItem(1, { criteria: { econstatPartage: false, plaquesCroisees: true, policeCroisee: true, dateHeure: true, compagniesCroisees: true, gps: true } });
+    mockQueueApi(ME_WITH_MATCH_DECIDE, [vrai]);
+    renderWithProviders(<MatchingPage />);
+
+    await waitFor(() => expect(screen.getByText('ECN-1')).toBeInTheDocument());
+    expect(screen.getByText('35/35')).toBeInTheDocument();
+    expect(screen.queryByText(/21\/35|67\s?%/)).not.toBeInTheDocument();
+  });
+
+  it('affiche un critère pondéré faux en fraction réelle 0/35 — jamais une valeur partielle', async () => {
+    const faux = queueItem(1, { criteria: { econstatPartage: false, plaquesCroisees: false, policeCroisee: true, dateHeure: true, compagniesCroisees: true, gps: true } });
+    mockQueueApi(ME_WITH_MATCH_DECIDE, [faux]);
+    renderWithProviders(<MatchingPage />);
+
+    await waitFor(() => expect(screen.getByText('ECN-1')).toBeInTheDocument());
+    expect(screen.getByText('0/35')).toBeInTheDocument();
+  });
+
+  /**
+   * Section additive "Vue de confrontation" (2026-10-18) : badge Concordant/
+   * Discordant calculé côté front à partir des VRAIES valeurs A/B (ici
+   * `wilayaA`/`wilayaB`), jamais fabriqué — on vérifie les deux sens.
+   */
+  it('affiche "Concordant" quand les valeurs A/B de la confrontation correspondent réellement', async () => {
+    const item = queueItem(1, { wilayaA: '16', wilayaB: '16', accidentDateA: '2026-10-10', accidentDateB: '2026-10-10' });
+    mockQueueApi(ME_WITH_MATCH_DECIDE, [item]);
+    renderWithProviders(<MatchingPage />);
+
+    await waitFor(() => expect(screen.getByText('Wilaya')).toBeInTheDocument());
+    const wilayaCard = screen.getByText('Wilaya').closest('div')?.parentElement as HTMLElement;
+    expect(wilayaCard).toHaveTextContent('Concordant');
+    expect(wilayaCard).not.toHaveTextContent('Discordant');
+  });
+
+  it('affiche "Discordant" quand les valeurs A/B de la confrontation diffèrent réellement', async () => {
+    const item = queueItem(1, { wilayaA: '16', wilayaB: '31' });
+    mockQueueApi(ME_WITH_MATCH_DECIDE, [item]);
+    renderWithProviders(<MatchingPage />);
+
+    await waitFor(() => expect(screen.getByText('Wilaya')).toBeInTheDocument());
+    const wilayaCard = screen.getByText('Wilaya').closest('div')?.parentElement as HTMLElement;
+    expect(wilayaCard).toHaveTextContent('Discordant');
+    expect(wilayaCard).toHaveTextContent('16');
+    expect(wilayaCard).toHaveTextContent('31');
+  });
+
+  /**
+   * Cartes "Véhicule A/B" (2026-10-18) : UNIQUEMENT dossier/identité
+   * assuré/immatriculation/canal — réellement capturés par le modèle 47
+   * colonnes. Assertions négatives : pas de "Conducteur" (nom du conducteur
+   * s'il diffère de l'assuré), pas de modèle de véhicule, pas de point de
+   * choc/schéma — aucun de ces champs n'existe dans les données réelles.
+   */
+  it('affiche les 4 champs réels des cartes Véhicule A/B et rien de plus (pas de Conducteur/modèle/chocs)', async () => {
+    const item = queueItem(1, {
+      assureAIdentite: 'Meriem Belaid',
+      assureBIdentite: 'Hanane Ghezali',
+      canalDeclarationA: 'ECONSTAT',
+      canalDeclarationB: 'ERP',
+    });
+    mockQueueApi(ME_WITH_MATCH_DECIDE, [item]);
+    renderWithProviders(<MatchingPage />);
+
+    await waitFor(() => expect(screen.getByText('Véhicule A')).toBeInTheDocument());
+    expect(screen.getByText('Véhicule B')).toBeInTheDocument();
+    expect(screen.getByText('Meriem Belaid')).toBeInTheDocument();
+    expect(screen.getByText('Hanane Ghezali')).toBeInTheDocument();
+    expect(screen.getByText('E-constat')).toBeInTheDocument();
+    expect(screen.getByText('ERP')).toBeInTheDocument();
+    expect(screen.getAllByText(item.refA).length).toBeGreaterThan(0);
+
+    expect(screen.queryByText(/conducteur/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/chery|tiggo|seat leon|modèle de véhicule/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/choc/i)).not.toBeInTheDocument();
+  });
 });

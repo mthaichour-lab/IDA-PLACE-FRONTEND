@@ -14,6 +14,7 @@ import { TranslationKey } from '@/i18n/translations';
 import { apiGet, apiPost } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import {
+  FeedMode,
   MatchCounters,
   MatchCriteria,
   MatchDecisionAction,
@@ -30,22 +31,162 @@ const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 /**
  * Critères pondérés du score d'appariement (B.5) — libellés + poids
  * **d'affichage uniquement**. Le score final (`row.score`) vient toujours
- * de l'API ; rien n'est recalculé ici (règle d'or C.1).
+ * de l'API ; rien n'est recalculé ici (règle d'or C.1). `sub` (2026-10-18) :
+ * sous-description concordant/discordant — un simple constat booléen (pas de
+ * distance/pourcentage inventés, l'algorithme réel n'a jamais été graduel,
+ * voir `matching.scoring.ts` back : chaque critère pondéré donne son poids
+ * plein ou zéro, jamais une valeur partielle).
  */
-const CRITERIA_WEIGHTS: { key: keyof MatchCriteria; label: TranslationKey; weight: number }[] = [
+const CRITERIA_WEIGHTS: {
+  key: keyof MatchCriteria;
+  label: TranslationKey;
+  weight: number;
+  sub?: { ok: TranslationKey; ko: TranslationKey };
+}[] = [
   { key: 'econstatPartage', label: 'matching.criteria.econstatPartage', weight: 0 },
-  { key: 'plaquesCroisees', label: 'matching.criteria.plaquesCroisees', weight: 35 },
-  { key: 'policeCroisee', label: 'matching.criteria.policeCroisee', weight: 15 },
-  { key: 'dateHeure', label: 'matching.criteria.dateHeure', weight: 15 },
-  { key: 'compagniesCroisees', label: 'matching.criteria.compagniesCroisees', weight: 10 },
-  { key: 'gps', label: 'matching.criteria.gps', weight: 10 },
+  {
+    key: 'plaquesCroisees',
+    label: 'matching.criteria.plaquesCroisees',
+    weight: 35,
+    sub: { ok: 'matching.criteria.plaquesCroisees.ok', ko: 'matching.criteria.plaquesCroisees.ko' },
+  },
+  {
+    key: 'policeCroisee',
+    label: 'matching.criteria.policeCroisee',
+    weight: 15,
+    sub: { ok: 'matching.criteria.policeCroisee.ok', ko: 'matching.criteria.policeCroisee.ko' },
+  },
+  {
+    key: 'dateHeure',
+    label: 'matching.criteria.dateHeure',
+    weight: 15,
+    sub: { ok: 'matching.criteria.dateHeure.ok', ko: 'matching.criteria.dateHeure.ko' },
+  },
+  {
+    key: 'compagniesCroisees',
+    label: 'matching.criteria.compagniesCroisees',
+    weight: 10,
+    sub: { ok: 'matching.criteria.compagniesCroisees.ok', ko: 'matching.criteria.compagniesCroisees.ko' },
+  },
+  {
+    key: 'gps',
+    label: 'matching.criteria.gps',
+    weight: 10,
+    sub: { ok: 'matching.criteria.gps.ok', ko: 'matching.criteria.gps.ko' },
+  },
 ];
+
+const CANAL_LABEL: Record<FeedMode, TranslationKey> = {
+  ERP: 'matching.canal.ERP',
+  ECONSTAT: 'matching.canal.ECONSTAT',
+  IMPORT: 'matching.canal.IMPORT',
+  API: 'matching.canal.API',
+};
 
 function statusTone(status: MatchStatus): TagTone {
   if (status === 'AUTO_CONFIRME' || status === 'CONFIRME_MANUEL') return 'ok';
   if (status === 'A_CONFIRMER') return 'warn';
   if (status === 'REJETE') return 'ko';
   return 'a';
+}
+
+/** Formatage d'affichage d'une date ISO simple (AAAA-MM-JJ) — `—` si absente/invalide, jamais une valeur fabriquée. */
+function formatDate(value: string | undefined, locale: string): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString(locale);
+}
+
+/**
+ * Carte de confrontation champ par champ (section additive "Vue de
+ * confrontation", 2026-10-18) — badge Concordant/Discordant calculé par
+ * l'appelant à partir des VRAIES valeurs A/B (jamais fabriqué ici).
+ */
+function ConfrontationCard({
+  label,
+  valueA,
+  valueB,
+  concordant,
+  okLabel,
+  koLabel,
+}: {
+  label: string;
+  valueA: string;
+  valueB: string;
+  concordant: boolean;
+  okLabel: string;
+  koLabel: string;
+}) {
+  return (
+    <div style={{ border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', padding: 'var(--s-3)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--s-2)', gap: 6 }}>
+        <strong style={{ fontSize: 'var(--k-fs-s)' }}>{label}</strong>
+        <Tag tone={concordant ? 'ok' : 'ko'}>{concordant ? okLabel : koLabel}</Tag>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 'var(--k-fs-s)' }}>
+        <span>
+          <span style={{ color: 'var(--ink-3)' }}>A </span>
+          <span className="mono">{valueA}</span>
+        </span>
+        <span>
+          <span style={{ color: 'var(--ink-3)' }}>B </span>
+          <span className="mono">{valueB}</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Carte "Véhicule A/B" (section additive, 2026-10-18) — UNIQUEMENT les
+ * champs réellement capturés par le modèle 47 colonnes (`claim-47-
+ * columns.ts` back) : dossier, identité assuré, immatriculation, canal.
+ * Volontairement PAS de "Conducteur" (nom du conducteur s'il diffère de
+ * l'assuré — seul un booléen "conducteur = assuré" existe), PAS de
+ * modèle de véhicule (seule la plaque est capturée), PAS de point de choc,
+ * PAS de schéma d'accident (voir HANDOFF.md) — la référence montre ces
+ * champs mais aucun n'existe dans le modèle de données réel.
+ */
+function VehicleCard({
+  title,
+  company,
+  dossier,
+  identite,
+  plate,
+  canalLabel,
+  t,
+}: {
+  title: string;
+  company: string;
+  dossier: string;
+  identite?: string;
+  plate: string;
+  canalLabel: string;
+  t: (key: TranslationKey) => string;
+}) {
+  return (
+    <div style={{ border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', padding: 'var(--s-3)', flex: '1 1 260px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 'var(--s-3)' }}>
+        <strong style={{ fontSize: 'var(--k-fs-s)' }}>{title}</strong>
+        <CoChip code={company} />
+      </div>
+      <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 10px', margin: 0, fontSize: 'var(--k-fs-s)' }}>
+        <dt style={{ color: 'var(--ink-3)' }}>{t('matching.vehicle.dossier')}</dt>
+        <dd className="mono" style={{ margin: 0 }}>
+          {dossier}
+        </dd>
+        <dt style={{ color: 'var(--ink-3)' }}>{t('matching.vehicle.identity')}</dt>
+        <dd style={{ margin: 0 }}>{identite ?? t('matching.vehicle.unknown')}</dd>
+        <dt style={{ color: 'var(--ink-3)' }}>{t('matching.vehicle.plate')}</dt>
+        <dd className="mono" style={{ margin: 0 }}>
+          {plate}
+        </dd>
+        <dt style={{ color: 'var(--ink-3)' }}>{t('matching.vehicle.canal')}</dt>
+        <dd style={{ margin: 0 }}>{canalLabel}</dd>
+      </dl>
+    </div>
+  );
 }
 
 export default function MatchingPage() {
@@ -278,15 +419,32 @@ export default function MatchingPage() {
                   <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>
                     {t('matching.panel.criteria')}
                   </strong>
-                  <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {CRITERIA_WEIGHTS.map((c) => (
-                      <li key={c.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 'var(--k-fs-s)' }}>
-                        <span>
-                          {t(c.label)} {c.weight > 0 ? <span className="mono" style={{ color: 'var(--ink-3)' }}>({c.weight})</span> : null}
-                        </span>
-                        <Tag tone={selected.criteria[c.key] ? 'ok' : 'a'}>{selected.criteria[c.key] ? 'OK' : '—'}</Tag>
-                      </li>
-                    ))}
+                  <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {CRITERIA_WEIGHTS.map((c) => {
+                      const ok = selected.criteria[c.key];
+                      if (!c.sub) {
+                        // e-constat partagé — poids 0 (clé exacte, pas un critère composite) : tag OK/— inchangé.
+                        return (
+                          <li key={c.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 'var(--k-fs-s)' }}>
+                            <span>{t(c.label)}</span>
+                            <Tag tone={ok ? 'ok' : 'a'}>{ok ? 'OK' : '—'}</Tag>
+                          </li>
+                        );
+                      }
+                      // Critère pondéré (B.5) — fraction réelle poids/poids (ou 0/poids) : l'algorithme
+                      // réel n'accorde jamais de crédit partiel (voir `MATCH_WEIGHTS`, matching.scoring.ts back).
+                      return (
+                        <li key={c.key} style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 'var(--k-fs-s)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>{t(c.label)}</span>
+                            <span className="mono" style={{ color: ok ? 'var(--ok)' : 'var(--ko)', fontWeight: 600 }}>
+                              {ok ? c.weight : 0}/{c.weight}
+                            </span>
+                          </div>
+                          <span style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}>{t(ok ? c.sub.ok : c.sub.ko)}</span>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
 
@@ -359,6 +517,104 @@ export default function MatchingPage() {
             )}
           </div>
         </aside>
+      </div>
+
+      <div className="sheet" style={{ marginTop: 'var(--s-5)' }}>
+        <div className="sheet-head">
+          <span>
+            {t('matching.confrontation.title')}
+            {selected?.refB ? (
+              <>
+                {' — '}
+                <span className="mono">{selected.refA}</span> / <span className="mono">{selected.refB}</span>
+              </>
+            ) : null}
+          </span>
+        </div>
+        <div className="sheet-body">
+          {!selected || !selected.refB ? (
+            <p style={{ color: 'var(--ink-3)' }}>{t('matching.confrontation.empty')}</p>
+          ) : (
+            <>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                  gap: 'var(--s-3)',
+                  marginBottom: 'var(--s-5)',
+                }}
+              >
+                <ConfrontationCard
+                  label={t('matching.confrontation.field.econstat')}
+                  valueA={selected.refA}
+                  valueB={selected.refB}
+                  concordant={selected.refA === selected.refB}
+                  okLabel={t('matching.confrontation.badge.concordant')}
+                  koLabel={t('matching.confrontation.badge.discordant')}
+                />
+                <ConfrontationCard
+                  label={t('matching.confrontation.field.accidentDate')}
+                  valueA={formatDate(selected.accidentDateA, locale)}
+                  valueB={formatDate(selected.accidentDateB, locale)}
+                  concordant={!!selected.accidentDateA && selected.accidentDateA === selected.accidentDateB}
+                  okLabel={t('matching.confrontation.badge.concordant')}
+                  koLabel={t('matching.confrontation.badge.discordant')}
+                />
+                <ConfrontationCard
+                  label={t('matching.confrontation.field.wilaya')}
+                  valueA={selected.wilayaA ?? t('matching.confrontation.unknown')}
+                  valueB={selected.wilayaB ?? t('matching.confrontation.unknown')}
+                  concordant={!!selected.wilayaA && selected.wilayaA === selected.wilayaB}
+                  okLabel={t('matching.confrontation.badge.concordant')}
+                  koLabel={t('matching.confrontation.badge.discordant')}
+                />
+                {/* Immatriculations/polices croisées : le badge réutilise le booléen RÉEL déjà
+                    calculé par l'algorithme (`criteria.*`, matching.scoring.ts back) plutôt qu'une
+                    égalité naïve des valeurs affichées — `plateA`/`plateB` et `policeA`/`policeB`
+                    sont chacun la valeur "soi-même" de SA déclaration (même convention), pas une
+                    paire directement comparable ; le vrai croisement compare les deux ENSEMBLES
+                    {plaque/police propre, plaque/police adverse déclarée} des deux côtés. */}
+                <ConfrontationCard
+                  label={t('matching.confrontation.field.plaques')}
+                  valueA={selected.plateA}
+                  valueB={selected.plateB ?? t('matching.confrontation.unknown')}
+                  concordant={selected.criteria.plaquesCroisees}
+                  okLabel={t('matching.confrontation.badge.concordant')}
+                  koLabel={t('matching.confrontation.badge.discordant')}
+                />
+                <ConfrontationCard
+                  label={t('matching.confrontation.field.police')}
+                  valueA={selected.policeA ?? t('matching.confrontation.unknown')}
+                  valueB={selected.policeB ?? t('matching.confrontation.unknown')}
+                  concordant={selected.criteria.policeCroisee}
+                  okLabel={t('matching.confrontation.badge.concordant')}
+                  koLabel={t('matching.confrontation.badge.discordant')}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: 'var(--s-3)', flexWrap: 'wrap' }}>
+                <VehicleCard
+                  title={t('matching.vehicle.titleA')}
+                  company={selected.companyA}
+                  dossier={selected.refA}
+                  identite={selected.assureAIdentite}
+                  plate={selected.plateA}
+                  canalLabel={selected.canalDeclarationA ? t(CANAL_LABEL[selected.canalDeclarationA]) : t('matching.vehicle.unknown')}
+                  t={t}
+                />
+                <VehicleCard
+                  title={t('matching.vehicle.titleB')}
+                  company={selected.companyB ?? '—'}
+                  dossier={selected.refB}
+                  identite={selected.assureBIdentite}
+                  plate={selected.plateB ?? t('matching.vehicle.unknown')}
+                  canalLabel={selected.canalDeclarationB ? t(CANAL_LABEL[selected.canalDeclarationB]) : t('matching.vehicle.unknown')}
+                  t={t}
+                />
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </>
   );

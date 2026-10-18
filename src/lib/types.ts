@@ -249,6 +249,26 @@ export interface MatchQueueItem {
   confirmedAt?: string;
   rejectReason?: string;
   at: string;
+  /**
+   * Champs additifs (2026-10-18, écran 2 "Vue de confrontation") — une
+   * valeur par déclaration (A/B), forme exacte de `MatchQueueItemDto` (back
+   * `matching.dto.ts`) : affichage uniquement, n'entrent dans aucun calcul
+   * de score/niveau (toujours renvoyés par l'API, jamais recalculés ici —
+   * règle d'or C.1). Volontairement PAS de "Conducteur"/modèle de
+   * véhicule/point de choc/schéma d'accident : aucun de ces champs
+   * n'existe dans le modèle 47 colonnes (voir HANDOFF.md).
+   */
+  accidentDateA?: string;
+  accidentDateB?: string;
+  wilayaA?: string;
+  wilayaB?: string;
+  assureAIdentite?: string;
+  assureBIdentite?: string;
+  canalDeclarationA?: FeedMode;
+  canalDeclarationB?: FeedMode;
+  /** N° police/attestation "soi-même" de chaque déclaration (même convention que `plateA`/`plateB`). */
+  policeA?: string;
+  policeB?: string;
 }
 
 export interface MatchCounters {

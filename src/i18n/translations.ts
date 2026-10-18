@@ -244,6 +244,50 @@ const fr = {
   'matching.decidedBy': 'Décidé par',
   'matching.rejectReason': 'Motif du rejet',
 
+  // Sous-description concordant/discordant par critère (booléen réel — voir
+  // `matching.scoring.ts` back) : jamais une distance/pourcentage inventés.
+  'matching.criteria.plaquesCroisees.ok': 'Plaques concordantes',
+  'matching.criteria.plaquesCroisees.ko': 'Plaques discordantes',
+  'matching.criteria.policeCroisee.ok': 'Police / attestation concordante',
+  'matching.criteria.policeCroisee.ko': 'Police / attestation discordante',
+  'matching.criteria.dateHeure.ok': 'Date et heure concordantes',
+  'matching.criteria.dateHeure.ko': 'Date et heure discordantes',
+  'matching.criteria.compagniesCroisees.ok': 'Compagnies concordantes',
+  'matching.criteria.compagniesCroisees.ko': 'Compagnies discordantes',
+  'matching.criteria.gps.ok': 'Position GPS concordante',
+  'matching.criteria.gps.ko': 'Position GPS discordante',
+
+  // ----- Vue de confrontation (écran 2, section additive 2026-10-18) -----
+  'matching.confrontation.title': 'Vue de confrontation',
+  'matching.confrontation.empty': 'Sélectionnez une ligne appariée pour voir la confrontation champ par champ.',
+  'matching.confrontation.badge.concordant': 'Concordant',
+  'matching.confrontation.badge.discordant': 'Discordant',
+  'matching.confrontation.field.econstat': 'N° e-constat',
+  'matching.confrontation.field.accidentDate': "Date d'accident",
+  'matching.confrontation.field.wilaya': 'Wilaya',
+  'matching.confrontation.field.plaques': 'Immatriculations croisées',
+  'matching.confrontation.field.police': 'Polices croisées',
+  'matching.confrontation.valueA': 'A',
+  'matching.confrontation.valueB': 'B',
+  'matching.confrontation.unknown': '—',
+
+  // ----- Cartes Véhicule A / B (écran 2, section additive 2026-10-18) -----
+  // Volontairement SEULEMENT dossier/identité assuré/immatriculation/canal —
+  // ni "Conducteur" (nom du conducteur), ni modèle de véhicule, ni point de
+  // choc, ni schéma d'accident : aucun de ces champs n'existe dans le modèle
+  // 47 colonnes (voir HANDOFF.md, `claim-47-columns.ts`/`claim.entity.ts` back).
+  'matching.vehicle.titleA': 'Véhicule A',
+  'matching.vehicle.titleB': 'Véhicule B',
+  'matching.vehicle.dossier': 'Dossier',
+  'matching.vehicle.identity': 'Identité assuré',
+  'matching.vehicle.plate': 'Immatriculation',
+  'matching.vehicle.canal': 'Canal',
+  'matching.vehicle.unknown': '—',
+  'matching.canal.ERP': 'ERP',
+  'matching.canal.ECONSTAT': 'E-constat',
+  'matching.canal.IMPORT': 'Import fichier',
+  'matching.canal.API': 'API',
+
   // ----- Import des dossiers (écran 3, Module XII) -----
   'import.title': 'Import des dossiers',
   'import.subtitle': "Téléversement du modèle 47 colonnes (Excel/CSV) — le contrôle d'éligibilité IDA est effectué par l'API, ligne à ligne.",

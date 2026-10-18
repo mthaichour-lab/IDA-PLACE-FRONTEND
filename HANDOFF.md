@@ -1034,6 +1034,72 @@ re-vérifiés (`lint`/`vitest`/`build`) puis testés en navigateur réel
   type (avec décomptes), "Vérifier l'intégrité" fonctionnel — tous
   confirmés corrects en navigateur.
 
+### `/matching` — enrichissement du panneau de détail + "Vue de confrontation" (2026-10-18, agent Frontend)
+
+Repris sur la maquette de référence (`Guide_IDA_Place.docx`, écran 2) pour
+rapprocher la présentation de `/matching` de la capture, **sans fabriquer
+de donnée absente du modèle réel** (voir le détail ci-dessous — contrainte
+posée explicitement par le Tech Lead après vérification du code back).
+
+1. **Critères pondérés en fraction réelle** (`{poids}/{poids}` ou
+   `0/{poids}`) au lieu du tag `OK`/`—` plat — plus une sous-description
+   concordant/discordant honnête (ex. "Plaques discordantes"). **Jamais**
+   la valeur graduée de la capture (ex. "21/35", "67 %") : vérifié dans
+   `matching.scoring.ts` (back) que chaque critère pondéré
+   (`plaquesCroisees`/`policeCroisee`/`dateHeure`/`compagniesCroisees`/
+   `gps`) est un booléen strict, poids plein ou zéro — aucun calcul de
+   similarité/distance/pourcentage n'existe dans l'algorithme réel. Les
+   fractions affichées utilisent les mêmes constantes (`MATCH_WEIGHTS`)
+   que le score déjà renvoyé par l'API — rien n'est recalculé côté front
+   (règle d'or C.1).
+2. **Nouvelle section "Vue de confrontation"** (sous le panneau de détail)
+   : cartes champ par champ (N° e-constat, date d'accident, wilaya,
+   immatriculations croisées, polices croisées), badge Concordant/
+   Discordant. Pour les 3 champs directement comparables (e-constat, date,
+   wilaya) : égalité calculée côté front sur les vraies valeurs A/B. Pour
+   les 2 champs "croisés" (immatriculations, polices) : badge = le
+   booléen RÉEL déjà calculé par l'algorithme (`criteria.plaquesCroisees`/
+   `criteria.policeCroisee`), PAS une égalité naïve des valeurs affichées
+   — `plateA`/`plateB` et `policeA`/`policeB` du DTO sont chacun la valeur
+   "soi-même" de SA déclaration (même convention que `plateA`/`plateB`
+   historiques), pas une paire directement comparable ; le vrai croisement
+   compare les deux ensembles {valeur propre, valeur adverse déclarée} des
+   deux côtés, déjà fait par le back.
+3. **Cartes "Véhicule A"/"Véhicule B"** : UNIQUEMENT Dossier/Identité
+   assuré/Immatriculation/Canal — volontairement PAS de "Conducteur" (nom
+   du conducteur s'il diffère de l'assuré — seul un booléen
+   `conducteurAEstAssure`/`B` existe, pas un nom distinct), PAS de modèle
+   de véhicule (ex. "Chery Tiggo 2" — seule la plaque est capturée), PAS
+   de point de choc, PAS du schéma d'accident illustré (dépend du point de
+   choc) : vérifié qu'aucun de ces champs n'existe dans
+   `claim-47-columns.ts`/`claim.entity.ts` (back) avant d'écrire l'écran,
+   plutôt que de deviner une valeur.
+4. **Changement back associatif (additif, même sprint)** : `MatchQueueItemDto`
+   n'exposait pas assez de champs par déclaration pour construire les
+   cartes ci-dessus (seulement `refA/companyA/plateA` + équivalent B).
+   Ajout de 10 champs optionnels (`accidentDateA/B`, `wilayaA/B`,
+   `assureAIdentite/B`, `canalDeclarationA/B`, `policeA/B`) — dénormalisés
+   depuis `ClaimMatchInput` au même recalcul que `criteria`
+   (`matching.service.ts` `applyComputed`/`applyComputedDto`), même
+   convention "valeur soi-même" que `plateA`/`plateB` existants. Forme
+   existante de `MatchQueueItemDto` inchangée (additif pur, contrat
+   stable). `assureIdentite` (colonne 44 "Identité assuré A" du modèle 47
+   colonnes) n'était promue nulle part (ni `Claim` entity, ni
+   `ClaimViewDto`) — lue depuis `Claim.raw` (déjà stockée à l'import,
+   aucune migration nécessaire pour celle-ci) et ajoutée en champ optionnel
+   à `ClaimViewDto`/`ClaimMatchInput`. Migration MikroORM écrite à la main
+   (`Migration20261018000000_MatchingConfrontationFields`, voir HANDOFF
+   back) pour les 8 nouvelles colonnes de `match_queue_item` (les deux
+   champs identité ne touchent pas `claim`, déjà en JSON). Vérifié :
+   `npx jest src/matching src/claims --silent` + `tsc --noEmit` back
+   passent, `lint`/`vitest`/`build` front passent (voir rapport de
+   livraison pour le détail).
+5. Tests ajoutés (`page.test.tsx`) : fraction 35/35 (vrai) et 0/35 (faux)
+   d'un critère pondéré, badge Concordant/Discordant calculé sur de vraies
+   valeurs A/B (cas concordant ET discordant), cartes Véhicule A/B avec
+   assertions négatives explicites (pas de "Conducteur"/modèle de
+   véhicule/"choc" nulle part dans le DOM).
+
 ## Scripts
 
 | Script | Rôle |
