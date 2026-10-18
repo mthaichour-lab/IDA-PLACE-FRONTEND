@@ -545,8 +545,15 @@ export interface MonitoringJourney {
 /* ===================== Anti-fraude (écran 9, Module G §6.9) — mock ===================== */
 
 export type FraudSeverity = 'ELEVEE' | 'MOYENNE' | 'FAIBLE';
-/** Forme exacte de `FraudCaseViewDto` (back) — corrigée après la revue croisée sprint 3 : un cas a un seul `type` (pas une liste `signals`). */
-export type FraudCaseType = 'DOUBLON' | 'ECONSTAT_REUTILISE' | 'RECURRENCE_VEHICULE' | 'MONTANT_CALIBRE' | 'INCOHERENCE_AB';
+/**
+ * Forme exacte de `FraudCaseViewDto` (back) — corrigée après la revue croisée
+ * sprint 3 : un cas a un seul `type` (pas une liste `signals`). `VELOCITE_
+ * ADHERENT` et `plateA` ajoutés (additif, 2026-10-18, `fraud.dto.ts` ↔
+ * `fraud.detection.ts` back) : 6ᵉ détection (rafale de déclarations du même
+ * adhérent le même jour) + plaque jointe côté back sur le premier dossier
+ * lié ayant une plaque renseignée (`undefined` si aucun).
+ */
+export type FraudCaseType = 'DOUBLON' | 'ECONSTAT_REUTILISE' | 'RECURRENCE_VEHICULE' | 'MONTANT_CALIBRE' | 'INCOHERENCE_AB' | 'VELOCITE_ADHERENT';
 
 export interface FraudCase {
   id: string;
@@ -557,6 +564,8 @@ export interface FraudCase {
   companiesInvolved: string[];
   details: Record<string, unknown>;
   detectedAt: string;
+  /** Plaque du premier dossier lié ayant une plaque renseignée — `undefined` possible, rendre `—` côté affichage (jamais fabriquer de valeur). */
+  plateA?: string;
 }
 
 export type FraudActionType = 'APPARIEMENT_MANUEL' | 'DELIAGE' | 'RELIAGE' | 'TRANSMISSION_TARDIVE';
@@ -565,7 +574,28 @@ export interface FraudAction {
   id: string;
   type: FraudActionType;
   actor: string;
+  /** Présent pour `TRANSMISSION_TARDIVE` (dossier concerné). */
+  claimId?: string;
+  /** Présent pour `APPARIEMENT_MANUEL`/`DELIAGE`/`RELIAGE` (décision `MatchingModule` observée). */
+  matchId?: string;
+  details?: Record<string, unknown>;
   at: string;
+}
+
+/**
+ * Signaux groupés par catégorie pour un adhérent (écran 9, panneau de détail,
+ * additif 2026-10-18) — `GET /fraud/adherents/:company/signals`, forme exacte
+ * de `FraudSignalGroupDto` (back `fraud.dto.ts`). N'affecte pas `FraudCase`
+ * ci-dessus (simple agrégation en lecture, voir `fraud.service.ts`
+ * `signalsByAdherent`).
+ */
+export type FraudSignalGroup = 'DOUBLONS_ECONSTAT' | 'RESEAU_RECURRENCE' | 'MONTANTS_PLAFOND' | 'INCOHERENCES_AB' | 'VELOCITE';
+
+export interface FraudSignalGroupResult {
+  group: FraudSignalGroup;
+  count: number;
+  maxScore: number;
+  cases: FraudCase[];
 }
 
 /* ===================== Métrologie & facturation (écran 10, Module G §6.9 / B.8) — grille réelle, mesures mock ===================== */

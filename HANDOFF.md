@@ -336,6 +336,85 @@ endpoint `GET /monitoring/companies/:code/journeys`.
   la vue par dossier (boutons visibles dans la capture, aucun endpoint
   d'export côté back pour cet écran).
 
+### `/fraude` rapproché de la capture de référence (2026-10-18)
+
+Backend préparé en parallèle par l'agent Backend sur ce même sprint (`plateA`
+additif sur `FraudCaseViewDto`, 6ᵉ détection `VELOCITE_ADHERENT`, nouvelle
+route `GET /fraud/adherents/:company/signals` → `FraudSignalGroupDto[]`) —
+vérifié directement contre `fraud.dto.ts`/`fraud.module.ts`/
+`fraud.detection.ts`/`fraud.service.ts` réels avant de coder contre, pas un
+contrat deviné.
+
+- **Colonne "Plaque"** ajoutée à la file des cas (`plateA`, jointure réelle
+  back sur le premier dossier lié ayant une plaque — `—` si absent).
+- **Colonne "Adhérent"** remplace l'ancienne colonne "Compagnies" (qui
+  affichait TOUTES les compagnies impliquées) : n'affiche que le PREMIER
+  code de `companiesInvolved`, conformément à la capture — c'est aussi celui
+  utilisé pour interroger `/fraud/adherents/:company/signals`.
+- **Panneau de détail refondu en panneau docké** (`grid g-side`, même idiome
+  que `/monitoring`) à la place de l'ancienne `Modal` à plat
+  (`Object.entries(details)`) : la capture montre un panneau en permanence à
+  côté du tableau, pas une fenêtre modale. En-tête "Cas {id}", puis
+  compagnie + plaque + badge "{gravité} · {score}/100" (libellés de gravité
+  réutilisés de `fraude.severity.*`, aucun nouveau libellé inventé).
+- **Sections de signaux groupés** (`GET /fraud/adherents/:company/signals`,
+  React Query clé `['fraud','adherents',company,'signals']`) : un groupe par
+  catégorie (Doublons & e-constat / Réseau & récurrence / Montants &
+  plafond / Incohérences A/B / Vélocité adhérent), seuls les groupes
+  réellement présents pour cet adhérent sont affichés (le back ne renvoie
+  jamais de groupe vide). Badge "+{count-1}" affiché seulement si le groupe a
+  plus d'un cas sous-jacent (`FraudSignalGroupDto.count`), pas de badge pour
+  un groupe à 1 seul cas. La phrase de description du signal dominant
+  (`describeDominantCase`, `page.tsx`) est composée des SEULS champs
+  réellement présents dans le `details` du cas de tête de groupe (score le
+  plus élevé, déjà trié par le back) — voir `fraud.detection.ts` pour la
+  forme exacte de chaque `details` par type ; aucun champ fabriqué.
+- **Lien "Ouvrir l'appariement"** vers `/matching` — idiome et style repris
+  tels quels de `/monitoring` (`monitoring.panel.matchingLink`).
+- **Journal des actions suspectes — colonne "Réf." ajoutée** : `claimId`
+  (présent pour `TRANSMISSION_TARDIVE`) sinon `matchId` (présent pour
+  `APPARIEMENT_MANUEL`/`DELIAGE`/`RELIAGE`) sinon l'id de l'action elle-même
+  — jamais une valeur fabriquée, voir `FraudActionViewDto` (back).
+- **Colonne "Poids" de la capture : OMISE délibérément, pas bricolée.**
+  Aucun champ back ne porte de pondération par action suspecte :
+  `FraudActionViewDto.details` est une forme libre selon le type
+  (`{matchId, status}` pour les décisions de matching observées,
+  `{delayDays}` pour une transmission tardive) — rien d'assimilable à un
+  "poids" numérique commun aux 4 types d'action. Inventer un nombre ici
+  aurait été fabriquer une donnée (règle d'or C.1) ; la colonne est donc
+  simplement absente du tableau plutôt que remplie d'une valeur inventée. À
+  réintroduire si le Tech Lead/back ajoute un jour un champ de pondération
+  réel.
+- **Colonnes relabellisées (libellé d'affichage uniquement, même principe
+  que le relabellisage "Phase" de `/commission`)** : en-tête "Type" → "Action"
+  et "Agent" → "Auteur" sur le journal des actions, pour coller au texte de
+  la capture — la clé `type`/`actor` et toute la logique restent inchangées.
+  Titre de la section également aligné sur la capture : "Journal des actions
+  suspectes — chaîne de place ({n})" (comptage dynamique, même esprit que les
+  compteurs d'onglets `/exchanges`).
+- Types ajoutés dans `src/lib/types.ts` : `FraudCaseType` complété avec
+  `'VELOCITE_ADHERENT'`, `FraudCase.plateA?`, `FraudAction.claimId?`/
+  `matchId?`/`details?` (alignés sur `FraudActionViewDto` réel — ces champs
+  existaient déjà côté back avant cette passe mais n'étaient pas reflétés
+  côté front), `FraudSignalGroup`/`FraudSignalGroupResult` (nouveaux,
+  reflet de `FraudSignalGroupDto`). Tous additifs — rien de ce qui existait
+  dans `FraudCase`/`FraudAction` ne change de forme.
+- Bouton "Cas suspects" du mock (capture) volontairement ignoré — aucune
+  spécification derrière dans le dossier technique, purement décoratif.
+- Tests composants (`page.test.tsx`) réécrits (5 cas, même esprit que les
+  sections précédentes) : tri par gravité (inchangé), colonne "Plaque"
+  (valeur réelle + repli `—`), ouverture du panneau docké avec sections de
+  signaux groupées (mock `GET /fraud/adherents/:company/signals` à 2
+  groupes : un à 1 cas sans badge, un à 3 cas avec badge "+2") + lien
+  d'appariement, colonne "Réf." du journal (claimId puis repli matchId).
+- Vérifié : `npm run lint` (tsc --noEmit) propre, `npx vitest run` 63/63
+  (14 fichiers), `npm run build` propre (17 routes statiques, `/fraude`
+  inclus). Pas de serveur dev lancé pour cette passe (ports 3000-3002
+  potentiellement occupés par d'autres sessions sur cette machine, voir
+  mémoire de session) — vérification faite par la suite de tests composants
+  + build, pas en navigateur réel ; à revérifier en navigateur dès qu'un
+  port est libre.
+
 ## ⚠️ Particularité de ce sprint : deux implémentations concurrentes réconciliées
 
 Une **session Claude indépendante**, travaillant en parallèle sur ce même
