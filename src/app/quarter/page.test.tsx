@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { mockFetchRouter, renderWithProviders } from '@/test/render';
 import { MeResponse, PriceGrid, SettlementQuarter, SettlementQuarterMatrix, SettlementQuarterSummary } from '@/lib/types';
@@ -58,6 +58,18 @@ function mockQuarterApi() {
   });
 }
 
+/** Même jeu que `QUARTER` mais sans aucune position/position nette — pour vérifier l'état vide honnête du diagramme de flux (jamais un diagramme fabriqué). */
+function mockQuarterApiEmptyFlows() {
+  mockFetchRouter((pathname) => {
+    if (pathname === '/api/v1/me') return ME;
+    if (pathname === '/api/v1/settlement/quarter/2026-Q4/summary') return SUMMARY;
+    if (pathname === '/api/v1/settlement/quarter/2026-Q4/matrix') return MATRIX;
+    if (pathname === '/api/v1/settlement/quarter/2026-Q4') return { ...QUARTER, positions: [], net: [] };
+    if (pathname === '/api/v1/pricing/grid') return GRID;
+    return undefined;
+  });
+}
+
 /**
  * Écran Compensation trimestrielle (/quarter, écran 6, Module D §6.6) — KPI
  * de synthèse (brut/net bilatéral/net multilatéral/réduction/recours
@@ -103,5 +115,58 @@ describe('Écran Compensation trimestrielle (/quarter)', () => {
     renderWithProviders(<QuarterPage />);
 
     await waitFor(() => expect(screen.getByText('BORD-2026-Q4')).toBeInTheDocument());
+  });
+
+  /**
+   * Section additive "Flux de règlement entre les N compagnies" (2026-10-18,
+   * sous la matrice des positions brutes) — titre dynamique (nombre réel de
+   * compagnies de `rawMatrix.companies`, jamais un "5" en dur), bascule
+   * Net multilatéral (par défaut, hub-and-spoke) / Bilatéral (pair à pair,
+   * une flèche RÉELLE par entrée `data.positions`).
+   */
+  describe('Flux de règlement entre les compagnies (diagramme additif)', () => {
+    it('affiche le titre avec le nombre réel de compagnies (pas une valeur en dur)', async () => {
+      mockQuarterApi();
+      renderWithProviders(<QuarterPage />);
+
+      await waitFor(() => expect(screen.getByText(/Flux de règlement entre les 2 compagnies/)).toBeInTheDocument());
+    });
+
+    it('affiche par défaut le mode "Net multilatéral" : le hub (la place) + un nœud par entrée de `net`', async () => {
+      mockQuarterApi();
+      renderWithProviders(<QuarterPage />);
+
+      await waitFor(() => expect(screen.getByTestId('flow-hub')).toBeInTheDocument());
+      expect(screen.getByTestId('flow-node-CAAT')).toBeInTheDocument();
+      expect(screen.getByTestId('flow-node-SAA')).toBeInTheDocument();
+      // Mode bilatéral pas encore affiché : aucune flèche pair-à-pair.
+      expect(screen.queryByTestId('flow-edge-CAAT-SAA')).not.toBeInTheDocument();
+    });
+
+    it('bascule vers "Bilatéral" : affiche une flèche réelle par entrée de `data.positions`, sans hub', async () => {
+      mockQuarterApi();
+      renderWithProviders(<QuarterPage />);
+
+      await waitFor(() => expect(screen.getByTestId('flow-hub')).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('tab', { name: 'Bilatéral' }));
+
+      await waitFor(() => expect(screen.getByTestId('flow-edge-CAAT-SAA')).toBeInTheDocument());
+      // Une seule entrée dans `QUARTER.positions` → une seule flèche, pas de fabrication d'un ordre pair-à-pair pour le hub.
+      expect(screen.queryAllByTestId(/^flow-edge-/).length).toBe(QUARTER.positions.length);
+      expect(screen.queryByTestId('flow-hub')).not.toBeInTheDocument();
+    });
+
+    it("affiche l'état vide honnête (pas de diagramme fabriqué) quand `net`/`positions` sont vides", async () => {
+      mockQuarterApiEmptyFlows();
+      renderWithProviders(<QuarterPage />);
+
+      await waitFor(() => expect(screen.getByText('BORD-2026-Q4')).toBeInTheDocument());
+      expect(screen.queryByTestId('flow-hub')).not.toBeInTheDocument();
+      expect(screen.getAllByText('Aucune donnée.').length).toBeGreaterThan(0);
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Bilatéral' }));
+      await waitFor(() => expect(screen.queryByTestId(/^flow-edge-/)).not.toBeInTheDocument());
+      expect(screen.getAllByText('Aucune donnée.').length).toBeGreaterThan(0);
+    });
   });
 });

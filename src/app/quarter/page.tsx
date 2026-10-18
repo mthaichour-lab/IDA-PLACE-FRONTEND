@@ -3,8 +3,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
+import { FlowDiagram, FlowDiagramMode } from '@/components/settlement/FlowDiagram';
 import { CoChip } from '@/components/ui/CoChip';
 import { Kpi, KpiRow } from '@/components/ui/Kpi';
+import { Tabs } from '@/components/ui/Tabs';
 import { Tag } from '@/components/ui/Tag';
 import { useI18n } from '@/i18n/provider';
 import { apiGet } from '@/lib/api-client';
@@ -40,6 +42,8 @@ export default function QuarterPage() {
   const { t, locale } = useI18n();
   const options = useMemo(quarterOptions, []);
   const [quarter, setQuarter] = useState(options[0]);
+  /** Bascule d'affichage du diagramme de flux (section additive 2026-10-18, §11-6 — mode à confirmer par l'UAR, les deux sont calculés). */
+  const [flowMode, setFlowMode] = useState<FlowDiagramMode>('multilateral');
 
   const quarterQuery = useQuery({
     queryKey: ['settlement', 'quarter', quarter],
@@ -238,6 +242,36 @@ export default function QuarterPage() {
                   </table>
                 </div>
               )}
+            </div>
+          </div>
+
+          <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
+            <div className="sheet-head">
+              <span>
+                {t('quarter.flow.titlePrefix')}
+                {rawMatrix?.companies.length ?? 0}
+                {t('quarter.flow.titleSuffix')}
+              </span>
+            </div>
+            <div className="sheet-body">
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--s-4)', flexWrap: 'wrap', marginBottom: 'var(--s-3)' }}>
+                <Tabs
+                  items={[
+                    { key: 'multilateral', label: t('quarter.flow.multilateral') },
+                    { key: 'bilateral', label: t('quarter.flow.bilateral') },
+                  ]}
+                  activeKey={flowMode}
+                  onChange={(key) => setFlowMode(key as FlowDiagramMode)}
+                />
+                <p style={{ fontSize: 'var(--k-fs-s)', color: 'var(--ink-2)', margin: 0 }}>{t('quarter.flow.caption')}</p>
+              </div>
+              <FlowDiagram
+                mode={flowMode}
+                net={data.net}
+                positions={data.positions}
+                formatAmount={(amount) => formatDzd(amount, locale)}
+                emptyLabel={t('common.noData')}
+              />
             </div>
           </div>
 

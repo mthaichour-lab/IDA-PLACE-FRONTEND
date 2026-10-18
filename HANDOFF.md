@@ -1138,6 +1138,92 @@ Les 14 écrans du guide `Guide_IDA_Place.docx` sont désormais tous
 reconstruits et vérifiés (code + navigateur réel, texte seul — pas de
 capture d'écran, consigne explicite de l'utilisateur).
 
+### `/quarter` — section "Flux de règlement entre les N compagnies" (2026-10-18, worktree dédié `feat/quarter-flow-diagram-ui`)
+
+Dernière pièce manquante de `/quarter` (voir l'entrée du 2026-10-17
+ci-dessus, "Encore manquant" : "diagramme circulaire des flux de
+règlement") — ajoutée sous "Matrice des positions brutes", avant
+"Bordereau trimestriel".
+
+- **Aucun changement back** : les deux sources de données existaient déjà
+  et étaient déjà récupérées par `page.tsx` (`quarterQuery` → `GET
+  /settlement/quarter/:q`) mais **inutilisées** côté affichage —
+  `data.positions` (`SettlementPosition[]`) et `data.net`
+  (`SettlementNet[]`). Tâche 100% front.
+- **Nouveau composant transverse** `src/components/settlement/FlowDiagram.tsx`
+  (SVG natif, même trig que `RadarChart` : `angle = i·2π/n - π/2`), deux
+  modes :
+  - **"Net multilatéral"** (actif par défaut, comme la capture) : **hub
+    (la place) + une position nette par compagnie**, PAS un ordre de
+    règlement pair-à-pair. Choix délibéré et non négociable pour cette
+    passe : `computeMultilateralNetPositions` (back
+    `settlement.rules.ts`) réduit explicitement chaque compagnie à UNE
+    seule position vis-à-vis de la place par construction ("l'intérêt
+    principal de la compensation multilatérale... plutôt que de régler
+    chaque contrepartie bilatéralement" — commentaire de la fonction) :
+    il n'existe donc AUCUNE donnée réelle "qui paie qui" pour ce mode.
+    Un algorithme glouton "plus gros débiteur paie plus gros créditeur"
+    aurait fabriqué une règle métier absente du back — exactement ce que
+    la discipline de ce projet interdit (jamais fait).
+  - **"Bilatéral"** : pas de hub, cercle de compagnies, une flèche RÉELLE
+    par entrée de `data.positions` (déjà nettée par paire côté back,
+    `computeBilateralNetPositions`), courbée (bézier quadratique) si les
+    deux sens existent pour une paire (défensif — ne devrait pas arriver
+    en pratique puisque le netting bilatéral réduit déjà chaque paire à
+    un seul sens, mais rendu sans crash si les données en contenaient).
+  - Convention couleur : réutilise `var(--ok)`/`var(--ko)` (tokens.css,
+    mêmes variables que `Tag tone="ok"/"ko"` dans la table "Positions
+    nettes multilatérales" juste au-dessus) pour le sens des flèches en
+    mode multilatéral (positif = la place doit à la compagnie, négatif =
+    l'inverse). En mode bilatéral, pas de position nette par nœud (une
+    compagnie peut avoir plusieurs flèches, une par contrepartie) : le
+    montant est donc étiqueté sur chaque flèche, pas sous le nœud.
+  - États vides honnêtes : `net`/`positions` vide pour le mode courant →
+    `common.noData` ("Aucune donnée."), jamais un diagramme fabriqué. Pas
+    de crash à 1 compagnie (hub + 1 seul rayon) ni à 0 paire bilatérale.
+  - Nœuds : `CoChip` réutilisé tel quel (même convention que le reste de
+    la page), rendu en `<div>` HTML superposé au SVG (positions en %,
+    container en `aspect-ratio: 1 / 1`) plutôt qu'en `<foreignObject>`.
+- **Intégration `page.tsx`** : nouvelle section `.sheet` après "Matrice des
+  positions brutes", titre dynamique `"Flux de règlement entre les " +
+  rawMatrix.companies.length + " compagnies"` (nombre RÉEL, jamais le "5"
+  de la capture — démo à 5 compagnies, pas une constante). Bascule via le
+  composant transverse `Tabs` déjà utilisé ailleurs dans l'app (`/exchanges`
+  notamment) — pas de nouveau composant de bascule ni de nouvelle classe
+  CSS : la capture montre un bandeau à fond sombre pour l'onglet actif,
+  mais `Tabs`/`.tab[aria-selected]` (soulignement + gras) est le seul
+  motif de bascule déjà établi dans `globals.css` ; en inventer un nouveau
+  pour coller pixel-à-pixel à la capture aurait contredit la consigne
+  "réutiliser le motif existant, ne pas inventer de nouveau CSS". Légende
+  reprise **verbatim** du guide à côté de la bascule : "Point ouvert
+  §11-6 : mode à confirmer par l'UAR — les deux sont calculés."
+- **Fidélité visuelle non vérifiable au-delà du nœud "CASH"** : la
+  capture de référence fournie au Tech Lead est coupée juste au moment où
+  le diagramme circulaire commence à apparaître (seul un nœud "CASH ·
+  +1,07 M" est visible en haut) — la disposition exacte des nœuds/flèches
+  au-delà n'a pas pu être vérifiée pixel par pixel contre la capture. Le
+  rendu ci-dessus (hub-and-spoke pour le mode multilatéral, cercle de
+  compagnies avec flèches pair-à-pair pour le mode bilatéral) découle
+  directement des contraintes de données réelles décrites plus haut, pas
+  d'une lecture de la capture au-delà de ce point.
+- Nouvelles clés i18n FR uniquement (`quarter.flow.*`) dans
+  `src/i18n/translations.ts` — `ar`/`en` restent dérivés automatiquement
+  (`Object.fromEntries`), pas écrits à la main.
+- Tests ajoutés (`page.test.tsx`, 4 nouveaux cas, 8/8 au total sur ce
+  fichier) : titre avec le nombre réel de compagnies, mode par défaut
+  (hub + un nœud par entrée de `net`), bascule vers "Bilatéral" (une
+  flèche par entrée de `data.positions`, nombre exact, pas de hub), état
+  vide honnête des deux côtés de la bascule.
+- Vérifié dans ce worktree (`feat/quarter-flow-diagram-ui`, basé sur
+  `origin/master`, `npm install` requis — worktree neuf, `node_modules`
+  absent) : `npm run lint` (`tsc --noEmit`) propre, `npx vitest run` 14
+  fichiers / 98 tests verts (aucune régression sur les 13 autres écrans),
+  `npm run build` réussi (17 routes statiques). Vérification purement
+  code + tests — pas de navigateur réel ni de capture d'écran pour cette
+  passe (consigne explicite de la session : vérification texte seule, le
+  Tech Lead refera lui-même la vérification navigateur réelle avant
+  merge).
+
 ## Scripts
 
 | Script | Rôle |
