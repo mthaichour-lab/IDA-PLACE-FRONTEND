@@ -17,6 +17,7 @@ import { fetchAllPages } from '@/lib/paginate';
 import { apiGet, apiPath, apiPost, apiPut } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { isCompanyRole } from '@/lib/auth/roles';
+import { describeApiError } from '@/lib/error-message';
 import { buildRecentPeriods } from '@/lib/period-options';
 import { Paginated, PlaceMeteringSummary, PlaceUser, PriceGrid, RolesMatrixResponse } from '@/lib/types';
 
@@ -553,10 +554,11 @@ function CostsTab() {
   const saveGridMutation = useMutation({
     mutationFn: (next: PriceGrid) => apiPut<PriceGrid>('/pricing/grid', next),
     onSuccess: (next) => {
-      queryClient.setQueryData(['pricing', 'grid'], next);
-      toast(t('metering.toast.gridSaved'), 'ok');
+      // SEC-37 : nouvelle version à date d'effet — relue plutôt que substituée à la grille en vigueur.
+      void queryClient.invalidateQueries({ queryKey: ['pricing', 'grid'] });
+      toast(`${t('metering.toast.gridSaved')} ${next.version} — ${t('metering.grid.effectiveFrom')} ${next.effectiveFrom}`, 'ok');
     },
-    onError: () => toast(t('metering.toast.gridError'), 'ko'),
+    onError: (err: unknown) => toast(describeApiError(err, t, t('metering.toast.gridError')), 'ko'),
   });
 
   const summary = summaryQuery.data;

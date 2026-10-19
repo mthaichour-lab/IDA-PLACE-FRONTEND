@@ -13,13 +13,25 @@ import { useI18n } from '@/i18n/provider';
 import { apiGet, apiPath, apiPut } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { isCompanyRole } from '@/lib/auth/roles';
+import { useApiErrorMessage } from '@/lib/error-message';
 import { buildRecentPeriods } from '@/lib/period-options';
 import { useRealtime } from '@/lib/realtime';
-import { CompanyView, InvoiceLine, MeteringHistory, MeteringInvoice, Paginated, PriceGrid } from '@/lib/types';
+import { CompanyView, InvoiceLine, InvoiceStatus, MeteringHistory, MeteringInvoice, Paginated, PriceGrid } from '@/lib/types';
+import { TranslationKey } from '@/i18n/translations';
+import { TagTone } from '@/components/ui/Tag';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 const POLL_INTERVAL_MS = 20_000; // repli polling (B.12) — voir /cockpit
 const PERIODS = buildRecentPeriods(12);
+
+/** SEC-37 : `SIMULEE` (consommation simulée, jamais émise) est affichée comme telle, distincte d'une facture réelle. */
+const INVOICE_STATUS_LABEL: Record<InvoiceStatus, TranslationKey> = {
+  SIMULEE: 'metering.invoice.status.SIMULEE',
+  EMISE: 'metering.invoice.status.EMISE',
+  PAYEE: 'metering.invoice.status.PAYEE',
+  EN_RETARD: 'metering.invoice.status.EN_RETARD',
+};
+const INVOICE_STATUS_TONE: Record<InvoiceStatus, TagTone> = { SIMULEE: 'warn', EMISE: 'a', PAYEE: 'ok', EN_RETARD: 'ko' };
 
 function formatDzd(amount: number, locale: string): string {
   try {
@@ -33,6 +45,7 @@ export default function MeteringPage() {
   const { t, locale } = useI18n();
   const { me, hasPrivilege } = useAuth();
   const { toast } = useToast();
+  const errorMessage = useApiErrorMessage();
   const queryClient = useQueryClient();
 
   // SEC-38 : la compagnie de départ vient de l'identité réelle (`GET /me`,
@@ -91,11 +104,12 @@ export default function MeteringPage() {
   const saveGridMutation = useMutation({
     mutationFn: (next: PriceGrid) => apiPut<PriceGrid>('/pricing/grid', next),
     onSuccess: (next) => {
-      queryClient.setQueryData(['pricing', 'grid'], next);
-      toast(t('metering.toast.gridSaved'), 'ok');
+      // SEC-37 : la nouvelle version peut prendre effet plus tard — on relit la grille en vigueur.
+      void queryClient.invalidateQueries({ queryKey: ['pricing', 'grid'] });
+      toast(`${t('metering.toast.gridSaved')} ${next.version} — ${t('metering.grid.effectiveFrom')} ${next.effectiveFrom}`, 'ok');
     },
-    onError: () => {
-      toast(t('metering.toast.gridError'), 'ko');
+    onError: (err: unknown) => {
+      toast(errorMessage(err, t('metering.toast.gridError')), 'ko');
     },
   });
 
@@ -235,9 +249,14 @@ export default function MeteringPage() {
               <span>
                 {t('metering.invoice.title')} · {invoice.period}
               </span>
-              <Tag tone="a">{invoice.status}</Tag>
+              <Tag tone={INVOICE_STATUS_TONE[invoice.status] ?? 'a'}>{INVOICE_STATUS_LABEL[invoice.status] ? t(INVOICE_STATUS_LABEL[invoice.status]) : invoice.status}</Tag>
             </div>
             <div className="sheet-body">
+              {invoice.status === 'SIMULEE' || invoice.simulated ? (
+                <p className="note warn" role="note" style={{ fontSize: 'var(--k-fs-xs)', marginTop: 0 }}>
+                  {t('metering.invoice.simulatedNote')}
+                </p>
+              ) : null}
               <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginTop: 0 }}>
                 {t('metering.invoice.subscription')}: {invoice.subscription.label} — {formatDzd(invoice.subscription.monthly, locale)}
               </p>
@@ -267,7 +286,7 @@ export default function MeteringPage() {
             <div className="sheet-body">
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 'var(--s-2)' }}>
                 <span>{t('metering.invoice.status')}:</span>
-                <Tag tone={invoice.status === 'PAYEE' ? 'ok' : invoice.status === 'EN_RETARD' ? 'ko' : 'warn'}>{invoice.status}</Tag>
+                <Tag tone={INVOICE_STATUS_TONE[invoice.status] ?? 'a'}>{INVOICE_STATUS_LABEL[invoice.status] ? t(INVOICE_STATUS_LABEL[invoice.status]) : invoice.status}</Tag>
               </div>
               <p style={{ color: 'var(--ink-3)', fontSize: 'var(--k-fs-xs)' }}>{t('metering.payments.empty')}</p>
             </div>
