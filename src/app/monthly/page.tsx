@@ -12,6 +12,7 @@ import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { apiGet, apiPath, apiPost } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
+import { describeApiError } from '@/lib/error-message';
 import { SettlementMonthly, SettlementMonthlyAnnexe7, SettlementMonthlyCompany, SettlementMonthlySummary } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
@@ -67,7 +68,8 @@ export default function MonthlyPage() {
       void queryClient.invalidateQueries({ queryKey: ['settlement', 'monthly', period] });
       toast(t('monthly.toast.generated'), 'ok');
     },
-    onError: () => toast(t('monthly.toast.error'), 'ko'),
+    // 409 PERIODE_NON_ECHUE (mois non échu) ou déjà clôturé : message traduit / du backend.
+    onError: (err: unknown) => toast(describeApiError(err, t, t('monthly.toast.error')), 'ko'),
   });
 
   const companies = monthlyQuery.data?.companies ?? [];

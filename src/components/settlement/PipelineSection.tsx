@@ -8,7 +8,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { apiGet, apiPath, apiPost } from '@/lib/api-client';
-import { ApiError } from '@/lib/api-error';
+import { describeApiError } from '@/lib/error-message';
 import { useAuth } from '@/lib/auth-context';
 import { MANUAL_PIPELINE_STEPS, PipelineStep, PipelineStepStatus, QuarterlyPipeline } from '@/lib/types';
 
@@ -49,7 +49,7 @@ export function PipelineSection({ quarter }: { quarter: string }) {
       toast(t('quarter.pipeline.toast.ok'), 'ok');
       void queryClient.invalidateQueries({ queryKey: pipelineQueryKey(quarter) });
     },
-    onError: (err: unknown) => toast(err instanceof ApiError && err.message ? err.message : t('quarter.pipeline.toast.error'), 'ko'),
+    onError: (err: unknown) => toast(describeApiError(err, t, t('quarter.pipeline.toast.error')), 'ko'),
   });
 
   const closeMutation = useMutation({
@@ -59,7 +59,8 @@ export function PipelineSection({ quarter }: { quarter: string }) {
       toast(t('quarter.pipeline.close.ok'), 'ok');
       void queryClient.invalidateQueries({ queryKey: ['settlement'] });
     },
-    onError: (err: unknown) => toast(err instanceof ApiError && err.message ? err.message : t('quarter.pipeline.close.error'), 'ko'),
+    // 409 PERIODE_NON_ECHUE (SEC-19) : trimestre non échu, message traduit.
+    onError: (err: unknown) => toast(describeApiError(err, t, t('quarter.pipeline.close.error')), 'ko'),
   });
 
   return (
@@ -96,7 +97,9 @@ export function PipelineSection({ quarter }: { quarter: string }) {
                     {s.completedAt ? (
                       <>
                         {' · '}
-                        {t('quarter.pipeline.completedBy')} {s.completedBy ?? '—'} · {new Date(s.completedAt).toLocaleString(locale)}
+                        {/* SEC-26 : auteur et note absents pour un rôle compagnie — seule la date est publiée. */}
+                        {s.completedBy ? `${t('quarter.pipeline.completedBy')} ${s.completedBy} · ` : `${t('quarter.pipeline.completedAt')} `}
+                        {new Date(s.completedAt).toLocaleString(locale)}
                       </>
                     ) : null}
                     {s.note ? ` — ${s.note}` : null}
