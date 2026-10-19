@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
+import { TruncationNote } from '@/components/ui/TruncationNote';
 import { FolioHeader } from '@/components/FolioHeader';
 import { CoChip } from '@/components/ui/CoChip';
 import { Kpi, KpiRow } from '@/components/ui/Kpi';
@@ -11,6 +12,7 @@ import { Table, Column } from '@/components/ui/Table';
 import { Tag, TagTone } from '@/components/ui/Tag';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
+import { fetchAllPages } from '@/lib/paginate';
 import { apiGet } from '@/lib/api-client';
 import { FraudAction, FraudCase, FraudSeverity, FraudSignalGroup, FraudSignalGroupResult, Paginated } from '@/lib/types';
 
@@ -126,7 +128,8 @@ export default function FraudePage() {
   // liste (la liste affichée reste la page courante, paginée serveur).
   const casesAllQuery = useQuery({
     queryKey: ['fraud', 'cases', 'all'],
-    queryFn: () => apiGet<Paginated<FraudCase>>('/fraud/cases', { page: 1, pageSize: 10_000 }),
+    // SEC-13 : pages successives de 100 (plafond `FETCH_ALL_MAX_ITEMS`).
+    queryFn: () => fetchAllPages<FraudCase>('/fraud/cases'),
   });
 
   const primaryCompany = selectedCase?.companiesInvolved[0];
@@ -186,6 +189,7 @@ export default function FraudePage() {
         <Kpi value={kpis.actions} label={t('fraude.kpi.actions')} />
         <Kpi value={kpis.companies} label={t('fraude.kpi.companies')} />
       </KpiRow>
+      <TruncationNote truncated={casesAllQuery.data?.truncated} shown={casesAllQuery.data?.items.length ?? 0} total={casesAllQuery.data?.total ?? 0} />
 
       <div className="grid g-side" style={{ marginTop: 'var(--s-5)' }}>
         <div className="sheet">

@@ -105,7 +105,12 @@ du choix et comment migrer vers `next-intl` si besoin plus tard.
 ## Conventions pour la suite (agent Frontend)
 
 - **Pagination** : toujours 7 lignes/page (A.5). Le composant générique
-  `src/components/ui/Table.tsx` l'impose déjà par défaut.
+  `src/components/ui/Table.tsx` l'impose déjà par défaut. Côté API,
+  `pageSize` est plafonné à 100 (400 au-delà, SEC-13) : pour charger une
+  population complète (reclassement ou décompte côté client), utiliser
+  `fetchAllPages` (`src/lib/paginate.ts`, pages de 100, plafond 2 000
+  éléments, `truncated` signalé par `TruncationNote`), jamais un `pageSize`
+  géant.
 - **Aucune règle métier côté front** (C.1) : tout verdict, score, barème,
   tarif vient de l'API. Le front affiche, il ne calcule jamais.
 - **Composants transverses déjà disponibles** (`src/components/ui/`) :

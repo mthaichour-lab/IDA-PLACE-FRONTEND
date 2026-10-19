@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
+import { TruncationNote } from '@/components/ui/TruncationNote';
 import { FolioHeader } from '@/components/FolioHeader';
 import { AttachmentsPanel } from '@/components/documents/AttachmentsPanel';
 import { CoChip } from '@/components/ui/CoChip';
@@ -13,6 +14,7 @@ import { Tag, TagTone } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
+import { fetchAllPages } from '@/lib/paginate';
 import { apiGet, apiPost } from '@/lib/api-client';
 import { ApiError } from '@/lib/api-error';
 import { useAuth } from '@/lib/auth-context';
@@ -31,10 +33,6 @@ import {
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 
-// Idiome "récupérer tout côté client pour reclasser/re-paginer localement" déjà
-// utilisé par /monitoring (journeys d'une compagnie) et /fraude — même ordre
-// de grandeur, pas une convention inventée ici.
-const FETCH_ALL_PAGE_SIZE = 100_000;
 
 /**
  * Sous-onglets du filtre REGLE (écran 4 "Échanges Annexes 2/3/4", guide
@@ -186,7 +184,8 @@ export default function ExchangesPage() {
    */
   const regleAllQuery = useQuery({
     queryKey: ['recours', 'list', 'REGLE', 'all', search],
-    queryFn: () => apiGet<Paginated<RecoursItem>>('/recours', { filter: 'REGLE', page: 1, pageSize: FETCH_ALL_PAGE_SIZE, q: search || undefined }),
+    // SEC-13 : pages successives de 100 (plafond `FETCH_ALL_MAX_ITEMS`), plus de pageSize géant.
+    queryFn: () => fetchAllPages<RecoursItem>('/recours', { filter: 'REGLE', q: search || undefined }),
     refetchInterval: POLL_INTERVAL_MS,
     enabled: isRegleFilter,
   });
@@ -410,16 +409,19 @@ export default function ExchangesPage() {
               </button>
             </div>
           ) : (
-            <Table
-              columns={columns}
-              rows={items}
-              page={isRegleFilter ? reglePage : listQuery.data?.page ?? 1}
-              total={isRegleFilter ? regleActiveItems.length : listQuery.data?.total ?? 0}
-              pageSize={PAGE_SIZE}
-              onPageChange={isRegleFilter ? setReglePage : setPage}
-              onRowClick={openRecours}
-              getRowKey={(r) => r.id}
-            />
+            <>
+              {isRegleFilter ? <TruncationNote truncated={regleAllQuery.data?.truncated} shown={regleAllQuery.data?.items.length ?? 0} total={regleAllQuery.data?.total ?? 0} /> : null}
+              <Table
+                columns={columns}
+                rows={items}
+                page={isRegleFilter ? reglePage : listQuery.data?.page ?? 1}
+                total={isRegleFilter ? regleActiveItems.length : listQuery.data?.total ?? 0}
+                pageSize={PAGE_SIZE}
+                onPageChange={isRegleFilter ? setReglePage : setPage}
+                onRowClick={openRecours}
+                getRowKey={(r) => r.id}
+              />
+            </>
           )}
         </div>
       </div>

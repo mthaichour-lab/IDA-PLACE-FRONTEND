@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
+import { TruncationNote } from '@/components/ui/TruncationNote';
 import { FolioHeader } from '@/components/FolioHeader';
 import { PriceGridEditor } from '@/components/metering/PriceGridEditor';
 import { Kpi, KpiRow } from '@/components/ui/Kpi';
@@ -12,6 +13,7 @@ import { Tag } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
+import { fetchAllPages } from '@/lib/paginate';
 import { apiGet, apiPost, apiPut } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { buildRecentPeriods } from '@/lib/period-options';
@@ -125,7 +127,8 @@ function UsersTab() {
   // `/fraude`, B.11 : la liste affichée reste la page courante, paginée serveur).
   const usersAllQuery = useQuery({
     queryKey: ['admin', 'users', 'all'],
-    queryFn: () => apiGet<Paginated<PlaceUser>>('/admin/users', { page: 1, pageSize: 10_000 }),
+    // SEC-13 : pages successives de 100 (plafond `FETCH_ALL_MAX_ITEMS`).
+    queryFn: () => fetchAllPages<PlaceUser>('/admin/users'),
   });
 
   const matrixQuery = useQuery({
@@ -245,6 +248,7 @@ function UsersTab() {
         <Kpi value={kpis.suspended} label={t('params.users.kpi.suspended')} />
         <Kpi value={kpis.roles} label={t('params.users.kpi.roles')} />
       </KpiRow>
+      <TruncationNote truncated={usersAllQuery.data?.truncated} shown={usersAllQuery.data?.items.length ?? 0} total={usersAllQuery.data?.total ?? 0} />
 
       <div className="sheet" style={{ marginTop: 'var(--s-5)' }}>
         <div className="sheet-head">

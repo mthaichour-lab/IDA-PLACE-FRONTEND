@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
+import { TruncationNote } from '@/components/ui/TruncationNote';
 import { FolioHeader } from '@/components/FolioHeader';
 import { CoChip } from '@/components/ui/CoChip';
 import { Kpi } from '@/components/ui/Kpi';
@@ -11,8 +12,9 @@ import { Table, Column } from '@/components/ui/Table';
 import { Tag, TagTone } from '@/components/ui/Tag';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
+import { fetchAllPages } from '@/lib/paginate';
 import { apiGet } from '@/lib/api-client';
-import { MonitoringCompanyScore, MonitoringJourney, MonitoringScores, MonitoringWeights, Paginated } from '@/lib/types';
+import { MonitoringCompanyScore, MonitoringJourney, MonitoringScores, MonitoringWeights } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 
@@ -100,7 +102,8 @@ export default function MonitoringPage() {
 
   const journeysQuery = useQuery({
     queryKey: ['monitoring', 'journeys', selected?.code],
-    queryFn: () => apiGet<Paginated<MonitoringJourney>>(`/monitoring/companies/${selected!.code}/journeys`, { page: 1, pageSize: 100_000 }),
+    // SEC-13 : pages successives de 100 (plafond `FETCH_ALL_MAX_ITEMS`) pour la recherche locale.
+    queryFn: () => fetchAllPages<MonitoringJourney>(`/monitoring/companies/${selected!.code}/journeys`),
     enabled: !!selected,
   });
 
@@ -292,15 +295,18 @@ export default function MonitoringPage() {
                         </button>
                       </div>
                     ) : (
-                      <Table
-                        columns={journeyColumns}
-                        rows={journeyRows}
-                        page={journeyPage}
-                        total={filteredJourneys.length}
-                        pageSize={PAGE_SIZE}
-                        onPageChange={setJourneyPage}
-                        getRowKey={(j) => j.id}
-                      />
+                      <>
+                        <TruncationNote truncated={journeysQuery.data?.truncated} shown={journeysQuery.data?.items.length ?? 0} total={journeysQuery.data?.total ?? 0} />
+                        <Table
+                          columns={journeyColumns}
+                          rows={journeyRows}
+                          page={journeyPage}
+                          total={filteredJourneys.length}
+                          pageSize={PAGE_SIZE}
+                          onPageChange={setJourneyPage}
+                          getRowKey={(j) => j.id}
+                        />
+                      </>
                     )}
                   </div>
                 </div>
