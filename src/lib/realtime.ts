@@ -2,9 +2,9 @@
 
 import { useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { DEV_USER } from './api-client';
-
-const BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001').replace(/\/$/, '');
+import { API_BASE_URL } from './api-client';
+import { devUser } from './auth/dev-identity';
+import { getAccessToken } from './auth/session';
 
 export type RealtimeEventName = 'claim.ingested' | 'match.updated' | 'recours.timer' | 'metering.tick' | 'ledger.appended';
 
@@ -33,15 +33,21 @@ export function useRealtime(events: RealtimeEventName[], onEvent: (event: Realti
   useEffect(() => {
     let socket: Socket | undefined;
     try {
-      socket = io(`${BASE_URL}/realtime`, {
+      socket = io(`${API_BASE_URL}/realtime`, {
         transports: ['websocket'],
         reconnectionAttempts: 5,
         timeout: 4000,
-        // ⚠️ Corrigé en revue Testeur, sprint 3 : un navigateur ne peut pas
-        // poser d'en-tête personnalisé sur un WebSocket brut — `auth` est
-        // le seul canal qui transmet l'identité dev au handshake Socket.IO
-        // (voir `RealtimeGateway.handleConnection`, back).
-        auth: { devUser: DEV_USER },
+        // Un navigateur ne peut pas poser d'en-tête sur un WebSocket : `auth`
+        // est le seul canal d'authentification du handshake Socket.IO. Sous
+        // forme de fonction, il est réévalué à chaque (re)connexion, donc
+        // avec le jeton Keycloak renouvelé (SEC-01/SEC-07).
+        auth: (cb) => {
+          if (process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_AUTH_MODE === 'dev') {
+            cb({ devUser: devUser() });
+            return;
+          }
+          void getAccessToken().then((token) => cb(token ? { token } : {}));
+        },
       });
       for (const ev of key.split(',') as RealtimeEventName[]) {
         if (!ev) continue;

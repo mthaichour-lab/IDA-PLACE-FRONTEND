@@ -19,6 +19,10 @@ export default defineConfig({
     // ponctuellement les 5 s par défaut sur une machine chargée ou un
     // runner CI partagé : marge explicite plutôt que des échecs aléatoires.
     testTimeout: 15_000,
+    // Les tests d'écran tournent en mode d'authentification « dev » (en-tête
+    // x-dev-user simulé, /me mocké) ; les tests du mode Keycloak forcent
+    // leur propre environnement (`vi.stubEnv`).
+    env: { NEXT_PUBLIC_AUTH_MODE: 'dev' },
     exclude: ['node_modules', '.next', 'e2e/**'],
   },
   resolve: {

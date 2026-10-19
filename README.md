@@ -39,17 +39,51 @@ répond quand même ; en revanche si le back est complètement arrêté,
 `/referential` affichera l'état d'erreur `common.error` avec un bouton
 "Réessayer", ce qui est le comportement attendu, pas un bug).
 
-## Authentification en développement
+## Authentification (SEC-01)
 
-Le client HTTP (`src/lib/api-client.ts`) envoie systématiquement l'en-tête
-`x-dev-user` (valeur configurable via `NEXT_PUBLIC_DEV_USER`, défaut
-`OPERATEUR_PLACE`) pour simuler un utilisateur authentifié côté back
-(`DevAuthProvider`). Changer cette variable pour tester un autre rôle
-(`CORRESPONDANT_IDA`, `AUDITEUR_CSA`, etc. — voir la liste des 6 rôles
-dans le dossier technique §B.7).
+Deux modes, choisis au build par `NEXT_PUBLIC_AUTH_MODE` :
 
-⚠️ DEV ONLY. L'intégration OIDC Keycloak réelle reste à faire (voir
-HANDOFF.md).
+- **`keycloak`** (seul mode possible en production) : flux OIDC
+  Authorization Code + PKCE (`oidc-client-ts`, `src/lib/auth/keycloak.ts`)
+  avec le client public `ida-place-web`. Jetons conservés en mémoire
+  uniquement (un rechargement relance la connexion, transparente tant que la
+  session SSO Keycloak est active), renouvelés par le jeton de
+  rafraîchissement, déconnexion via le bouton « Se déconnecter » de la
+  topbar. Le client HTTP envoie `Authorization: Bearer <jeton>` ; un 401
+  relance la connexion. Pages techniques : `/auth/callback` (retour de
+  connexion) et `/auth/logged-out` (retour de déconnexion).
+- **`dev`** (développement local uniquement) : en-tête `x-dev-user` (valeur
+  `NEXT_PUBLIC_DEV_USER`, défaut `OPERATEUR_PLACE`, nom de rôle ou JSON
+  `{"role":"TRESORIER","companyId":"CAAT"}`) lu par le `DevAuthProvider` du
+  backend, qui le refuse en production.
+
+Garde de build (`config/build-env.ts`, appelée par `next.config.ts`) :
+`next build` **échoue** si `NEXT_PUBLIC_AUTH_MODE` n'est pas `keycloak`, si
+`NEXT_PUBLIC_DEV_USER` est défini, ou si `NEXT_PUBLIC_API_URL` /
+`NEXT_PUBLIC_KEYCLOAK_URL` ne sont pas en `https://`. Le code du mode dev
+est retiré du bundle de production (contrôle CI : aucune occurrence de
+`x-dev-user` dans `.next/`). Variables de production :
+`.env.production.example`.
+
+Le rôle, la compagnie et les privilèges affichés viennent de `GET /me`,
+construit par le backend à partir des claims du jeton vérifié.
+
+### Configuration Keycloak attendue (realm `ida-place`)
+
+- Client `ida-place-web` : *public* (Client authentication = Off), *Standard
+  flow* activé, *Direct access grants* et *Implicit flow* désactivés,
+  PKCE obligatoire (`pkce.code.challenge.method = S256`).
+- *Valid redirect URIs* : `https://<frontend>/auth/callback`
+  (+ `http://localhost:3000/auth/callback` en développement).
+- *Valid post logout redirect URIs* : `https://<frontend>/auth/logged-out`.
+- *Web origins* : `https://<frontend>` (CORS des appels au point de
+  terminaison des jetons).
+- Mappers : rôle applicatif (`ida_place_role` ou rôles de realm portant les
+  noms des 6 rôles) et attribut utilisateur `company_id` pour les rôles
+  compagnie (voir `KeycloakStrategy` côté backend) ; audience du jeton
+  acceptée par l'API (`azp = ida-place-web`).
+- Durées : jeton d'accès court (5 min), rotation des jetons de
+  rafraîchissement (*Revoke refresh token* activé).
 
 ## Design tokens & thème
 
@@ -85,7 +119,7 @@ du choix et comment migrer vers `next-intl` si besoin plus tard.
 - **Client HTTP** : toujours via `apiGet`/`apiPost`/`apiPut`/`apiPostForm`
   (ce dernier pour l'upload multipart, ex: `/claims/import`)
   (`src/lib/api-client.ts`), jamais de `fetch` direct dans une page — ça
-  centralise l'en-tête dev, le préfixe `/api/v1` et la normalisation
+  centralise l'authentification (Bearer / en-tête dev), le préfixe `/api/v1` et la normalisation
   d'erreur (`ApiError`, forme `{code,message,details}`).
 - **Temps réel** : `useRealtime(events, onEvent)` (`src/lib/realtime.ts`,
   Socket.IO) pour s'abonner au `RealtimeModule` back — toujours combiné à
