@@ -946,6 +946,12 @@ export interface LedgerEntry {
 export interface LedgerVerifyResult {
   valid: boolean;
   brokenAt?: string;
+  /** Champs ajoutés par le backend (scellement HMAC) — optionnels côté interface. */
+  reason?: string;
+  entries?: number;
+  legacyEntries?: number;
+  headHash?: string;
+  checkedAt?: string;
 }
 
 /* ===================== Monitoring assureurs (écran 8, Module F §6.8) — mock (pondérations réelles) ===================== */

@@ -48,6 +48,11 @@ export function toRealtimeSignal(event: RealtimeEventName, payload: unknown): Re
   return { event, ...(id ? { id } : {}), ...(state ? { state } : {}) };
 }
 
+/** Code d'erreur applicatif émis par la passerelle (`TOKEN_EXPIRED`, `UNAUTHORIZED`, `FORBIDDEN`). */
+export function realtimeErrorCode(err: unknown): string | undefined {
+  return err && typeof err === 'object' && typeof (err as { code?: unknown }).code === 'string' ? (err as { code: string }).code : undefined;
+}
+
 /**
  * Hook d'abonnement au flux temps réel du back-end (`RealtimeModule`,
  * B.12/HANDOFF §1) — Socket.IO, namespace `/realtime`.
@@ -102,6 +107,22 @@ export function useRealtime(events: RealtimeEventName[], onSignal?: (signal: Rea
       socket.on('connect_error', () => {
         // Flux temps réel indisponible (back arrêté, jeton refusé) — l'écran
         // reste utilisable via le polling de repli prévu par l'appelant.
+      });
+      // Contrat backend : à l'expiration du jeton, le serveur émet
+      // `error { code: 'TOKEN_EXPIRED' }` puis coupe la connexion. Socket.IO
+      // ne se reconnecte pas seul après une coupure décidée par le serveur :
+      // on relance la connexion, `auth` fournissant le jeton renouvelé.
+      // UNAUTHORIZED/FORBIDDEN : pas de nouvelle tentative (polling de repli).
+      let tokenExpired = false;
+      const current = socket;
+      current.on('error', (err: unknown) => {
+        tokenExpired = realtimeErrorCode(err) === 'TOKEN_EXPIRED';
+      });
+      current.on('disconnect', (reason: string) => {
+        if (reason === 'io server disconnect' && tokenExpired) {
+          tokenExpired = false;
+          current.connect();
+        }
       });
     } catch {
       // socket.io-client indisponible dans cet environnement — repli silencieux sur le polling.

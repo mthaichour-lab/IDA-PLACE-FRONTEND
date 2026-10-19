@@ -2,11 +2,13 @@
 
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { TruncationNote } from '@/components/ui/TruncationNote';
 import { FolioHeader } from '@/components/FolioHeader';
 import { Tag } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { apiGet } from '@/lib/api-client';
+import { fetchAllPages } from '@/lib/paginate';
 import { buildLedgerCsv, downloadCsv } from '@/lib/csv';
 import { useRealtime } from '@/lib/realtime';
 import { LedgerEntry, LedgerVerifyResult } from '@/lib/types';
@@ -149,8 +151,10 @@ export default function LedgerPage() {
 
   const listQuery = useQuery({
     queryKey: ['ledger', 'list', from, to],
+    // `GET /ledger` est paginé (pageSize ≤ 100, SEC-13) : pages successives
+    // jusqu'au plafond `FETCH_ALL_MAX_ITEMS` ; bornes en ISO 8601.
     queryFn: () =>
-      apiGet<LedgerEntry[]>('/ledger', {
+      fetchAllPages<LedgerEntry>('/ledger', {
         from: from ? new Date(from).toISOString() : undefined,
         to: to ? new Date(to).toISOString() : undefined,
       }),
@@ -177,7 +181,7 @@ export default function LedgerPage() {
     });
   }
 
-  const entries = listQuery.data ?? [];
+  const entries = useMemo(() => listQuery.data?.items ?? [], [listQuery.data]);
 
   // Numéro de séquence (#1806 décroissant dans la capture de référence) —
   // dérivé UNIQUEMENT de la position de l'entrée dans la liste complète
@@ -303,6 +307,7 @@ export default function LedgerPage() {
               </span>
             </div>
             <div className="sheet-body">
+              <TruncationNote truncated={listQuery.data?.truncated} shown={entries.length} total={listQuery.data?.total ?? 0} />
               <div style={{ display: 'flex', gap: 'var(--s-3)', marginBottom: 'var(--s-4)', flexWrap: 'wrap' }}>
                 <select
                   value={typeFilter}

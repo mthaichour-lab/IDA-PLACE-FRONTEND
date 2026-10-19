@@ -10,6 +10,11 @@ const ME: MeResponse = {
   privileges: [],
 };
 
+/** `GET /ledger` renvoie une page `{ page, total, items }` (contrat backend SEC-13). */
+function ledgerPage(items: LedgerEntry[]) {
+  return { page: 1, total: items.length, items };
+}
+
 function entry(overrides: Partial<LedgerEntry> = {}): LedgerEntry {
   return {
     id: 'le-1',
@@ -54,7 +59,7 @@ describe('Écran Journal scellé (/ledger)', () => {
   });
 
   it('affiche une entrée sous forme de carte : titre #séquence/type/référence, description résumé — auteur, empreintes', async () => {
-    mockFetchJson({ '/api/v1/me': ME, '/api/v1/ledger': [entry()], '/api/v1/ledger/verify': { valid: true } as LedgerVerifyResult });
+    mockFetchJson({ '/api/v1/me': ME, '/api/v1/ledger': ledgerPage([entry()]), '/api/v1/ledger/verify': { valid: true } as LedgerVerifyResult });
 
     renderWithProviders(<LedgerPage />);
 
@@ -69,11 +74,11 @@ describe('Écran Journal scellé (/ledger)', () => {
       // L'API renvoie la liste triée seq ASC (la plus ancienne en premier) —
       // voir ledger.service.ts back ; l'écran doit l'afficher la plus
       // récente en tête, numérotée depuis le total (#3, #2, #1).
-      '/api/v1/ledger': [
+      '/api/v1/ledger': ledgerPage([
         entry({ id: 'le-1', ref: 'r-1' }),
         entry({ id: 'le-2', ref: 'r-2' }),
         entry({ id: 'le-3', ref: 'r-3' }),
-      ],
+      ]),
       '/api/v1/ledger/verify': { valid: true } as LedgerVerifyResult,
     });
 
@@ -87,7 +92,7 @@ describe('Écran Journal scellé (/ledger)', () => {
   });
 
   it("affiche l'état d'intégrité du chaînage (chaîne intègre)", async () => {
-    mockFetchJson({ '/api/v1/me': ME, '/api/v1/ledger': [entry()], '/api/v1/ledger/verify': { valid: true } as LedgerVerifyResult });
+    mockFetchJson({ '/api/v1/me': ME, '/api/v1/ledger': ledgerPage([entry()]), '/api/v1/ledger/verify': { valid: true } as LedgerVerifyResult });
 
     renderWithProviders(<LedgerPage />);
 
@@ -95,7 +100,7 @@ describe('Écran Journal scellé (/ledger)', () => {
   });
 
   it("signale une chaîne rompue avec sa référence quand l'API le rapporte", async () => {
-    mockFetchJson({ '/api/v1/me': ME, '/api/v1/ledger': [entry()], '/api/v1/ledger/verify': { valid: false, brokenAt: 'le-7' } as LedgerVerifyResult });
+    mockFetchJson({ '/api/v1/me': ME, '/api/v1/ledger': ledgerPage([entry()]), '/api/v1/ledger/verify': { valid: false, brokenAt: 'le-7' } as LedgerVerifyResult });
 
     renderWithProviders(<LedgerPage />);
 
@@ -103,7 +108,7 @@ describe('Écran Journal scellé (/ledger)', () => {
   });
 
   it("le bouton « Vérifier l'intégrité » redéclenche immédiatement une vérification (en plus du polling)", async () => {
-    mockFetchJson({ '/api/v1/me': ME, '/api/v1/ledger': [entry()], '/api/v1/ledger/verify': { valid: true } as LedgerVerifyResult });
+    mockFetchJson({ '/api/v1/me': ME, '/api/v1/ledger': ledgerPage([entry()]), '/api/v1/ledger/verify': { valid: true } as LedgerVerifyResult });
 
     renderWithProviders(<LedgerPage />);
 
@@ -116,15 +121,28 @@ describe('Écran Journal scellé (/ledger)', () => {
   });
 
   it('« Page du journal » est désactivé (aucune page dédiée côté API) plutôt qu’une fausse destination', async () => {
-    mockFetchJson({ '/api/v1/me': ME, '/api/v1/ledger': [entry()], '/api/v1/ledger/verify': { valid: true } as LedgerVerifyResult });
+    mockFetchJson({ '/api/v1/me': ME, '/api/v1/ledger': ledgerPage([entry()]), '/api/v1/ledger/verify': { valid: true } as LedgerVerifyResult });
 
     renderWithProviders(<LedgerPage />);
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Page du journal' })).toBeDisabled());
   });
 
+  it('lit GET /ledger paginé, jamais plus de 100 entrées par page', async () => {
+    mockFetchJson({ '/api/v1/me': ME, '/api/v1/ledger': ledgerPage([entry()]), '/api/v1/ledger/verify': { valid: true } as LedgerVerifyResult });
+    renderWithProviders(<LedgerPage />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Exporter le journal' })).not.toBeDisabled());
+    const ledgerCalls = vi
+      .mocked(fetch)
+      .mock.calls.map(([input]) => new URL(String(input)))
+      .filter((u) => u.pathname === '/api/v1/ledger');
+    expect(ledgerCalls.length).toBeGreaterThan(0);
+    for (const u of ledgerCalls) expect(Number(u.searchParams.get('pageSize'))).toBeLessThanOrEqual(100);
+  });
+
   it('désactive l’export quand le journal est vide', async () => {
-    mockFetchJson({ '/api/v1/me': ME, '/api/v1/ledger': [], '/api/v1/ledger/verify': { valid: true } as LedgerVerifyResult });
+    mockFetchJson({ '/api/v1/me': ME, '/api/v1/ledger': ledgerPage([]), '/api/v1/ledger/verify': { valid: true } as LedgerVerifyResult });
 
     renderWithProviders(<LedgerPage />);
 
@@ -134,11 +152,11 @@ describe('Écran Journal scellé (/ledger)', () => {
   it('le filtre par type affiche le bon décompte et restreint la liste', async () => {
     mockFetchJson({
       '/api/v1/me': ME,
-      '/api/v1/ledger': [
+      '/api/v1/ledger': ledgerPage([
         entry({ id: 'le-1', type: 'INGESTION', ref: 'i-1' }),
         entry({ id: 'le-2', type: 'INGESTION', ref: 'i-2' }),
         entry({ id: 'le-3', type: 'MATCHING', ref: 'm-1' }),
-      ],
+      ]),
       '/api/v1/ledger/verify': { valid: true } as LedgerVerifyResult,
     });
 
@@ -157,10 +175,10 @@ describe('Écran Journal scellé (/ledger)', () => {
   it('la recherche libre filtre par référence, acteur ou empreinte', async () => {
     mockFetchJson({
       '/api/v1/me': ME,
-      '/api/v1/ledger': [
+      '/api/v1/ledger': ledgerPage([
         entry({ id: 'le-1', ref: 'r-1', actor: 'operateur-caat', hash: 'aaaa1111bbbb2222cccc3333dddd4444' }),
         entry({ id: 'le-2', ref: 'r-2', actor: 'operateur-saa', hash: 'eeee5555ffff6666aaaa7777bbbb8888' }),
-      ],
+      ]),
       '/api/v1/ledger/verify': { valid: true } as LedgerVerifyResult,
     });
 
@@ -177,7 +195,7 @@ describe('Écran Journal scellé (/ledger)', () => {
 
   it('conserve la pagination fixe à 6 entrées par page', async () => {
     const entries = Array.from({ length: 7 }, (_, i) => entry({ id: `le-${i + 1}`, ref: `r-${i + 1}` }));
-    mockFetchJson({ '/api/v1/me': ME, '/api/v1/ledger': entries, '/api/v1/ledger/verify': { valid: true } as LedgerVerifyResult });
+    mockFetchJson({ '/api/v1/me': ME, '/api/v1/ledger': ledgerPage(entries), '/api/v1/ledger/verify': { valid: true } as LedgerVerifyResult });
 
     renderWithProviders(<LedgerPage />);
 
