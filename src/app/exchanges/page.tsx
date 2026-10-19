@@ -270,7 +270,9 @@ export default function ExchangesPage() {
   });
   // Catalogue indisponible (erreur) : même repli que le catalogue vide — motif libre + attestation.
   const motifs = motifsQuery.data ?? [];
-  const hasAdmittedMotifs = motifs.some((m) => !m.forbidden);
+  // Décision PO (2026-10-19) : seul un motif validé UAR peut fonder une opposition.
+  const isAdmitted = (m: OppositionMotif) => !m.forbidden && m.status === 'VALIDE_UAR';
+  const hasAdmittedMotifs = motifs.some(isAdmitted);
   const motifLabels = useMemo(() => new Map(motifs.map((m) => [m.code, m.label])), [motifs]);
 
   function resetOpposition() {
@@ -514,8 +516,12 @@ export default function ExchangesPage() {
                           {t('exchanges.opposition.motif.placeholder')}
                         </option>
                         {motifs.map((m) => (
-                          <option key={m.code} value={m.code} disabled={m.forbidden}>
-                            {m.forbidden ? `${m.label} — ${t('referential.oppositionMotifs.forbidden')}` : m.label}
+                          <option key={m.code} value={m.code} disabled={!isAdmitted(m)}>
+                            {m.forbidden
+                              ? `${m.label} — ${t('referential.oppositionMotifs.forbidden')}`
+                              : isAdmitted(m)
+                                ? m.label
+                                : `${m.label} — ${t('exchanges.opposition.motif.pending')}`}
                           </option>
                         ))}
                       </select>

@@ -196,6 +196,9 @@ describe('Écran 12 — Barème Art. 14 (décision PO §5)', () => {
     const block = await screen.findByRole('region', { name: 'Catégories de véhicule' });
     await within(block).findByText('Véhicule léger');
     expect(within(screen.getByText('Poids lourd').closest('tr')!).queryByRole('button', { name: 'Valider (UAR)' })).not.toBeInTheDocument();
+    // Décision PO (2026-10-19) : une catégorie validée est figée.
+    expect(within(screen.getByText('Poids lourd').closest('tr')!).queryByRole('button', { name: 'Modifier' })).not.toBeInTheDocument();
+    expect(within(screen.getByText('Véhicule léger').closest('tr')!).getByRole('button', { name: 'Modifier' })).toBeInTheDocument();
     await user.click(within(screen.getByText('Véhicule léger').closest('tr')!).getByRole('button', { name: 'Valider (UAR)' }));
 
     await user.click(within(block).getByRole('button', { name: 'Nouvelle catégorie' }));

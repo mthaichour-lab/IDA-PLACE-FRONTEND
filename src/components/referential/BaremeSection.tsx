@@ -229,7 +229,7 @@ export function BaremeSection() {
       header: t('referential.col.actions'),
       render: (r) => (
         <RowActions>
-          {canEdit ? (
+          {canEdit && r.status !== 'VALIDE_UAR' ? (
             <RowAction
               onClick={() => {
                 setCategoryForm({ code: r.code, label: r.label });

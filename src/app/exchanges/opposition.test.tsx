@@ -34,7 +34,8 @@ const NON_DECLARATION: OppositionMotif = {
   createdBy: 'system:seed',
   createdAt: '2026-10-18T00:00:00.000Z',
 };
-const MONTANT_CONTESTE: OppositionMotif = { ...NON_DECLARATION, code: 'MONTANT_CONTESTE', label: 'Montant contesté', forbidden: false, createdBy: 'u-op' };
+const MONTANT_CONTESTE: OppositionMotif = { ...NON_DECLARATION, code: 'MONTANT_CONTESTE', label: 'Montant contesté', forbidden: false, status: 'VALIDE_UAR', createdBy: 'u-op' };
+const PIECE_MANQUANTE: OppositionMotif = { ...NON_DECLARATION, code: 'PIECE_MANQUANTE', label: 'Pièce manquante', forbidden: false, status: 'SAISI', createdBy: 'u-op' };
 
 function mockApi(motifs: OppositionMotif[], recours: RecoursItem = RECOURS) {
   const writes: FetchRequest[] = [];
@@ -87,6 +88,14 @@ describe('Écran 4 — opposition motivée (décision PO §1)', () => {
     expect(writes[0].body).toEqual({ action: 'opposer', reason: 'Responsabilité contestée' });
   });
 
+  it('un motif seulement saisi (non validé UAR) ne suffit pas : attestation conservée', async () => {
+    mockApi([PIECE_MANQUANTE, NON_DECLARATION]);
+    const { group } = await openOpposition();
+
+    await waitFor(() => expect(within(group).getByRole('checkbox')).toBeInTheDocument());
+    expect(within(group).queryByRole('combobox')).not.toBeInTheDocument();
+  });
+
   it('catalogue indisponible : même repli (motif libre + attestation)', async () => {
     const writes: FetchRequest[] = [];
     mockFetchRequests((req) => {
@@ -108,10 +117,11 @@ describe('Écran 4 — opposition motivée (décision PO §1)', () => {
   });
 
   it('avec des motifs admis : liste obligatoire, motif interdit grisé, `reasonCode` envoyé', async () => {
-    const writes = mockApi([MONTANT_CONTESTE, NON_DECLARATION]);
+    const writes = mockApi([MONTANT_CONTESTE, PIECE_MANQUANTE, NON_DECLARATION]);
     const { user, group } = await openOpposition();
 
     const select = await within(group).findByRole('combobox', { name: "Motif d'opposition (obligatoire)" });
+    expect(within(select).getByRole('option', { name: 'Pièce manquante — en attente de validation UAR' })).toBeDisabled();
     expect(select).toBeRequired();
     expect(within(group).queryByRole('checkbox')).not.toBeInTheDocument();
 

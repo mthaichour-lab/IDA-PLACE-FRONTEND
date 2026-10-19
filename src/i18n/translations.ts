@@ -788,6 +788,7 @@ const fr = {
   'exchanges.action.reason.label': 'Motif (optionnel)',
   'exchanges.action.none': 'Aucune action disponible dans cet état.',
   'exchanges.opposition.motif.label': "Motif d'opposition (obligatoire)",
+  'exchanges.opposition.motif.pending': 'en attente de validation UAR',
   'exchanges.opposition.motif.placeholder': '— Choisir un motif —',
   'exchanges.opposition.noCatalog': "Aucun motif d'opposition admis au catalogue : motif libre, avec l'attestation ci-dessous.",
   'exchanges.opposition.attest': "Cette opposition n'est pas motivée par une non-déclaration (Art. 10)",

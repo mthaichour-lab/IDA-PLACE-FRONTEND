@@ -1360,6 +1360,11 @@ Décisions et périmètre : `QUESTIONS_UAR.md` §1-5, §7, §8 (backend).
 - `/import` : modèles v1 (47) / v2 (53), avertissements séparés.
 - `/cockpit` : la note du cycle renvoie désormais à « Avancement du lot »
   (elle disait la réunion UAR et le règlement « non suivis »).
+- Décisions PO du 2026-10-19 (après le Testeur) : `/exchanges` ne rend
+  sélectionnable qu'un motif d'opposition `VALIDE_UAR` (les motifs
+  seulement saisis apparaissent grisés « en attente de validation UAR ») ;
+  `/referential` n'offre plus « Modifier » sur une catégorie de véhicule
+  validée (figée côté back, 409 `CATEGORIE_IMMUABLE`).
 
 **Vérifié** : `tsc` OK, 175/175 tests, build OK. Un test a échoué une
 seule fois dans un worktree, non reproduit sur 5 exécutions ensuite
