@@ -6,6 +6,7 @@ import { FolioHeader } from '@/components/FolioHeader';
 import { Art14Panel } from '@/components/matching/Art14Panel';
 import { apiErrorMessage } from '@/components/referential/fields';
 import { CoChip } from '@/components/ui/CoChip';
+import { isMaskedValue, MaskedValue } from '@/components/ui/Masked';
 import { ScoreBar } from '@/components/ui/ScoreBar';
 import { Tabs } from '@/components/ui/Tabs';
 import { Table, Column } from '@/components/ui/Table';
@@ -17,9 +18,11 @@ import { apiGet, apiPath, apiPost } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import {
   FeedMode,
+  MATCH_TERMINAL_STATUSES,
   MatchCounters,
   MatchCriteria,
   MatchDecisionAction,
+  MatchDecisionHistoryEntry,
   MatchDecisionResult,
   MatchFilter,
   MatchQueueItem,
@@ -84,6 +87,26 @@ const CANAL_LABEL: Record<FeedMode, TranslationKey> = {
   IMPORT: 'matching.canal.IMPORT',
   API: 'matching.canal.API',
 };
+
+const ACTION_LABEL: Record<MatchDecisionAction, TranslationKey> = {
+  confirm: 'matching.history.action.confirm',
+  reject: 'matching.history.action.reject',
+  complement: 'matching.history.action.complement',
+  link: 'matching.history.action.link',
+};
+
+/** Libellé d'un canal de déclaration — `masqué` si la valeur est masquée (SEC-03), `—` si absente ou inconnue. */
+function canalLabel(value: string | undefined, t: (key: TranslationKey) => string): string {
+  if (isMaskedValue(value)) return t('common.masked');
+  const key = value ? CANAL_LABEL[value as FeedMode] : undefined;
+  return key ? t(key) : t('matching.vehicle.unknown');
+}
+
+/** Valeur texte d'une carte : « masqué » pour une valeur masquée, repli pour une valeur absente. */
+function shown(value: string | undefined, fallback: string, t: (key: TranslationKey) => string): string {
+  if (isMaskedValue(value)) return t('common.masked');
+  return value ?? fallback;
+}
 
 function statusTone(status: MatchStatus): TagTone {
   if (status === 'AUTO_CONFIRME' || status === 'CONFIRME_MANUEL') return 'ok';
@@ -163,7 +186,7 @@ function VehicleCard({
   company: string;
   dossier: string;
   identite?: string;
-  plate: string;
+  plate?: string;
   canalLabel: string;
   t: (key: TranslationKey) => string;
 }) {
@@ -179,10 +202,12 @@ function VehicleCard({
           {dossier}
         </dd>
         <dt style={{ color: 'var(--ink-3)' }}>{t('matching.vehicle.identity')}</dt>
-        <dd style={{ margin: 0 }}>{identite ?? t('matching.vehicle.unknown')}</dd>
+        <dd style={{ margin: 0 }}>
+          <MaskedValue value={identite} />
+        </dd>
         <dt style={{ color: 'var(--ink-3)' }}>{t('matching.vehicle.plate')}</dt>
-        <dd className="mono" style={{ margin: 0 }}>
-          {plate}
+        <dd style={{ margin: 0 }}>
+          <MaskedValue value={plate} mono />
         </dd>
         <dt style={{ color: 'var(--ink-3)' }}>{t('matching.vehicle.canal')}</dt>
         <dd style={{ margin: 0 }}>{canalLabel}</dd>
@@ -234,6 +259,15 @@ export default function MatchingPage() {
   }, [items.map((i) => i.id).join(',')]);
 
   const selected = items.find((i) => i.id === selectedId) ?? null;
+  // SEC-28 : revenir sur une décision déjà prise exige un motif (400 MOTIF_REQUIS).
+  const reasonRequired = !!selected && MATCH_TERMINAL_STATUSES.includes(selected.status);
+  const reasonMissing = reasonRequired && rejectReason.trim() === '';
+
+  const decisionsQuery = useQuery({
+    queryKey: ['matching', 'decisions', selected?.id],
+    queryFn: () => apiGet<MatchDecisionHistoryEntry[]>(apiPath`/matching/${selected!.id}/decisions`),
+    enabled: !!selected,
+  });
 
   const decideMutation = useMutation({
     mutationFn: ({ id, action, reason }: { id: string; action: MatchDecisionAction; reason?: string }) =>
@@ -262,10 +296,10 @@ export default function MatchingPage() {
 
   const decide = useCallback(
     (action: MatchDecisionAction) => {
-      if (!selected || !canDecide || decideMutation.isPending) return;
-      decideMutation.mutate({ id: selected.id, action, reason: action === 'reject' ? rejectReason || undefined : undefined });
+      if (!selected || !canDecide || decideMutation.isPending || reasonMissing) return;
+      decideMutation.mutate({ id: selected.id, action, reason: rejectReason.trim() || undefined });
     },
-    [selected, canDecide, decideMutation, rejectReason],
+    [selected, canDecide, decideMutation, rejectReason, reasonMissing],
   );
 
   const moveSelection = useCallback(
@@ -315,7 +349,7 @@ export default function MatchingPage() {
         render: (r) => (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <CoChip code={r.companyA} />
-            <span className="mono">{r.plateA}</span>
+            <MaskedValue value={r.plateA} mono />
           </span>
         ),
       },
@@ -323,10 +357,10 @@ export default function MatchingPage() {
         key: 'partyB',
         header: t('matching.col.partyB'),
         render: (r) =>
-          r.companyB && r.plateB ? (
+          r.companyB ? (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <CoChip code={r.companyB} />
-              <span className="mono">{r.plateB}</span>
+              <MaskedValue value={r.plateB} mono />
             </span>
           ) : (
             <span style={{ color: 'var(--ink-3)' }}>{t('matching.noPartyB')}</span>
@@ -398,15 +432,15 @@ export default function MatchingPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-2)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <CoChip code={selected.companyA} />
-                      <span className="mono">{selected.plateA}</span>
+                      <MaskedValue value={selected.plateA} mono />
                       <span className="mono" style={{ color: 'var(--ink-3)' }}>
                         {selected.refA}
                       </span>
                     </div>
-                    {selected.companyB && selected.plateB ? (
+                    {selected.companyB ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <CoChip code={selected.companyB} />
-                        <span className="mono">{selected.plateB}</span>
+                        <MaskedValue value={selected.plateB} mono />
                         <span className="mono" style={{ color: 'var(--ink-3)' }}>
                           {selected.refB}
                         </span>
@@ -415,6 +449,11 @@ export default function MatchingPage() {
                       <Tag tone="warn">{t('matching.noPartyB')}</Tag>
                     )}
                   </div>
+                  {selected.masked ? (
+                    <p className="note" role="note" style={{ fontSize: 'var(--k-fs-xs)', marginBottom: 0 }}>
+                      {t('matching.masked.note')}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div style={{ marginBottom: 'var(--s-4)' }}>
@@ -464,31 +503,41 @@ export default function MatchingPage() {
                 ) : null}
 
                 {selected.confirmedBy ? (
-                  <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}>
-                    {t('matching.decidedBy')}: {selected.confirmedBy} ({selected.confirmedAt ? new Date(selected.confirmedAt).toLocaleString(locale) : ''})
+                  <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span>
+                      {t('matching.decidedBy')}: {selected.confirmedBy}
+                    </span>
+                    {selected.confirmedByCompany && selected.confirmedByCompany !== 'PLACE' ? <CoChip code={selected.confirmedByCompany} /> : null}
+                    {selected.confirmedAt ? <span>({new Date(selected.confirmedAt).toLocaleString(locale)})</span> : null}
                   </p>
                 ) : null}
 
                 {!canDecide ? <p className="note warn">{t('common.forbidden')}</p> : null}
 
                 <label htmlFor="reject-reason" style={{ display: 'block', fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', marginBottom: 4 }}>
-                  {t('matching.action.reason')}
+                  {reasonRequired ? t('matching.action.reasonRequired') : t('matching.action.reason')}
                 </label>
                 <input
                   id="reject-reason"
                   type="text"
                   value={rejectReason}
+                  maxLength={500}
+                  required={reasonRequired}
+                  aria-required={reasonRequired}
                   onChange={(e) => setRejectReason(e.target.value)}
                   disabled={!canDecide}
-                  style={{ width: '100%', marginBottom: 'var(--s-3)', padding: '6px 10px', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', font: 'inherit', background: 'var(--paper)', color: 'var(--ink)' }}
+                  style={{ width: '100%', marginBottom: reasonMissing && canDecide ? 4 : 'var(--s-3)', padding: '6px 10px', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', font: 'inherit', background: 'var(--paper)', color: 'var(--ink)' }}
                 />
+                {reasonMissing && canDecide ? (
+                  <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginTop: 0, marginBottom: 'var(--s-3)' }}>{t('matching.reason.requiredHint')}</p>
+                ) : null}
 
                 <div style={{ display: 'flex', gap: 'var(--s-2)', flexWrap: 'wrap' }}>
                   <button
                     type="button"
                     className="tag ok"
-                    style={{ cursor: canDecide ? 'pointer' : 'not-allowed', border: 'none' }}
-                    disabled={!canDecide || decideMutation.isPending}
+                    style={{ cursor: canDecide && !reasonMissing ? 'pointer' : 'not-allowed', border: 'none' }}
+                    disabled={!canDecide || decideMutation.isPending || reasonMissing}
                     onClick={() => decide('confirm')}
                     aria-label={t('matching.action.confirm')}
                   >
@@ -497,8 +546,8 @@ export default function MatchingPage() {
                   <button
                     type="button"
                     className="tag ko"
-                    style={{ cursor: canDecide ? 'pointer' : 'not-allowed', border: 'none' }}
-                    disabled={!canDecide || decideMutation.isPending}
+                    style={{ cursor: canDecide && !reasonMissing ? 'pointer' : 'not-allowed', border: 'none' }}
+                    disabled={!canDecide || decideMutation.isPending || reasonMissing}
                     onClick={() => decide('reject')}
                     aria-label={t('matching.action.reject')}
                   >
@@ -507,14 +556,16 @@ export default function MatchingPage() {
                   <button
                     type="button"
                     className="tag warn"
-                    style={{ cursor: canDecide ? 'pointer' : 'not-allowed', border: 'none' }}
-                    disabled={!canDecide || decideMutation.isPending}
+                    style={{ cursor: canDecide && !reasonMissing ? 'pointer' : 'not-allowed', border: 'none' }}
+                    disabled={!canDecide || decideMutation.isPending || reasonMissing}
                     onClick={() => decide('complement')}
                     aria-label={t('matching.action.complement')}
                   >
                     {t('matching.action.complement')}
                   </button>
                 </div>
+
+                <DecisionHistory query={decisionsQuery} locale={locale} t={t} />
               </>
             )}
           </div>
@@ -564,8 +615,8 @@ export default function MatchingPage() {
                 />
                 <ConfrontationCard
                   label={t('matching.confrontation.field.wilaya')}
-                  valueA={selected.wilayaA ?? t('matching.confrontation.unknown')}
-                  valueB={selected.wilayaB ?? t('matching.confrontation.unknown')}
+                  valueA={shown(selected.wilayaA, t('matching.confrontation.unknown'), t)}
+                  valueB={shown(selected.wilayaB, t('matching.confrontation.unknown'), t)}
                   concordant={!!selected.wilayaA && selected.wilayaA === selected.wilayaB}
                   okLabel={t('matching.confrontation.badge.concordant')}
                   koLabel={t('matching.confrontation.badge.discordant')}
@@ -578,16 +629,16 @@ export default function MatchingPage() {
                     {plaque/police propre, plaque/police adverse déclarée} des deux côtés. */}
                 <ConfrontationCard
                   label={t('matching.confrontation.field.plaques')}
-                  valueA={selected.plateA}
-                  valueB={selected.plateB ?? t('matching.confrontation.unknown')}
+                  valueA={shown(selected.plateA, t('matching.confrontation.unknown'), t)}
+                  valueB={shown(selected.plateB, t('matching.confrontation.unknown'), t)}
                   concordant={selected.criteria.plaquesCroisees}
                   okLabel={t('matching.confrontation.badge.concordant')}
                   koLabel={t('matching.confrontation.badge.discordant')}
                 />
                 <ConfrontationCard
                   label={t('matching.confrontation.field.police')}
-                  valueA={selected.policeA ?? t('matching.confrontation.unknown')}
-                  valueB={selected.policeB ?? t('matching.confrontation.unknown')}
+                  valueA={shown(selected.policeA, t('matching.confrontation.unknown'), t)}
+                  valueB={shown(selected.policeB, t('matching.confrontation.unknown'), t)}
                   concordant={selected.criteria.policeCroisee}
                   okLabel={t('matching.confrontation.badge.concordant')}
                   koLabel={t('matching.confrontation.badge.discordant')}
@@ -601,7 +652,7 @@ export default function MatchingPage() {
                   dossier={selected.refA}
                   identite={selected.assureAIdentite}
                   plate={selected.plateA}
-                  canalLabel={selected.canalDeclarationA ? t(CANAL_LABEL[selected.canalDeclarationA]) : t('matching.vehicle.unknown')}
+                  canalLabel={canalLabel(selected.canalDeclarationA, t)}
                   t={t}
                 />
                 <VehicleCard
@@ -609,8 +660,8 @@ export default function MatchingPage() {
                   company={selected.companyB ?? '—'}
                   dossier={selected.refB}
                   identite={selected.assureBIdentite}
-                  plate={selected.plateB ?? t('matching.vehicle.unknown')}
-                  canalLabel={selected.canalDeclarationB ? t(CANAL_LABEL[selected.canalDeclarationB]) : t('matching.vehicle.unknown')}
+                  plate={selected.plateB}
+                  canalLabel={canalLabel(selected.canalDeclarationB, t)}
                   t={t}
                 />
               </div>
@@ -621,5 +672,57 @@ export default function MatchingPage() {
 
       {selected ? <Art14Panel key={selected.id} item={selected} /> : null}
     </>
+  );
+}
+
+/** SEC-28 — historique des décisions d'une ligne (`GET /matching/:id/decisions`), ordre chronologique. */
+function DecisionHistory({
+  query,
+  locale,
+  t,
+}: {
+  query: { data?: MatchDecisionHistoryEntry[]; isLoading: boolean; error: unknown; refetch: () => unknown };
+  locale: string;
+  t: (key: TranslationKey) => string;
+}) {
+  const entries = query.data ?? [];
+  return (
+    <section aria-label={t('matching.history.title')} style={{ marginTop: 'var(--s-4)' }}>
+      <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('matching.history.title')}</strong>
+      {query.isLoading ? (
+        <p style={{ fontSize: 'var(--k-fs-xs)' }}>{t('common.loading')}</p>
+      ) : query.error ? (
+        <div className="note ko" role="alert">
+          <span>{t('common.error')}</span>
+          <button type="button" onClick={() => query.refetch()}>
+            {t('common.retry')}
+          </button>
+        </div>
+      ) : entries.length === 0 ? (
+        <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', margin: 0 }}>{t('matching.history.empty')}</p>
+      ) : (
+        <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {entries.map((d) => (
+            <li key={d.id} style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', borderInlineStart: '2px solid var(--rule-strong)', paddingInlineStart: 8 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                <strong style={{ color: 'var(--ink)' }}>{ACTION_LABEL[d.action] ? t(ACTION_LABEL[d.action]) : d.action}</strong>
+                <span className="mono">
+                  {d.previousStatus} → {d.newStatus}
+                </span>
+              </div>
+              <div>
+                {new Date(d.decidedAt).toLocaleString(locale)} · {t('matching.history.by')} {d.decidedBy}
+                {d.decidedByCompany ? ` (${d.decidedByCompany})` : ''}
+              </div>
+              {d.reason ? (
+                <div>
+                  {t('matching.history.reason')} : {d.reason}
+                </div>
+              ) : null}
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
   );
 }

@@ -202,6 +202,8 @@ export function Art14Panel({ item }: { item: MatchQueueItem }) {
             {sides.map((side) => {
               const b = side.block;
               const taux = b?.tauxSelonBareme;
+              // SEC-03 : la saisie de l'autre compagnie n'est pas publiée avant confirmation.
+              const sideMasked = !!detail.masked && !!me && isCompanyRole(me.role) && side.company !== me.company;
               const rateDiffers =
                 !!taux &&
                 ((b?.responsabiliteDeclareeA !== undefined && b.responsabiliteDeclareeA !== taux.partA) ||
@@ -221,6 +223,9 @@ export function Art14Panel({ item }: { item: MatchQueueItem }) {
                       {side.reference}
                     </span>
                   </div>
+                  {sideMasked ? (
+                    <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', fontStyle: 'italic', margin: 0 }}>{t('matching.art14.masked')}</p>
+                  ) : (
                   <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 10px', margin: 0, fontSize: 'var(--k-fs-s)' }}>
                     <dt style={{ color: 'var(--ink-3)' }}>
                       {t('matching.art14.circumstances')} · {t('matching.art14.own')}
@@ -255,6 +260,7 @@ export function Art14Panel({ item }: { item: MatchQueueItem }) {
                       </>
                     ) : null}
                   </dl>
+                  )}
                   {rateDiffers ? (
                     <p className="note warn" role="status" style={{ marginBottom: 0 }}>
                       {t('matching.art14.rateAlert')}
