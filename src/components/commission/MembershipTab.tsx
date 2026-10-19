@@ -10,8 +10,8 @@ import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { apiGet, apiPath, apiPost } from '@/lib/api-client';
-import { ApiError } from '@/lib/api-error';
 import { useAuth } from '@/lib/auth-context';
+import { describeApiError } from '@/lib/error-message';
 import {
   CompanyView,
   CreateMembershipRequest,
@@ -55,25 +55,27 @@ function formatIsoDate(iso: string, locale: string): string {
   return new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString(locale, { timeZone: 'UTC' });
 }
 
-function errorMessage(err: unknown, fallback: string): string {
-  return err instanceof ApiError && err.message ? err.message : fallback;
-}
+/** UUID (SEC-44) : `companyId` d'une demande de retrait est l'identifiant de la compagnie au référentiel. */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface CreateForm {
   type: MembershipType;
   receivedAt: string;
+  /** SEC-47 : référence du courrier reçu, obligatoire. */
+  letterRef: string;
   candidateName: string;
   agrementRef: string;
   companyId: string;
 }
 
-const emptyForm = (): CreateForm => ({ type: 'ADHESION', receivedAt: todayIso(), candidateName: '', agrementRef: '', companyId: '' });
+const emptyForm = (): CreateForm => ({ type: 'ADHESION', receivedAt: todayIso(), letterRef: '', candidateName: '', agrementRef: '', companyId: '' });
 
 export function MembershipTab() {
   const { t, locale } = useI18n();
   const { hasPrivilege } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const errorMessage = (err: unknown, fallback: string) => describeApiError(err, t, fallback);
 
   const canManage = hasPrivilege('membership');
 
@@ -140,10 +142,11 @@ export function MembershipTab() {
 
   function submitCreate(e: React.FormEvent) {
     e.preventDefault();
+    const letterRef = form.letterRef.trim();
     const body: CreateMembershipRequest =
       form.type === 'ADHESION'
-        ? { type: 'ADHESION', receivedAt: form.receivedAt, candidateName: form.candidateName.trim(), agrementRef: form.agrementRef.trim() || undefined }
-        : { type: 'RETRAIT', receivedAt: form.receivedAt, companyId: form.companyId };
+        ? { type: 'ADHESION', receivedAt: form.receivedAt, letterRef, candidateName: form.candidateName.trim(), agrementRef: form.agrementRef.trim() || undefined }
+        : { type: 'RETRAIT', receivedAt: form.receivedAt, letterRef, companyId: form.companyId };
     createMutation.mutate(body);
   }
 
@@ -174,7 +177,8 @@ export function MembershipTab() {
   );
 
   const effectiveReached = selected?.effectiveDate ? todayIso() > selected.effectiveDate : false;
-  const createValid = form.receivedAt && (form.type === 'ADHESION' ? form.candidateName.trim() !== '' : form.companyId !== '');
+  const createValid =
+    !!form.receivedAt && form.letterRef.trim() !== '' && (form.type === 'ADHESION' ? form.candidateName.trim() !== '' : UUID_PATTERN.test(form.companyId));
 
   return (
     <>
@@ -280,6 +284,19 @@ export function MembershipTab() {
             style={FIELD_STYLE}
           />
 
+          <label htmlFor="membership-form-letter" style={LABEL_STYLE}>
+            {t('commission.membership.form.letterRef')}
+          </label>
+          <input
+            id="membership-form-letter"
+            type="text"
+            required
+            maxLength={64}
+            value={form.letterRef}
+            onChange={(e) => setForm((f) => ({ ...f, letterRef: e.target.value }))}
+            style={FIELD_STYLE}
+          />
+
           {form.type === 'ADHESION' ? (
             <>
               <label htmlFor="membership-form-candidate" style={LABEL_STYLE}>
@@ -355,6 +372,11 @@ export function MembershipTab() {
                 </>
               ) : null}
             </p>
+            {selected.letterRef ? (
+              <p style={{ color: 'var(--ink-2)', fontSize: 'var(--k-fs-s)' }}>
+                {t('commission.membership.form.letterRef')} : <span className="mono">{selected.letterRef}</span>
+              </p>
+            ) : null}
             {selected.agrementRef ? (
               <p style={{ color: 'var(--ink-2)', fontSize: 'var(--k-fs-s)' }}>
                 {t('commission.membership.form.agrementRef')} : <span className="mono">{selected.agrementRef}</span>

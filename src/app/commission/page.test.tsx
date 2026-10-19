@@ -49,6 +49,7 @@ function sanction(overrides: Partial<Sanction> = {}): Sanction {
     reason: 'Retard de saisie',
     orderedAt: new Date().toISOString(),
     orderedBy: 'Membre Commission (dev)',
+    status: 'PRONONCEE',
     ...overrides,
   };
 }
@@ -106,8 +107,19 @@ describe('Écran Commission (/commission)', () => {
     expect(screen.getByText(/n'avez pas le privilège requis \(penaltyOrder\)/)).toBeInTheDocument();
   });
 
-  it('prononce une pénalité et affiche le toast de confirmation', async () => {
-    mockCommissionApi(ME_WITH_BOTH, [commissionCase()], (id) => ({ id: 'pen-1', commissionCaseId: id, companyCode: 'CAAT', type: 'FINANCIERE', amount: 50_000, reason: 'Retard', orderedAt: new Date().toISOString(), orderedBy: 'dev-commission' }));
+  it('propose une pénalité (décision prononcée, PV signé) : toast « à contresigner » (SEC-32)', async () => {
+    const decided = commissionCase({ status: 'PRONONCE', pv: { signedBy: 'Autre membre', signedAt: new Date().toISOString(), ref: 'PV-cc-1' } });
+    mockCommissionApi(ME_WITH_BOTH, [decided], (id) => ({
+      id: 'pen-1',
+      commissionCaseId: id,
+      companyCode: 'CAAT',
+      type: 'FINANCIERE',
+      amount: 50_000,
+      reason: 'Retard',
+      orderedAt: new Date().toISOString(),
+      orderedBy: 'dev-commission',
+      status: 'A_CONTRESIGNER',
+    }));
     renderWithProviders(<CommissionPage />);
 
     await waitFor(() => expect(screen.getByText('r-1')).toBeInTheDocument());
@@ -118,7 +130,8 @@ describe('Écran Commission (/commission)', () => {
     fireEvent.change(screen.getByLabelText('Motif'), { target: { value: 'Retard' } });
     fireEvent.click(screen.getByRole('button', { name: 'Prononcer' }));
 
-    await waitFor(() => expect(screen.getByText('Pénalité prononcée.')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Pénalité proposée : elle sera prononcée après le contreseing d’un autre membre.')).toBeInTheDocument());
+    expect(screen.getByText('Pénalité proposée (à contresigner)')).toBeInTheDocument();
   });
 
   it('affiche les KPI de synthèse (affaires pendantes, hors délai, recours/oppositions fondés)', async () => {
@@ -177,11 +190,12 @@ function membershipRequest(overrides: Partial<MembershipRequest> = {}): Membersh
 }
 
 function withdrawal(overrides: Partial<MembershipRequest> = {}): MembershipRequest {
-  return membershipRequest({ type: 'RETRAIT', candidateName: undefined, companyId: 'co-caat', companyCode: 'CAAT', ...overrides });
+  return membershipRequest({ type: 'RETRAIT', candidateName: undefined, companyId: CAAT_ID, companyCode: 'CAAT', ...overrides });
 }
 
+const CAAT_ID = '3b6f2c1e-0c1a-4a7e-8c01-00000000ca01';
 const COMPANY: CompanyView = {
-  id: 'co-caat',
+  id: CAAT_ID,
   code: 'CAAT',
   name: 'Compagnie Algérienne des Assurances',
   color: '#000000',
@@ -263,12 +277,34 @@ describe('Écran Commission — onglet « Adhésions & retraits »', () => {
     await waitFor(() => expect(screen.getByRole('option', { name: /CAAT — Compagnie Algérienne/ })).toBeInTheDocument());
 
     expect(screen.getByRole('button', { name: 'Enregistrer la demande' })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('Compagnie adhérente'), { target: { value: 'co-caat' } });
+    fireEvent.change(screen.getByLabelText('Compagnie adhérente'), { target: { value: CAAT_ID } });
+    // SEC-47 : la référence du courrier est obligatoire.
+    expect(screen.getByRole('button', { name: 'Enregistrer la demande' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Référence du courrier reçu (obligatoire)'), { target: { value: 'UAR/2026/118' } });
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer la demande' }));
 
     await waitFor(() => expect(screen.getByText('Demande enregistrée.')).toBeInTheDocument());
-    expect(posted).toEqual([expect.objectContaining({ type: 'RETRAIT', companyId: 'co-caat' })]);
+    expect(posted).toEqual([expect.objectContaining({ type: 'RETRAIT', companyId: CAAT_ID, letterRef: 'UAR/2026/118' })]);
     expect(posted[0]).not.toHaveProperty('candidateName');
+  });
+
+  it('SEC-47 : 400 DATE_RECEPTION_TROP_ANCIENNE traduit ; letterRef envoyé pour une ADHESION', async () => {
+    const posted: unknown[] = [];
+    mockMembershipApi(ME_MEMBERSHIP, [], (req) => {
+      posted.push(req.body);
+      return { status: 400, body: { code: 'DATE_RECEPTION_TROP_ANCIENNE', message: 'x' } };
+    });
+    renderWithProviders(<CommissionPage />);
+    await openMembershipTab();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Nouvelle demande' }));
+    fireEvent.change(screen.getByLabelText('Raison sociale de la société candidate'), { target: { value: 'Nouvelle Assurance SPA' } });
+    expect(screen.getByRole('button', { name: 'Enregistrer la demande' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Référence du courrier reçu (obligatoire)'), { target: { value: 'UAR/2026/120' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer la demande' }));
+
+    expect(await screen.findByText('La date de réception est trop ancienne par rapport à la date d’enregistrement.')).toBeInTheDocument();
+    expect(posted).toEqual([expect.objectContaining({ type: 'ADHESION', candidateName: 'Nouvelle Assurance SPA', letterRef: 'UAR/2026/120' })]);
   });
 
   it("désactive « constater l'effet » avant la date d'effet, avec la raison affichée", async () => {

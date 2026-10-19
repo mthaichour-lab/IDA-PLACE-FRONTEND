@@ -16,7 +16,9 @@ import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { apiGet, apiPath, apiPost } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
-import { CommissionCase, CommissionCaseStatus, CommissionPenaltyResult, CommissionPvSignResult, CommissionSummary, Paginated, Sanction } from '@/lib/types';
+import { useApiErrorMessage } from '@/lib/error-message';
+import { isCompanyActor } from '@/lib/recours-actions';
+import { CommissionCase, CommissionCaseStatus, CommissionPenaltyResult, CommissionPvSignResult, CommissionSummary, Paginated, Sanction, SanctionStatus } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 
@@ -28,6 +30,13 @@ function statusTone(status: CommissionCaseStatus): TagTone {
   return 'a';
 }
 
+const SANCTION_STATUS_TONE: Record<SanctionStatus, TagTone> = { A_CONTRESIGNER: 'warn', PRONONCEE: 'ok' };
+
+/** SEC-06 : montant strictement positif, deux décimales au plus. */
+function isValidAmount(raw: string): boolean {
+  return /^\d+(\.\d{1,2})?$/.test(raw.trim()) && Number(raw) > 0;
+}
+
 function formatDzd(amount: number, locale: string): string {
   try {
     return new Intl.NumberFormat(locale, { style: 'currency', currency: 'DZD', maximumFractionDigits: 0 }).format(amount);
@@ -37,14 +46,15 @@ function formatDzd(amount: number, locale: string): string {
 }
 
 interface LocalDecision {
-  penalty?: { amount: number; reason: string; orderedAt: string };
+  penalty?: { amount: number; reason: string; orderedAt: string; status: SanctionStatus };
   pvSignedAt?: string;
 }
 
 export default function CommissionPage() {
   const { t, locale } = useI18n();
-  const { hasPrivilege } = useAuth();
+  const { me, hasPrivilege } = useAuth();
   const { toast } = useToast();
+  const errorMessage = useApiErrorMessage();
   const queryClient = useQueryClient();
 
   const [tab, setTab] = useState<CommissionTab>('role');
@@ -63,6 +73,8 @@ export default function CommissionPage() {
 
   const canPenalty = hasPrivilege('penaltyOrder');
   const canSignPv = hasPrivilege('pvSign');
+  // SEC-25/SEC-32 : le contreseing est un acte de commission (rôles place), par un autre membre que l'auteur.
+  const canCountersign = !!me && !isCompanyActor(me) && (hasPrivilege('sanction') || hasPrivilege('penaltyOrder'));
 
   // KPI de synthèse additif (`GET /commission/summary`, codé par le Tech
   // Lead en parallèle sur ce sprint) — voir HANDOFF.md et `src/lib/types.ts`.
@@ -93,12 +105,26 @@ export default function CommissionPage() {
     mutationFn: ({ id, companyCode, amount, reason }: { id: string; companyCode: string; amount: number; reason: string }) =>
       apiPost<CommissionPenaltyResult>(apiPath`/commission/cases/${id}/penalty`, { companyCode, amount, reason }),
     onSuccess: (result, variables) => {
-      setDecisions((prev) => ({ ...prev, [variables.id]: { ...prev[variables.id], penalty: { amount: result.amount ?? variables.amount, reason: result.reason, orderedAt: result.orderedAt } } }));
+      setDecisions((prev) => ({
+        ...prev,
+        [variables.id]: { ...prev[variables.id], penalty: { amount: result.amount ?? variables.amount, reason: result.reason, orderedAt: result.orderedAt, status: result.status ?? 'A_CONTRESIGNER' } },
+      }));
       setPenaltyAmount('');
       setPenaltyReason('');
-      toast(t('commission.toast.penaltyOk'), 'ok');
+      void queryClient.invalidateQueries({ queryKey: ['commission', 'sanctions'] });
+      // SEC-32 : une pénalité proposée n'est prononcée qu'après contreseing d'un second membre.
+      toast(t(result.status === 'PRONONCEE' ? 'commission.toast.penaltyOk' : 'commission.toast.penaltyProposed'), 'ok');
     },
-    onError: () => toast(t('commission.toast.penaltyError'), 'ko'),
+    onError: (err: unknown) => toast(errorMessage(err, t('commission.toast.penaltyError')), 'ko'),
+  });
+
+  const countersignMutation = useMutation({
+    mutationFn: (id: string) => apiPost<Sanction>(apiPath`/commission/sanctions/${id}/countersign`, {}),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['commission', 'sanctions'] });
+      toast(t('commission.toast.countersignOk'), 'ok');
+    },
+    onError: (err: unknown) => toast(errorMessage(err, t('commission.toast.countersignError')), 'ko'),
   });
 
   const pvSignMutation = useMutation({
@@ -108,7 +134,7 @@ export default function CommissionPage() {
       void queryClient.invalidateQueries({ queryKey: ['commission', 'cases'] });
       toast(t('commission.toast.pvSignOk'), 'ok');
     },
-    onError: () => toast(t('commission.toast.pvSignError'), 'ko'),
+    onError: (err: unknown) => toast(errorMessage(err, t('commission.toast.pvSignError')), 'ko'),
   });
 
   const columns: Column<CommissionCase>[] = useMemo(
@@ -135,8 +161,38 @@ export default function CommissionPage() {
       { key: 'reason', header: t('commission.sanctions.col.reason'), render: (s) => s.reason },
       { key: 'orderedAt', header: t('commission.sanctions.col.orderedAt'), render: (s) => new Date(s.orderedAt).toLocaleDateString(locale) },
       { key: 'orderedBy', header: t('commission.sanctions.col.orderedBy'), render: (s) => s.orderedBy },
+      {
+        key: 'status',
+        header: t('commission.sanctions.col.status'),
+        render: (s) => (
+          <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+            <Tag tone={s.status ? SANCTION_STATUS_TONE[s.status] : 'a'}>{s.status ? t(`commission.sanctions.status.${s.status}` as TranslationKey) : '—'}</Tag>
+            {s.countersignedBy ? (
+              <span style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}>
+                {t('commission.sanctions.countersignedBy')} {s.countersignedBy}
+              </span>
+            ) : null}
+          </span>
+        ),
+      },
+      {
+        key: 'actions',
+        header: '',
+        render: (s) =>
+          s.status === 'A_CONTRESIGNER' && canCountersign ? (
+            <button
+              type="button"
+              className="tag ok"
+              style={{ border: 'none', cursor: 'pointer' }}
+              disabled={countersignMutation.isPending}
+              onClick={() => countersignMutation.mutate(s.id)}
+            >
+              {t('commission.sanctions.countersign')}
+            </button>
+          ) : null,
+      },
     ],
-    [t, locale],
+    [t, locale, canCountersign, countersignMutation],
   );
 
   const selectedDecision = selected ? decisions[selected.id] : undefined;
@@ -234,7 +290,7 @@ export default function CommissionPage() {
 
             {selectedDecision?.penalty ? (
               <p className="note warn">
-                <strong>{t('commission.decision.penaltyIssued')}</strong> : {new Intl.NumberFormat(locale, { style: 'currency', currency: 'DZD', maximumFractionDigits: 0 }).format(selectedDecision.penalty.amount)} — {selectedDecision.penalty.reason}
+                <strong>{t(selectedDecision.penalty.status === 'PRONONCEE' ? 'commission.decision.penaltyIssued' : 'commission.decision.penaltyProposed')}</strong> : {new Intl.NumberFormat(locale, { style: 'currency', currency: 'DZD', maximumFractionDigits: 0 }).format(selectedDecision.penalty.amount)} — {selectedDecision.penalty.reason}
               </p>
             ) : null}
             {selected.pv ? (
@@ -246,6 +302,9 @@ export default function CommissionPage() {
             <div style={{ marginTop: 'var(--s-4)', paddingTop: 'var(--s-4)', borderTop: '1px solid var(--rule)' }}>
               <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('commission.action.penalty.title')}</strong>
               {!canPenalty ? <p className="note warn">{t('commission.forbidden.penalty')}</p> : null}
+              {canPenalty && !selected.pv ? (
+                <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}>{t('commission.penalty.requiresPv')}</p>
+              ) : null}
 
               <label htmlFor="penalty-company" style={{ display: 'block', fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', marginBottom: 4 }}>
                 {t('commission.action.penalty.company')}
@@ -267,7 +326,9 @@ export default function CommissionPage() {
               <input
                 id="penalty-amount"
                 type="number"
-                min={0}
+                min={0.01}
+                step={0.01}
+                aria-invalid={!!penaltyAmount && !isValidAmount(penaltyAmount)}
                 value={penaltyAmount}
                 onChange={(e) => setPenaltyAmount(e.target.value)}
                 disabled={!canPenalty}
@@ -291,7 +352,7 @@ export default function CommissionPage() {
                   type="button"
                   className="tag warn"
                   style={{ border: 'none', cursor: canPenalty ? 'pointer' : 'not-allowed' }}
-                  disabled={!canPenalty || !penaltyAmount || penaltyMutation.isPending}
+                  disabled={!canPenalty || !selected.pv || !isValidAmount(penaltyAmount) || !penaltyReason.trim() || penaltyMutation.isPending}
                   onClick={() =>
                     penaltyMutation.mutate({
                       id: selected.id,
@@ -312,13 +373,18 @@ export default function CommissionPage() {
                 <button
                   type="button"
                   className="tag ok"
-                  style={{ border: 'none', cursor: canSignPv ? 'pointer' : 'not-allowed' }}
-                  disabled={!canSignPv || pvSignMutation.isPending}
+                  style={{ border: 'none', cursor: canSignPv && selected.status === 'PRONONCE' && !selected.pv ? 'pointer' : 'not-allowed' }}
+                  disabled={!canSignPv || selected.status !== 'PRONONCE' || !!selected.pv || pvSignMutation.isPending}
                   onClick={() => pvSignMutation.mutate(selected.id)}
                 >
                   {t('commission.action.pvSign')}
                 </button>
               </div>
+              {canSignPv && !selected.pv ? (
+                <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginBottom: 0 }}>
+                  {selected.status === 'PRONONCE' ? t('commission.pvSign.fourEyesHint') : t('commission.pvSign.requiresDecision')}
+                </p>
+              ) : null}
             </div>
 
             {/*
