@@ -1,6 +1,6 @@
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { mockFetchRouter, renderWithProviders } from '@/test/render';
+import { mockFetchRequests, mockFetchRouter, renderWithProviders } from '@/test/render';
 import { MatchQueueItem, MeResponse } from '@/lib/types';
 import MatchingPage from './page';
 
@@ -94,6 +94,31 @@ describe('Écran Confrontation & matching (/matching)', () => {
     expect(screen.getByRole('button', { name: /^Rejeter/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: /^Complément/ })).toBeDisabled();
     expect(screen.getByText(/n'avez pas le privilège requis/i)).toBeInTheDocument();
+  });
+
+  it('affiche le message du backend (ex. COMPAGNIE_NON_ACTIVE) quand decide() est refusé, pas un message générique', async () => {
+    const message = "SAA n'est plus une compagnie active (statut EN_RETRAIT).";
+    mockFetchRequests((req) => {
+      if (req.method === 'POST' && req.pathname === '/api/v1/matching/m-1/decide') return { status: 403, body: { code: 'COMPAGNIE_NON_ACTIVE', message } };
+      switch (req.pathname) {
+        case '/api/v1/me':
+          return { body: ME_WITH_MATCH_DECIDE };
+        case '/api/v1/matching/queue/counters':
+          return { body: COUNTERS };
+        case '/api/v1/matching/thresholds':
+          return { body: THRESHOLDS };
+        case '/api/v1/matching/queue':
+          return { body: { page: 1, total: 1, items: [queueItem(1)] } };
+        default:
+          return undefined;
+      }
+    });
+    renderWithProviders(<MatchingPage />);
+
+    await waitFor(() => expect(screen.getByText('ECN-1')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /^Confirmer/ }));
+
+    expect(await screen.findByText(message)).toBeInTheDocument();
   });
 
   it('affiche les onglets avec compteurs (role=tablist/tab, A.5 accessibilité)', async () => {

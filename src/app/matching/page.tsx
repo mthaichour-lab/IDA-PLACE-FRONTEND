@@ -4,6 +4,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
 import { Art14Panel } from '@/components/matching/Art14Panel';
+import { apiErrorMessage } from '@/components/referential/fields';
 import { CoChip } from '@/components/ui/CoChip';
 import { ScoreBar } from '@/components/ui/ScoreBar';
 import { Tabs } from '@/components/ui/Tabs';
@@ -254,8 +255,8 @@ export default function MatchingPage() {
       setRejectReason('');
       void queryClient.invalidateQueries({ queryKey: ['matching'] });
     },
-    onError: () => {
-      toast(t('matching.toast.error'), 'ko');
+    onError: (err) => {
+      toast(apiErrorMessage(err, t('matching.toast.error')), 'ko');
     },
   });
 
