@@ -58,7 +58,7 @@ function irsamExtra(summary: StatsSummary, t: (k: TranslationKey) => string, loc
 }
 
 /** Répartition Art. 14 (décision PO §5) : les dossiers sans valeur sont toujours comptés à part. */
-function RepartitionBlock({ title, data, published }: { title: string; data: StatsRepartition; published: boolean }) {
+function RepartitionBlock({ title, data, published, emptyLabel }: { title: string; data: StatsRepartition; published: boolean; emptyLabel: string }) {
   const { t, locale } = useI18n();
   const max = Math.max(1, ...data.items.map((i) => i.count));
   return (
@@ -66,7 +66,7 @@ function RepartitionBlock({ title, data, published }: { title: string; data: Sta
       <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{title}</strong>
       {data.items.length === 0 && !published ? (
         <div className="note warn" role="status" style={{ marginBottom: 'var(--s-2)' }}>
-          <span>{t('stats.art14.notPublished')}</span>
+          <span>{emptyLabel}</span>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 'var(--s-2)' }}>
@@ -353,8 +353,18 @@ export default function StatsPage() {
           </div>
           <div className="sheet-body">
             <div className="grid g-side2">
-              <RepartitionBlock title={t('stats.art14.byCode')} data={summary.baremeCodes} published={publishedCases(versionsQuery.data).length > 0} />
-              <RepartitionBlock title={t('stats.art14.byCategory')} data={summary.vehicleCategories} published={publishedCategories(categoriesQuery.data).length > 0} />
+              <RepartitionBlock
+                title={t('stats.art14.byCode')}
+                data={summary.baremeCodes}
+                published={publishedCases(versionsQuery.data).length > 0}
+                emptyLabel={t('stats.art14.notPublished')}
+              />
+              <RepartitionBlock
+                title={t('stats.art14.byCategory')}
+                data={summary.vehicleCategories}
+                published={publishedCategories(categoriesQuery.data).length > 0}
+                emptyLabel={t('stats.art14.categoriesNotPublished')}
+              />
             </div>
           </div>
         </div>

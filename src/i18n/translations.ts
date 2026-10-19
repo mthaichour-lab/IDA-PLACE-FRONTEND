@@ -307,7 +307,7 @@ const fr = {
 
   'cockpit.cycle.title': 'Cycle conventionnel en cours',
   'cockpit.cycle.unavailableNote':
-    "Réunion UAR et règlements sous 8 j : non suivis par ce backend (aucune date de convocation ni d'exécution des virements n'est modélisée) — volontairement absents du suivi ci-dessus plutôt qu'inventés.",
+    'Réunion UAR, PV trimestriel et règlement sous 8 j : suivis étape par étape dans « Avancement du lot » (Compensation trimestrielle).',
 
   'cockpit.calendar.legend.weekendPrefix': 'Week-end',
   'cockpit.calendar.legend.holiday': 'Jour férié',
@@ -675,6 +675,7 @@ const fr = {
   'stats.art14.byCategory': 'Par catégorie de véhicule (véhicule assuré)',
   'stats.art14.sansValeur': 'Sans valeur',
   'stats.art14.notPublished': 'Barème non publié',
+  'stats.art14.categoriesNotPublished': 'Catégories de véhicule non publiées',
 
   // ----- Paramétrage (écran 14, Admin §5.1) -----
   'params.title': 'Paramétrage',

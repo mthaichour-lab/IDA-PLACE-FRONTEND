@@ -66,7 +66,10 @@ describe('Écran 11 — répartition barème Art. 14 (décision PO §5)', () => 
     const byCode = await screen.findByRole('region', { name: 'Par code de barème' });
     expect(within(byCode).getByText('Barème non publié')).toBeInTheDocument();
     expect(byCode).toHaveTextContent('Sans valeur : 10');
-    expect(screen.getByRole('region', { name: 'Par catégorie de véhicule (véhicule assuré)' })).toHaveTextContent('Sans valeur : 10');
+    const byCategory = screen.getByRole('region', { name: 'Par catégorie de véhicule (véhicule assuré)' });
+    expect(byCategory).toHaveTextContent('Sans valeur : 10');
+    expect(within(byCategory).getByText('Catégories de véhicule non publiées')).toBeInTheDocument();
+    expect(within(byCategory).queryByText('Barème non publié')).not.toBeInTheDocument();
   });
 
   it('barème publié mais aucun dossier codé : pas de « Barème non publié »', async () => {

@@ -184,7 +184,7 @@ describe('Écran Cockpit de place (/cockpit)', () => {
       expect(step.textContent).not.toMatch(/Réunion UAR/);
       expect(step.textContent).not.toMatch(/Règlements sous 8/);
     }
-    expect(screen.getByText(/non suivis/)).toBeInTheDocument();
+    expect(screen.getByText(/suivis étape par étape dans « Avancement du lot »/)).toBeInTheDocument();
   });
 
   it('la liste des alertes conventionnelles affiche les chips compagnies et le badge article', async () => {
