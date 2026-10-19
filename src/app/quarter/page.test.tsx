@@ -205,6 +205,11 @@ describe('Écran Compensation trimestrielle (/quarter)', () => {
       let current = initial;
       const completed: string[] = [];
       const fetchMock = mockFetchRequests(({ method, pathname }) => {
+        if (method === 'POST' && pathname === '/api/v1/settlement/quarter/2026-Q4/close') {
+          completed.push('CLOSE');
+          current = pipeline(5);
+          return { status: 201, body: { quarter: '2026-Q4', bordereauRef: 'BDX-2026-Q4' } };
+        }
         if (pathname === '/api/v1/me') return { body: me };
         if (pathname === '/api/v1/settlement/quarter/2026-Q4/summary') return { body: SUMMARY };
         if (pathname === '/api/v1/settlement/quarter/2026-Q4/matrix') return { body: MATRIX };
@@ -255,13 +260,43 @@ describe('Écran Compensation trimestrielle (/quarter)', () => {
       expect(screen.queryByRole('button', { name: 'Marquer comme réalisée' })).not.toBeInTheDocument();
     });
 
-    it("n'affiche aucun bouton pour l'étape 5 EN_COURS : elle découle de la clôture trimestrielle", async () => {
+    it("l'étape 5 EN_COURS propose la clôture trimestrielle, pas « Marquer comme réalisée »", async () => {
       mockPipelineApi(ME_CLOSE, pipeline(4));
       renderWithProviders(<QuarterPage />);
 
       await waitFor(() => expect(within(screen.getByTestId('pipeline-step-PV_REGLEMENT')).getByText('En cours')).toBeInTheDocument());
       expect(screen.queryByRole('button', { name: 'Marquer comme réalisée' })).not.toBeInTheDocument();
       expect(within(screen.getByTestId('pipeline-step-PV_REGLEMENT')).getByText(/réalisée par la clôture de la compensation trimestrielle/)).toBeInTheDocument();
+      expect(within(screen.getByTestId('pipeline-step-PV_REGLEMENT')).getByRole('button', { name: 'Clôturer le trimestre' })).toBeInTheDocument();
+    });
+
+    it('masque la clôture sans closeQuarter et tant que les étapes 1 à 4 ne sont pas faites', async () => {
+      mockPipelineApi(ME, pipeline(4));
+      const { unmount } = renderWithProviders(<QuarterPage />);
+      await waitFor(() => expect(within(screen.getByTestId('pipeline-step-PV_REGLEMENT')).getByText('En cours')).toBeInTheDocument());
+      expect(screen.queryByRole('button', { name: 'Clôturer le trimestre' })).not.toBeInTheDocument();
+      unmount();
+
+      mockPipelineApi(ME_CLOSE, pipeline(2));
+      renderWithProviders(<QuarterPage />);
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Marquer comme réalisée' })).toBeInTheDocument());
+      expect(screen.queryByRole('button', { name: 'Clôturer le trimestre' })).not.toBeInTheDocument();
+    });
+
+    it('clôture le trimestre après confirmation puis recharge le pipeline', async () => {
+      const api = mockPipelineApi(ME_CLOSE, pipeline(4));
+      renderWithProviders(<QuarterPage />);
+
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Clôturer le trimestre' })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: 'Clôturer le trimestre' }));
+      expect(screen.getByRole('dialog', { name: 'Clôture de la compensation trimestrielle' })).toBeInTheDocument();
+      expect(api.completed).toEqual([]);
+      fireEvent.click(screen.getByRole('button', { name: 'Confirmer la clôture' }));
+
+      await waitFor(() => expect(screen.getByText('Trimestre clôturé.')).toBeInTheDocument());
+      expect(api.completed).toEqual(['CLOSE']);
+      await waitFor(() => expect(within(screen.getByTestId('pipeline-step-PV_REGLEMENT')).getByText('Fait')).toBeInTheDocument());
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
 
     it("réalise l'étape EN_COURS puis recharge le pipeline", async () => {

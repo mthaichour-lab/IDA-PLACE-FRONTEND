@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Modal } from '@/components/ui/Modal';
 import { Tag, TagTone } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
@@ -31,6 +32,7 @@ export function PipelineSection({ quarter }: { quarter: string }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [note, setNote] = useState('');
+  const [confirmClose, setConfirmClose] = useState(false);
 
   const canComplete = hasPrivilege('closeQuarter');
 
@@ -48,6 +50,16 @@ export function PipelineSection({ quarter }: { quarter: string }) {
       void queryClient.invalidateQueries({ queryKey: pipelineQueryKey(quarter) });
     },
     onError: (err: unknown) => toast(err instanceof ApiError && err.message ? err.message : t('quarter.pipeline.toast.error'), 'ko'),
+  });
+
+  const closeMutation = useMutation({
+    mutationFn: () => apiPost(`/settlement/quarter/${quarter}/close`, {}),
+    onSuccess: () => {
+      setConfirmClose(false);
+      toast(t('quarter.pipeline.close.ok'), 'ok');
+      void queryClient.invalidateQueries({ queryKey: ['settlement'] });
+    },
+    onError: (err: unknown) => toast(err instanceof ApiError && err.message ? err.message : t('quarter.pipeline.close.error'), 'ko'),
   });
 
   return (
@@ -90,6 +102,16 @@ export function PipelineSection({ quarter }: { quarter: string }) {
                     {s.note ? ` — ${s.note}` : null}
                   </p>
                   {!manual ? <p style={{ margin: 'var(--s-1) 0 0', fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}>{t('quarter.pipeline.closureStep')}</p> : null}
+                  {!manual && s.status === 'EN_COURS' && canComplete ? (
+                    <button
+                      type="button"
+                      className="tag ok"
+                      style={{ border: 'none', cursor: 'pointer', marginTop: 'var(--s-2)' }}
+                      onClick={() => setConfirmClose(true)}
+                    >
+                      {t('quarter.pipeline.close.button')}
+                    </button>
+                  ) : null}
                   {manual && s.status === 'EN_COURS' && canComplete ? (
                     <div style={{ display: 'flex', gap: 'var(--s-2)', flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 'var(--s-2)' }}>
                       <div>
@@ -121,6 +143,29 @@ export function PipelineSection({ quarter }: { quarter: string }) {
           </ol>
         )}
       </div>
+      <Modal
+        open={confirmClose}
+        title={t('quarter.pipeline.close.title')}
+        onClose={() => setConfirmClose(false)}
+        footer={
+          <>
+            <button type="button" className="tag" style={{ border: 'none', cursor: 'pointer' }} onClick={() => setConfirmClose(false)}>
+              {t('quarter.pipeline.close.cancel')}
+            </button>
+            <button
+              type="button"
+              className="tag ok"
+              style={{ border: 'none', cursor: closeMutation.isPending ? 'not-allowed' : 'pointer' }}
+              disabled={closeMutation.isPending}
+              onClick={() => closeMutation.mutate()}
+            >
+              {t('quarter.pipeline.close.confirm')}
+            </button>
+          </>
+        }
+      >
+        <p style={{ margin: 0 }}>{t('quarter.pipeline.close.warning')}</p>
+      </Modal>
     </div>
   );
 }

@@ -722,6 +722,14 @@ const fr = {
   'quarter.pipeline.closureStep': 'Cette étape est réalisée par la clôture de la compensation trimestrielle.',
   'quarter.pipeline.toast.ok': 'Étape marquée comme réalisée.',
   'quarter.pipeline.toast.error': "L'étape n'a pas pu être marquée comme réalisée.",
+  'quarter.pipeline.close.button': 'Clôturer le trimestre',
+  'quarter.pipeline.close.title': 'Clôture de la compensation trimestrielle',
+  'quarter.pipeline.close.warning':
+    'La clôture génère le bordereau trimestriel pour toute la place. Tout règlement validé sur la plateforme est définitif (Art. 17) : cette action est irréversible.',
+  'quarter.pipeline.close.confirm': 'Confirmer la clôture',
+  'quarter.pipeline.close.cancel': 'Annuler',
+  'quarter.pipeline.close.ok': 'Trimestre clôturé.',
+  'quarter.pipeline.close.error': "La clôture du trimestre n'a pas pu être effectuée.",
 
   // ----- Commission (écran 7, Module E §6.7) -----
   'commission.title': 'Commission',
