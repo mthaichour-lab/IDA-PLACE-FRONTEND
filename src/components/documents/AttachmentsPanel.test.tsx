@@ -56,6 +56,49 @@ describe('AttachmentsPanel', () => {
     expect(link).toHaveAttribute('target', '_blank');
   });
 
+  it('SEC-10 : route API authentifiée → téléchargement avec le jeton (fetch + Blob), jamais un simple lien', async () => {
+    const saved: { name: string; href: string }[] = [];
+    URL.createObjectURL = () => 'blob:http://localhost/doc-1';
+    URL.revokeObjectURL = () => undefined;
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      saved.push({ name: this.download, href: this.href });
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(typeof input === 'string' ? input : input.toString());
+      if (url.pathname === '/api/v1/me') return new Response(JSON.stringify(ME_WITH_INSERT), { status: 200 });
+      if (url.pathname === '/api/v1/documents') return new Response(JSON.stringify([doc({ url: '/api/v1/documents/d-1/download' })]), { status: 200 });
+      if (url.pathname === '/api/v1/documents/d-1/download') return new Response(new Blob(['%PDF-1.7'], { type: 'application/pdf' }), { status: 200 });
+      return new Response(JSON.stringify({ code: 'NOT_FOUND', message: 'Non mocké' }), { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderWithProviders(<AttachmentsPanel recoursId="r-1" />);
+
+    const button = await screen.findByRole('button', { name: 'Télécharger annexe2-recours-r-1.pdf' });
+    expect(screen.getByText('annexe2-recours-r-1.pdf').closest('a')).toBeNull();
+    fireEvent.click(button);
+
+    await waitFor(() => expect(saved).toEqual([{ name: 'annexe2-recours-r-1.pdf', href: 'blob:http://localhost/doc-1' }]));
+    const call = fetchMock.mock.calls.find(([input]) => String(input).includes('/documents/d-1/download'));
+    expect(call).toBeDefined();
+    expect((call![1] as RequestInit).method).toBe('GET');
+    click.mockRestore();
+  });
+
+  it('SEC-10 : téléchargement refusé (404 hors périmètre) → toast d’erreur, aucun fichier enregistré', async () => {
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    mockFetchRouter((pathname) => {
+      if (pathname === '/api/v1/me') return ME_WITH_INSERT;
+      if (pathname === '/api/v1/documents') return [doc({ url: '/api/v1/documents/d-1/download' })];
+      return undefined;
+    });
+    renderWithProviders(<AttachmentsPanel recoursId="r-1" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Télécharger annexe2-recours-r-1.pdf' }));
+    expect(await screen.findByText('Non mocké: /api/v1/documents/d-1/download')).toBeInTheDocument();
+    expect(click).not.toHaveBeenCalled();
+    click.mockRestore();
+  });
+
   it.each(['javascript:alert(document.domain)', 'data:text/html,<script>alert(1)</script>', 'http://evil.example/x.pdf', 'vbscript:msgbox(1)'])(
     'SEC-50 : une URL %s n’est jamais rendue en lien',
     async (url) => {

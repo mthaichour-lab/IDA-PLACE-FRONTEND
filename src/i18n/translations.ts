@@ -1025,6 +1025,9 @@ const fr = {
   'documents.attachments.uploadedBy': 'Déposée par',
   'documents.attachments.toast.uploadOk': 'Pièce jointe déposée.',
   'documents.attachments.toast.uploadError': "Le dépôt de la pièce a échoué.",
+  'documents.attachments.download': 'Télécharger',
+  'documents.attachments.downloading': 'téléchargement…',
+  'documents.attachments.toast.downloadError': "Le téléchargement de la pièce a échoué.",
 
   // ----- Valeurs masquées (SEC-03, SEC-26) -----
   'common.masked': 'masqué',

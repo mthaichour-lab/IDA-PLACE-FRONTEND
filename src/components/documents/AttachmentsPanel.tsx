@@ -4,11 +4,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
-import { apiGet, apiPostForm } from '@/lib/api-client';
-import { ApiError } from '@/lib/api-error';
+import { API_BASE_URL, apiGet, apiGetBlob, apiPath, apiPostForm } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
+import { useApiErrorMessage } from '@/lib/error-message';
 import { safeDocumentUrl } from '@/lib/safe-values';
-import { DocumentView } from '@/lib/types';
+import { DocumentUploadResult, DocumentView } from '@/lib/types';
 
 /** Types acceptés côté UI — simple indication (`accept`), la VRAIE validation est serveur (QUESTIONS_UAR.md §9). */
 const ACCEPT_HINT = '.pdf,.jpg,.jpeg,.png,.webp';
@@ -26,6 +26,36 @@ const ACCEPT_HINT = '.pdf,.jpg,.jpeg,.png,.webp';
  */
 type AttachmentsPanelProps = { recoursId: string; commissionCaseId?: never } | { recoursId?: never; commissionCaseId: string };
 
+/**
+ * SEC-10 : URL S3 pré-signée (https, hors de l'origine de l'API) — ouvrable
+ * telle quelle. Toute autre URL (route API `/documents/:id/download`, qui
+ * exige le jeton, ou adresse non sûre) passe par le téléchargement
+ * authentifié par identifiant : jamais par un simple lien.
+ */
+function presignedExternalUrl(raw: string): string | undefined {
+  const href = safeDocumentUrl(raw);
+  if (!href || !href.startsWith('https:')) return undefined;
+  try {
+    if (API_BASE_URL && new URL(href).origin === new URL(API_BASE_URL).origin) return undefined;
+  } catch {
+    return undefined;
+  }
+  return href;
+}
+
+/** Enregistre un Blob sous son nom de fichier (lien `blob:` éphémère, révoqué aussitôt après). */
+function saveBlob(blob: Blob, filename: string): void {
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = href;
+  a.download = filename;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(href), 1_000);
+}
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} o`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} Ko`;
@@ -36,6 +66,7 @@ export function AttachmentsPanel({ recoursId, commissionCaseId }: AttachmentsPan
   const { t, locale } = useI18n();
   const { hasPrivilege } = useAuth();
   const { toast } = useToast();
+  const errorMessage = useApiErrorMessage();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -56,7 +87,8 @@ export function AttachmentsPanel({ recoursId, commissionCaseId }: AttachmentsPan
       form.append('file', file);
       if (recoursId) form.append('recoursId', recoursId);
       else form.append('commissionCaseId', commissionCaseId as string);
-      return apiPostForm<DocumentView>('/documents/upload', form);
+      // SEC-10 : la réponse porte l'`id` du document (plus de `key`) ; la liste est relue.
+      return apiPostForm<DocumentUploadResult>('/documents/upload', form);
     },
     onSuccess: () => {
       setSelectedFile(null);
@@ -65,8 +97,16 @@ export function AttachmentsPanel({ recoursId, commissionCaseId }: AttachmentsPan
       void queryClient.invalidateQueries({ queryKey });
     },
     onError: (err: unknown) => {
-      const message = err instanceof ApiError ? err.message : t('documents.attachments.toast.uploadError');
-      toast(message || t('documents.attachments.toast.uploadError'), 'ko');
+      toast(errorMessage(err, t('documents.attachments.toast.uploadError')), 'ko');
+    },
+  });
+
+  // SEC-10/11 : `GET /documents/:id/download` est authentifiée — récupérée avec le jeton puis enregistrée.
+  const downloadMutation = useMutation({
+    mutationFn: (doc: DocumentView) => apiGetBlob(apiPath`/documents/${doc.id}/download`),
+    onSuccess: (blob, doc) => saveBlob(blob, doc.filename),
+    onError: (err: unknown) => {
+      toast(errorMessage(err, t('documents.attachments.toast.downloadError')), 'ko');
     },
   });
 
@@ -98,8 +138,9 @@ export function AttachmentsPanel({ recoursId, commissionCaseId }: AttachmentsPan
       ) : (
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8, marginBottom: canUpload ? 'var(--s-3)' : 0 }}>
           {items.map((doc) => {
-            // SEC-50 : seul un lien https:/blob: est rendu cliquable.
-            const href = safeDocumentUrl(doc.url);
+            // SEC-50 : seule une URL S3 pré-signée https est rendue en lien ; sinon téléchargement authentifié par id.
+            const href = presignedExternalUrl(doc.url);
+            const downloading = downloadMutation.isPending && downloadMutation.variables?.id === doc.id;
             return (
               <li key={doc.id} style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                 <span>
@@ -108,10 +149,18 @@ export function AttachmentsPanel({ recoursId, commissionCaseId }: AttachmentsPan
                       {doc.filename}
                     </a>
                   ) : (
-                    <span className="mono" title={t('documents.attachments.unsafeLink')}>
+                    <button
+                      type="button"
+                      className="mono"
+                      onClick={() => downloadMutation.mutate(doc)}
+                      disabled={downloading}
+                      aria-label={`${t('documents.attachments.download')} ${doc.filename}`}
+                      style={{ border: 'none', background: 'none', padding: 0, font: 'inherit', color: 'var(--k-pri)', textDecoration: 'underline', cursor: downloading ? 'progress' : 'pointer' }}
+                    >
                       {doc.filename}
-                    </span>
+                    </button>
                   )}
+                  {downloading ? <span role="status"> · {t('documents.attachments.downloading')}</span> : null}
                   <span style={{ color: 'var(--ink-3)' }}> · {formatSize(doc.sizeBytes)}</span>
                 </span>
                 <span style={{ color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
