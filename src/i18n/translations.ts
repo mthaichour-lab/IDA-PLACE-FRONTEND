@@ -779,6 +779,8 @@ const fr = {
   'params.users.field.email': 'E-mail',
   'params.users.field.role': 'Rôle',
   'params.users.field.company': 'Compagnie (si applicable)',
+  'params.users.field.companyRequired': 'Compagnie (code, obligatoire pour un rôle compagnie)',
+  'params.users.field.placeNoCompany': 'Rôle de place : aucune compagnie rattachée.',
   'params.users.field.submit': 'Créer',
   'params.users.detail.title': 'Détail utilisateur',
   'params.users.detail.grant': 'Dérogations accordées',

@@ -6,6 +6,7 @@ import { TruncationNote } from '@/components/ui/TruncationNote';
 import { FolioHeader } from '@/components/FolioHeader';
 import { PriceGridEditor } from '@/components/metering/PriceGridEditor';
 import { Kpi, KpiRow } from '@/components/ui/Kpi';
+import { LabeledSelect } from '@/components/referential/fields';
 import { Modal } from '@/components/ui/Modal';
 import { Table, Column } from '@/components/ui/Table';
 import { Tabs } from '@/components/ui/Tabs';
@@ -19,7 +20,10 @@ import { useAuth } from '@/lib/auth-context';
 import { isCompanyRole } from '@/lib/auth/roles';
 import { describeApiError } from '@/lib/error-message';
 import { buildRecentPeriods } from '@/lib/period-options';
-import { Paginated, PlaceMeteringSummary, PlaceUser, PriceGrid, RolesMatrixResponse } from '@/lib/types';
+import { CompanyListItem, Paginated, PlaceMeteringSummary, PlaceUser, PriceGrid, RolesMatrixResponse } from '@/lib/types';
+
+/** SEC-44 : `companyId` d'un utilisateur est un CODE compagnie (même espace que `Claim.company`), pas un identifiant. */
+const USER_COMPANY_CODE = /^[A-Z0-9][A-Z0-9_-]{1,15}$/;
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 const PERIODS = buildRecentPeriods(12);
@@ -133,6 +137,18 @@ function UsersTab() {
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', role: '', companyId: '' });
 
+  // Rôle compagnie : code compagnie obligatoire (400 sinon) ; rôle place : aucune compagnie rattachée.
+  const formCompanyRole = isCompanyRole(form.role);
+  const formCompany = lockedCompany ?? form.companyId;
+  const createValid =
+    !!form.name.trim() && !!form.email.trim() && !!form.role && (formCompanyRole ? USER_COMPANY_CODE.test(formCompany) : true);
+
+  const companiesQuery = useQuery({
+    queryKey: ['referential', 'companies', 'user-picker'],
+    queryFn: () => apiGet<Paginated<CompanyListItem>>('/referential/companies', { page: 1, pageSize: 100 }),
+    enabled: createOpen && formCompanyRole && lockedCompany === undefined,
+  });
+
   const usersQuery = useQuery({
     queryKey: ['admin', 'users', page],
     queryFn: () => apiGet<Paginated<PlaceUser>>('/admin/users', { page, pageSize: PAGE_SIZE }),
@@ -171,7 +187,8 @@ function UsersTab() {
       setCreateOpen(false);
       setForm({ name: '', email: '', role: '', companyId: '' });
     },
-    onError: () => toast(t('params.users.toast.error'), 'ko'),
+    // 403 PRIVILEGE_RESERVE_PLACE, 400 (compagnie manquante ou invalide) : message traduit / du backend.
+    onError: (err: unknown) => toast(describeApiError(err, t, t('params.users.toast.error')), 'ko'),
   });
 
   const [editActive, setEditActive] = useState(true);
@@ -192,7 +209,7 @@ function UsersTab() {
       void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
       toast(t('params.users.detail.saved'), 'ok');
     },
-    onError: () => toast(t('params.users.detail.saveError'), 'ko'),
+    onError: (err: unknown) => toast(describeApiError(err, t, t('params.users.detail.saveError')), 'ko'),
   });
 
   // Bascule actif/suspendu directement depuis la ligne (capture de
@@ -205,7 +222,7 @@ function UsersTab() {
       void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
       toast(t('params.users.toast.toggled'), 'ok');
     },
-    onError: () => toast(t('params.users.toast.error'), 'ko'),
+    onError: (err: unknown) => toast(describeApiError(err, t, t('params.users.toast.error')), 'ko'),
   });
 
   function toggleIn(list: string[], setList: (v: string[]) => void, privilege: string) {
@@ -356,8 +373,10 @@ function UsersTab() {
           footer={
             <button
               type="button"
-              disabled={createMutation.isPending || !form.name || !form.email || !form.role}
-              onClick={() => createMutation.mutate({ name: form.name, email: form.email, role: form.role, companyId: (lockedCompany ?? form.companyId) || undefined })}
+              disabled={createMutation.isPending || !createValid}
+              onClick={() =>
+                createMutation.mutate({ name: form.name.trim(), email: form.email.trim(), role: form.role, companyId: lockedCompany ?? (formCompanyRole ? form.companyId : undefined) })
+              }
               style={{ padding: '8px 16px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--k-pri)', background: 'var(--k-pri)', color: '#fff', font: 'inherit', cursor: 'pointer' }}
             >
               {t('params.users.field.submit')}
@@ -382,12 +401,20 @@ function UsersTab() {
                 ))}
               </select>
             </label>
-            <LabeledInput
-              label={t('params.users.field.company')}
-              value={lockedCompany ?? form.companyId}
-              disabled={lockedCompany !== undefined}
-              onChange={(v) => setForm((f) => ({ ...f, companyId: v }))}
-            />
+            {lockedCompany !== undefined ? (
+              <LabeledInput label={t('params.users.field.companyRequired')} value={lockedCompany} disabled onChange={() => undefined} />
+            ) : formCompanyRole ? (
+              <LabeledSelect
+                  label={t('params.users.field.companyRequired')}
+                  value={form.companyId}
+                  required
+                  disabled={companiesQuery.isLoading}
+                  onChange={(v) => setForm((f) => ({ ...f, companyId: v }))}
+                  options={[{ value: '', label: '—' }, ...(companiesQuery.data?.items ?? []).map((c) => ({ value: c.code, label: `${c.code} — ${c.name}` }))]}
+                />
+            ) : form.role ? (
+              <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', margin: 0 }}>{t('params.users.field.placeNoCompany')}</p>
+            ) : null}
           </div>
         </Modal>
       </div>
@@ -420,7 +447,7 @@ function RolesTab() {
       setDraft(structuredClone(res.matrix));
       toast(t('params.roles.toast.saved'), 'ok');
     },
-    onError: () => toast(t('params.roles.toast.error'), 'ko'),
+    onError: (err: unknown) => toast(describeApiError(err, t, t('params.roles.toast.error')), 'ko'),
   });
 
   const roles = matrixQuery.data?.roles ?? [];

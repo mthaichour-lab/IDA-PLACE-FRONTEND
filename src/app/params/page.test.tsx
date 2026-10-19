@@ -118,7 +118,7 @@ describe('Écran Paramétrage (/params)', () => {
     renderWithProviders(<ParamsPage />);
 
     await userEvent.click(await screen.findByRole('button', { name: 'Créer un utilisateur' }));
-    const companyInput = screen.getByLabelText('Compagnie (si applicable)') as HTMLInputElement;
+    const companyInput = screen.getByLabelText('Compagnie (code, obligatoire pour un rôle compagnie)') as HTMLInputElement;
     expect(companyInput.value).toBe('CAAT');
     expect(companyInput).toBeDisabled();
   });
