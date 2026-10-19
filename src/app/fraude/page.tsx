@@ -14,7 +14,9 @@ import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { fetchAllPages } from '@/lib/paginate';
 import { apiGet, apiPath } from '@/lib/api-client';
-import { FraudAction, FraudCase, FraudSeverity, FraudSignalGroup, FraudSignalGroupResult, Paginated } from '@/lib/types';
+import { useAuth } from '@/lib/auth-context';
+import { isCompanyRole } from '@/lib/auth/roles';
+import { FraudAction, FraudCase, FraudCasesPage, FraudSeverity, FraudSignalGroup, FraudSignalGroupResult, Paginated } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 
@@ -108,18 +110,26 @@ function describeDominantCase(c: FraudCase, locale: string): string {
 
 export default function FraudePage() {
   const { t, locale } = useI18n();
+  const { me } = useAuth();
   const [casesPage, setCasesPage] = useState(1);
   const [actionsPage, setActionsPage] = useState(1);
   const [selectedCase, setSelectedCase] = useState<FraudCase | null>(null);
 
+  // SEC-21/SEC-26 : le journal des actions suspectes est l'audit trail de la
+  // place (403 pour un rôle compagnie) ; un rôle compagnie ne voit des cas que
+  // ses propres dossiers, les autres parties étant seulement dénombrées.
+  const companyRole = isCompanyRole(me?.role);
+  const showActions = !!me && !companyRole;
+
   const casesQuery = useQuery({
     queryKey: ['fraud', 'cases', casesPage],
-    queryFn: () => apiGet<Paginated<FraudCase>>('/fraud/cases', { page: casesPage, pageSize: PAGE_SIZE }),
+    queryFn: () => apiGet<FraudCasesPage>('/fraud/cases', { page: casesPage, pageSize: PAGE_SIZE }),
   });
 
   const actionsQuery = useQuery({
     queryKey: ['fraud', 'actions', actionsPage],
     queryFn: () => apiGet<Paginated<FraudAction>>('/fraud/actions', { page: actionsPage, pageSize: PAGE_SIZE }),
+    enabled: showActions,
   });
 
   // KPIs (écran 9) : pas d'endpoint d'agrégat dédié (voir rapport de
@@ -132,12 +142,14 @@ export default function FraudePage() {
     queryFn: () => fetchAllPages<FraudCase>('/fraud/cases'),
   });
 
-  const primaryCompany = selectedCase?.companiesInvolved[0];
+  // Rôle compagnie : uniquement SA compagnie (le backend refuse toute autre, SEC-38).
+  const primaryCompany = companyRole ? me?.company : selectedCase?.companiesInvolved[0];
   const signalsQuery = useQuery({
     queryKey: ['fraud', 'adherents', primaryCompany, 'signals'],
     queryFn: () => apiGet<FraudSignalGroupResult[]>(apiPath`/fraud/adherents/${primaryCompany!}/signals`),
-    enabled: !!primaryCompany,
+    enabled: !!selectedCase && !!primaryCompany,
   });
+  const analysis = casesQuery.data?.analysis;
 
   // Tri d'affichage par gravité ("file priorisée par gravité", écran 9) — la
   // gravité elle-même est renvoyée par l'API, on ne fait que l'ordonner ici.
@@ -165,6 +177,22 @@ export default function FraudePage() {
     { key: 'score', header: t('fraude.col.score'), render: (r) => <ScoreBar score={r.score} /> },
     { key: 'severity', header: t('fraude.col.severity'), render: (r) => <Tag tone={SEVERITY_TONE[r.severity]}>{t(SEVERITY_LABEL[r.severity])}</Tag> },
     { key: 'plate', header: t('fraude.col.plate'), render: (r) => <span className="mono">{r.plateA ?? '—'}</span> },
+    ...(companyRole
+      ? [
+          {
+            key: 'counterpart',
+            header: t('fraude.col.counterpart'),
+            render: (r: FraudCase) =>
+              r.counterpartClaims || r.counterpartCompanies ? (
+                <span style={{ fontSize: 'var(--k-fs-xs)' }}>
+                  {r.counterpartClaims ?? 0} {t('fraude.counterpart.claims')} · {r.counterpartCompanies ?? 0} {t('fraude.counterpart.companies')}
+                </span>
+              ) : (
+                <span style={{ color: 'var(--ink-3)' }}>—</span>
+              ),
+          } satisfies Column<FraudCase>,
+        ]
+      : []),
   ];
 
   // "Réf." dérivée de `claimId` (TRANSMISSION_TARDIVE) sinon `matchId`
@@ -186,10 +214,16 @@ export default function FraudePage() {
       <KpiRow>
         <Kpi value={kpis.cases} label={t('fraude.kpi.cases')} />
         <Kpi value={kpis.severe} label={t('fraude.kpi.severe')} />
-        <Kpi value={kpis.actions} label={t('fraude.kpi.actions')} />
-        <Kpi value={kpis.companies} label={t('fraude.kpi.companies')} />
+        {showActions ? <Kpi value={kpis.actions} label={t('fraude.kpi.actions')} /> : null}
+        {/* Rôle compagnie : les autres compagnies ne sont que dénombrées par cas (SEC-26), pas identifiables. */}
+        {companyRole ? null : <Kpi value={kpis.companies} label={t('fraude.kpi.companies')} />}
       </KpiRow>
       <TruncationNote truncated={casesAllQuery.data?.truncated} shown={casesAllQuery.data?.items.length ?? 0} total={casesAllQuery.data?.total ?? 0} />
+      {analysis?.truncated ? (
+        <p className="note warn" role="status" style={{ fontSize: 'var(--k-fs-xs)' }}>
+          {t('fraude.analysis.truncated')} ({analysis.claimsAnalyzed} {t('fraude.analysis.claims')})
+        </p>
+      ) : null}
 
       <div className="grid g-side" style={{ marginTop: 'var(--s-5)' }}>
         <div className="sheet">
@@ -239,6 +273,12 @@ export default function FraudePage() {
                     {t(SEVERITY_LABEL[selectedCase.severity])} · {selectedCase.score}/100
                   </Tag>
                 </div>
+                {selectedCase.counterpartClaims || selectedCase.counterpartCompanies ? (
+                  <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', marginTop: 0 }}>
+                    {t('fraude.counterpart.note')} {selectedCase.counterpartClaims ?? 0} {t('fraude.counterpart.claims')} ·{' '}
+                    {selectedCase.counterpartCompanies ?? 0} {t('fraude.counterpart.companies')}
+                  </p>
+                ) : null}
 
                 {signalsQuery.isLoading ? (
                   <p>{t('common.loading')}</p>
@@ -288,6 +328,7 @@ export default function FraudePage() {
         </aside>
       </div>
 
+      {showActions ? (
       <div className="sheet" style={{ marginTop: 'var(--s-5)' }}>
         <div className="sheet-head">
           <span>
@@ -317,6 +358,7 @@ export default function FraudePage() {
           )}
         </div>
       </div>
+      ) : null}
     </>
   );
 }
