@@ -53,6 +53,35 @@ export function mockFetchRouter(router: FetchHandler): void {
   );
 }
 
+export interface FetchRequest {
+  method: string;
+  pathname: string;
+  url: URL;
+  body: unknown;
+}
+
+/**
+ * Variante de `mockFetchRouter` qui expose la méthode HTTP et le corps JSON
+ * envoyé, et laisse le test choisir le code de statut (ex: 409) —
+ * `undefined` → 404 normalisé, comme les autres helpers.
+ */
+export function mockFetchRequests(router: (req: FetchRequest) => { status?: number; body: unknown } | undefined) {
+  const fn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(typeof input === 'string' ? input : input.toString());
+    const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
+    const res = router({ method: init?.method ?? 'GET', pathname: url.pathname, url, body });
+    if (res === undefined) {
+      return new Response(JSON.stringify({ code: 'NOT_FOUND', message: `Non mocké: ${url.pathname}${url.search}` }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return new Response(JSON.stringify(res.body), { status: res.status ?? 200, headers: { 'Content-Type': 'application/json' } });
+  });
+  vi.stubGlobal('fetch', fn);
+  return fn;
+}
+
 /**
  * Stub de `global.fetch` qui route sur le `pathname` de l'URL appelée
  * (le client HTTP du front, `src/lib/api-client.ts`, préfixe toujours

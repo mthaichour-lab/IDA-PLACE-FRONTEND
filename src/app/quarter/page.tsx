@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
 import { FlowDiagram, FlowDiagramMode } from '@/components/settlement/FlowDiagram';
+import { PipelineSection } from '@/components/settlement/PipelineSection';
 import { CoChip } from '@/components/ui/CoChip';
 import { Kpi, KpiRow } from '@/components/ui/Kpi';
 import { Tabs } from '@/components/ui/Tabs';
@@ -136,6 +137,8 @@ export default function QuarterPage() {
           <Kpi value={summary.opposedCount} label={t('quarter.kpi.opposedCount')} />
         </KpiRow>
       )}
+
+      <PipelineSection quarter={quarter} />
 
       {quarterQuery.isLoading ? (
         <p>{t('common.loading')}</p>

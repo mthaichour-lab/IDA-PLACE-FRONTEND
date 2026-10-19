@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
+import { MembershipTab } from '@/components/commission/MembershipTab';
 import { AttachmentsPanel } from '@/components/documents/AttachmentsPanel';
 import { CoChip } from '@/components/ui/CoChip';
 import { Kpi, KpiRow } from '@/components/ui/Kpi';
@@ -19,7 +20,7 @@ import { CommissionCase, CommissionCaseStatus, CommissionPenaltyResult, Commissi
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 
-type CommissionTab = 'role' | 'sanctions';
+type CommissionTab = 'role' | 'sanctions' | 'membership';
 
 function statusTone(status: CommissionCaseStatus): TagTone {
   if (status === 'PRONONCE') return 'ok';
@@ -168,6 +169,7 @@ export default function CommissionPage() {
             items={[
               { key: 'role', label: t('commission.tab.role') },
               { key: 'sanctions', label: t('commission.tab.sanctions') },
+              { key: 'membership', label: t('commission.tab.membership') },
             ]}
             activeKey={tab}
             onChange={(key) => setTab(key as CommissionTab)}
@@ -195,6 +197,8 @@ export default function CommissionPage() {
                 getRowKey={(r) => r.id}
               />
             )
+          ) : tab === 'membership' ? (
+            <MembershipTab />
           ) : sanctionsQuery.isLoading ? (
             <p>{t('common.loading')}</p>
           ) : sanctionsQuery.error ? (

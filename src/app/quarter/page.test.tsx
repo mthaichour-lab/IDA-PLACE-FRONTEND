@@ -1,7 +1,7 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { mockFetchRouter, renderWithProviders } from '@/test/render';
-import { MeResponse, PriceGrid, SettlementQuarter, SettlementQuarterMatrix, SettlementQuarterSummary } from '@/lib/types';
+import { mockFetchRequests, mockFetchRouter, renderWithProviders } from '@/test/render';
+import { MeResponse, PipelineStepView, PriceGrid, QuarterlyPipeline, SettlementQuarter, SettlementQuarterMatrix, SettlementQuarterSummary } from '@/lib/types';
 import QuarterPage from './page';
 
 const ME: MeResponse = {
@@ -47,9 +47,31 @@ const GRID: PriceGrid = {
   metrics: [{ metric: 'claims', label: 'Dossiers', unit: 'dossier', includedQuota: 100, unitPrice: 50 }],
 };
 
+const STEP_INFO: Array<Pick<PipelineStepView, 'step' | 'label' | 'article' | 'dueDate'>> = [
+  { step: 'SAISIE', label: 'Saisie et validation des recours sur la plateforme', article: 'Art. 16', dueDate: '2027-01-08' },
+  { step: 'SYNTHESE_ANNEXE_7', label: 'Synthèse mensuelle automatisée (Annexe n°7)', article: 'Art. 16', dueDate: '2027-01-10' },
+  { step: 'TRANSMISSION_ANNEXE_8', label: 'Insertion des informations de règlement (Annexe n°8)', article: 'Art. 16-17', dueDate: '2027-01-31' },
+  { step: 'SYNTHESE_GLOBALE_REUNION', label: "Synthèse globale trimestrielle et réunion au siège de l'UAR", article: 'Art. 17-18', dueDate: '2027-01-31' },
+  { step: 'PV_REGLEMENT', label: 'Signature du PV trimestriel (Annexe n°9) et règlement sous 8 jours', article: 'Art. 18', dueDate: '2027-02-08' },
+];
+
+/** Pipeline dont les `doneCount` premières étapes sont faites ; `overdue` s'applique à l'étape EN_COURS. */
+function pipeline(doneCount: number, overdue = false): QuarterlyPipeline {
+  return {
+    quarter: '2026-Q4',
+    steps: STEP_INFO.map((s, i) => ({
+      ...s,
+      status: i < doneCount ? 'DONE' : i === doneCount ? 'EN_COURS' : 'A_VENIR',
+      overdue: i === doneCount && overdue,
+      ...(i < doneCount ? { completedAt: '2027-01-05T09:00:00.000Z', completedBy: 'Opérateur Place (dev)' } : {}),
+    })),
+  };
+}
+
 function mockQuarterApi() {
   mockFetchRouter((pathname) => {
     if (pathname === '/api/v1/me') return ME;
+    if (pathname === '/api/v1/settlement/quarter/2026-Q4/pipeline') return pipeline(0);
     if (pathname === '/api/v1/settlement/quarter/2026-Q4/summary') return SUMMARY;
     if (pathname === '/api/v1/settlement/quarter/2026-Q4/matrix') return MATRIX;
     if (pathname === '/api/v1/settlement/quarter/2026-Q4') return QUARTER;
@@ -62,6 +84,7 @@ function mockQuarterApi() {
 function mockQuarterApiEmptyFlows() {
   mockFetchRouter((pathname) => {
     if (pathname === '/api/v1/me') return ME;
+    if (pathname === '/api/v1/settlement/quarter/2026-Q4/pipeline') return pipeline(0);
     if (pathname === '/api/v1/settlement/quarter/2026-Q4/summary') return SUMMARY;
     if (pathname === '/api/v1/settlement/quarter/2026-Q4/matrix') return MATRIX;
     if (pathname === '/api/v1/settlement/quarter/2026-Q4') return { ...QUARTER, positions: [], net: [] };
@@ -167,6 +190,94 @@ describe('Écran Compensation trimestrielle (/quarter)', () => {
       fireEvent.click(screen.getByRole('tab', { name: 'Bilatéral' }));
       await waitFor(() => expect(screen.queryByTestId(/^flow-edge-/)).not.toBeInTheDocument());
       expect(screen.getAllByText('Aucune donnée.').length).toBeGreaterThan(0);
+    });
+  });
+
+  /**
+   * Section « Avancement du lot » (Diagramme 2, Art. 16-18) — étapes 1-4
+   * réalisées à la main dans l'ordre (privilège `closeQuarter`), étape 5
+   * dérivée de la clôture trimestrielle.
+   */
+  describe('Avancement du lot', () => {
+    const ME_CLOSE: MeResponse = { ...ME, privileges: ['closeQuarter'] };
+
+    function mockPipelineApi(me: MeResponse, initial: QuarterlyPipeline) {
+      let current = initial;
+      const completed: string[] = [];
+      const fetchMock = mockFetchRequests(({ method, pathname }) => {
+        if (pathname === '/api/v1/me') return { body: me };
+        if (pathname === '/api/v1/settlement/quarter/2026-Q4/summary') return { body: SUMMARY };
+        if (pathname === '/api/v1/settlement/quarter/2026-Q4/matrix') return { body: MATRIX };
+        if (pathname === '/api/v1/settlement/quarter/2026-Q4') return { body: QUARTER };
+        if (pathname === '/api/v1/pricing/grid') return { body: GRID };
+        if (method === 'GET' && pathname === '/api/v1/settlement/quarter/2026-Q4/pipeline') return { body: current };
+        const match = /^\/api\/v1\/settlement\/quarter\/2026-Q4\/pipeline\/(\w+)\/complete$/.exec(pathname);
+        if (method === 'POST' && match) {
+          completed.push(match[1]);
+          current = pipeline(current.steps.filter((s) => s.status === 'DONE').length + 1);
+          return { status: 201, body: current };
+        }
+        return undefined;
+      });
+      const pipelineGets = () => fetchMock.mock.calls.filter(([input, init]) => String(input).endsWith('/pipeline') && (init?.method ?? 'GET') === 'GET').length;
+      return { completed, pipelineGets };
+    }
+
+    it('affiche les 5 étapes avec article, statut et badge « en retard »', async () => {
+      mockPipelineApi(ME, pipeline(1, true));
+      renderWithProviders(<QuarterPage />);
+
+      await waitFor(() => expect(screen.getByTestId('pipeline-step-SAISIE')).toBeInTheDocument());
+      expect(within(screen.getByTestId('pipeline-step-SAISIE')).getByText('Fait')).toBeInTheDocument();
+      expect(within(screen.getByTestId('pipeline-step-SAISIE')).getByText(/Opérateur Place \(dev\)/)).toBeInTheDocument();
+      const current = screen.getByTestId('pipeline-step-SYNTHESE_ANNEXE_7');
+      expect(within(current).getByText('En cours')).toBeInTheDocument();
+      expect(within(current).getByText('En retard')).toBeInTheDocument();
+      expect(screen.getAllByText('En retard')).toHaveLength(1);
+      expect(within(screen.getByTestId('pipeline-step-PV_REGLEMENT')).getByText('À venir')).toBeInTheDocument();
+      expect(within(screen.getByTestId('pipeline-step-PV_REGLEMENT')).getByText('Art. 18')).toBeInTheDocument();
+    });
+
+    it('n’affiche « Marquer comme réalisée » que sur l’étape EN_COURS, avec closeQuarter', async () => {
+      mockPipelineApi(ME_CLOSE, pipeline(1));
+      renderWithProviders(<QuarterPage />);
+
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Marquer comme réalisée' })).toBeInTheDocument());
+      expect(screen.getAllByRole('button', { name: 'Marquer comme réalisée' })).toHaveLength(1);
+      expect(within(screen.getByTestId('pipeline-step-SYNTHESE_ANNEXE_7')).getByRole('button', { name: 'Marquer comme réalisée' })).toBeInTheDocument();
+    });
+
+    it('masque le bouton sans le privilège closeQuarter', async () => {
+      mockPipelineApi(ME, pipeline(1));
+      renderWithProviders(<QuarterPage />);
+
+      await waitFor(() => expect(screen.getByTestId('pipeline-step-SYNTHESE_ANNEXE_7')).toBeInTheDocument());
+      expect(screen.queryByRole('button', { name: 'Marquer comme réalisée' })).not.toBeInTheDocument();
+    });
+
+    it("n'affiche aucun bouton pour l'étape 5 EN_COURS : elle découle de la clôture trimestrielle", async () => {
+      mockPipelineApi(ME_CLOSE, pipeline(4));
+      renderWithProviders(<QuarterPage />);
+
+      await waitFor(() => expect(within(screen.getByTestId('pipeline-step-PV_REGLEMENT')).getByText('En cours')).toBeInTheDocument());
+      expect(screen.queryByRole('button', { name: 'Marquer comme réalisée' })).not.toBeInTheDocument();
+      expect(within(screen.getByTestId('pipeline-step-PV_REGLEMENT')).getByText(/réalisée par la clôture de la compensation trimestrielle/)).toBeInTheDocument();
+    });
+
+    it("réalise l'étape EN_COURS puis recharge le pipeline", async () => {
+      const api = mockPipelineApi(ME_CLOSE, pipeline(0));
+      renderWithProviders(<QuarterPage />);
+
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Marquer comme réalisée' })).toBeInTheDocument());
+      const getsBefore = api.pipelineGets();
+      fireEvent.change(screen.getByLabelText('Note (facultative)'), { target: { value: 'RAS' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Marquer comme réalisée' }));
+
+      await waitFor(() => expect(screen.getByText('Étape marquée comme réalisée.')).toBeInTheDocument());
+      expect(api.completed).toEqual(['SAISIE']);
+      await waitFor(() => expect(api.pipelineGets()).toBeGreaterThan(getsBefore));
+      await waitFor(() => expect(within(screen.getByTestId('pipeline-step-SAISIE')).getByText('Fait')).toBeInTheDocument());
+      expect(within(screen.getByTestId('pipeline-step-SYNTHESE_ANNEXE_7')).getByRole('button', { name: 'Marquer comme réalisée' })).toBeInTheDocument();
     });
   });
 });

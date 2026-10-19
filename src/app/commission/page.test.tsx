@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { mockFetchRouter, renderWithProviders } from '@/test/render';
-import { CommissionCase, CommissionPenaltyResult, CommissionSummary, MeResponse, Sanction } from '@/lib/types';
+import { FetchRequest, mockFetchRequests, mockFetchRouter, renderWithProviders } from '@/test/render';
+import { CommissionCase, CommissionPenaltyResult, CommissionSummary, CompanyView, MeResponse, MembershipRequest, Sanction } from '@/lib/types';
 import CommissionPage from './page';
 
 const ME_WITH_BOTH: MeResponse = {
@@ -154,5 +154,166 @@ describe('Écran Commission (/commission)', () => {
 
     await waitFor(() => expect(screen.getByText('Retard de saisie')).toBeInTheDocument());
     expect(screen.getByText('Membre Commission (dev)')).toBeInTheDocument();
+  });
+});
+
+const ME_MEMBERSHIP: MeResponse = {
+  user: { id: 'dev-admin', name: 'Admin UAR (dev)', email: 'admin@uar.dz' },
+  role: 'ADMIN_UAR',
+  privileges: ['membership'],
+};
+
+function membershipRequest(overrides: Partial<MembershipRequest> = {}): MembershipRequest {
+  return {
+    id: 'm-1',
+    type: 'ADHESION',
+    state: 'RECUE',
+    candidateName: 'Assurances Nouvelles SPA',
+    receivedAt: '2026-09-01',
+    createdBy: 'Admin UAR (dev)',
+    createdAt: '2026-09-01T10:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function withdrawal(overrides: Partial<MembershipRequest> = {}): MembershipRequest {
+  return membershipRequest({ type: 'RETRAIT', candidateName: undefined, companyId: 'co-caat', companyCode: 'CAAT', ...overrides });
+}
+
+const COMPANY: CompanyView = {
+  id: 'co-caat',
+  code: 'CAAT',
+  name: 'Compagnie Algérienne des Assurances',
+  color: '#000000',
+  kind: 'INSURER',
+  feedMode: 'API',
+  status: 'ACTIF',
+  apiKeyMasked: '****',
+  createdAt: '2020-01-01T00:00:00.000Z',
+} as CompanyView;
+
+function mockMembershipApi(me: MeResponse, rows: MembershipRequest[], onPost?: (req: FetchRequest) => { status?: number; body: unknown } | undefined) {
+  return mockFetchRequests((req) => {
+    const { method, pathname } = req;
+    if (pathname === '/api/v1/me') return { body: me };
+    if (pathname === '/api/v1/commission/summary') return { body: SUMMARY };
+    if (pathname === '/api/v1/commission/cases') return { body: { page: 1, total: 0, items: [] } };
+    if (pathname === '/api/v1/referential/companies') return { body: { page: 1, total: 1, items: [COMPANY] } };
+    if (method === 'GET' && pathname === '/api/v1/commission/membership-requests') return { body: { page: 1, total: rows.length, items: rows } };
+    if (method === 'POST' && onPost) return onPost(req);
+    return undefined;
+  });
+}
+
+async function openMembershipTab() {
+  await waitFor(() => expect(screen.getByRole('tab', { name: 'Adhésions & retraits' })).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('tab', { name: 'Adhésions & retraits' }));
+}
+
+/**
+ * Onglet « Adhésions & retraits » (Chapitre VI, Art. 30-35) — écritures
+ * réservées au privilège `membership` ; la date d'effet d'un retrait vient
+ * du back, l'UI désactive seulement « constater l'effet » avant cette date.
+ */
+describe('Écran Commission — onglet « Adhésions & retraits »', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("affiche l'onglet et le tableau des demandes (type, candidat, état)", async () => {
+    mockMembershipApi(ME_MEMBERSHIP, [membershipRequest()]);
+    renderWithProviders(<CommissionPage />);
+    await openMembershipTab();
+
+    await waitFor(() => expect(screen.getByText('Assurances Nouvelles SPA')).toBeInTheDocument());
+    expect(screen.getAllByText('Adhésion').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Reçue').length).toBeGreaterThan(0);
+  });
+
+  it('masque la création et les actions sans le privilège membership', async () => {
+    mockMembershipApi(ME_WITHOUT_PENALTY, [membershipRequest()]);
+    renderWithProviders(<CommissionPage />);
+    await openMembershipTab();
+
+    await waitFor(() => expect(screen.getByText('Assurances Nouvelles SPA')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Nouvelle demande' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Assurances Nouvelles SPA').closest('tr')!);
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Accepter' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Rejeter' })).not.toBeInTheDocument();
+  });
+
+  it('formulaire : raison sociale pour une ADHESION, sélection de compagnie pour un RETRAIT', async () => {
+    const posted: unknown[] = [];
+    mockMembershipApi(ME_MEMBERSHIP, [], (req) => {
+      if (req.pathname !== '/api/v1/commission/membership-requests') return undefined;
+      posted.push(req.body);
+      return { status: 201, body: withdrawal({ effectiveDate: '2026-12-31' }) };
+    });
+    renderWithProviders(<CommissionPage />);
+    await openMembershipTab();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Nouvelle demande' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Nouvelle demande' }));
+    expect(screen.getByLabelText('Raison sociale de la société candidate')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Compagnie adhérente')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Type', { selector: '#membership-form-type' }), { target: { value: 'RETRAIT' } });
+    expect(screen.queryByLabelText('Raison sociale de la société candidate')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('option', { name: /CAAT — Compagnie Algérienne/ })).toBeInTheDocument());
+
+    expect(screen.getByRole('button', { name: 'Enregistrer la demande' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Compagnie adhérente'), { target: { value: 'co-caat' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer la demande' }));
+
+    await waitFor(() => expect(screen.getByText('Demande enregistrée.')).toBeInTheDocument());
+    expect(posted).toEqual([expect.objectContaining({ type: 'RETRAIT', companyId: 'co-caat' })]);
+    expect(posted[0]).not.toHaveProperty('candidateName');
+  });
+
+  it("désactive « constater l'effet » avant la date d'effet, avec la raison affichée", async () => {
+    mockMembershipApi(ME_MEMBERSHIP, [withdrawal({ effectiveDate: '2099-12-31' })]);
+    renderWithProviders(<CommissionPage />);
+    await openMembershipTab();
+
+    await waitFor(() => expect(screen.getAllByText('CAAT').length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByText('CAAT')[0].closest('tr')!);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: "Constater l'effet" })).toBeDisabled());
+    expect(screen.getByText(/ne peut être constaté qu'après sa date d'effet/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Annuler le retrait' })).toBeEnabled();
+  });
+
+  it("après la date d'effet, « constater l'effet » est actif et un 409 du back s'affiche en toast", async () => {
+    mockMembershipApi(ME_MEMBERSHIP, [withdrawal({ receivedAt: '2020-09-01', effectiveDate: '2020-12-31' })], (req) =>
+      req.pathname === '/api/v1/commission/membership-requests/m-1/effective'
+        ? { status: 409, body: { code: 'INVALID_TRANSITION', message: "Le retrait ne peut être constaté qu'après sa date d'effet (2020-12-31)." } }
+        : undefined,
+    );
+    renderWithProviders(<CommissionPage />);
+    await openMembershipTab();
+
+    await waitFor(() => expect(screen.getAllByText('CAAT').length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByText('CAAT')[0].closest('tr')!);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: "Constater l'effet" })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: "Constater l'effet" }));
+    await waitFor(() => expect(screen.getByText(/\(2020-12-31\)\./)).toBeInTheDocument());
+  });
+
+  it("exige un motif pour rejeter et l'agrément pour accepter une adhésion", async () => {
+    mockMembershipApi(ME_MEMBERSHIP, [membershipRequest()]);
+    renderWithProviders(<CommissionPage />);
+    await openMembershipTab();
+
+    await waitFor(() => expect(screen.getByText('Assurances Nouvelles SPA')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Assurances Nouvelles SPA').closest('tr')!);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Rejeter' })).toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Accepter' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Motif / note'), { target: { value: 'Agrément absent' } });
+    expect(screen.getByRole('button', { name: 'Rejeter' })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText("Référence d'agrément (branche automobile)"), { target: { value: 'AGR-2026-01' } });
+    expect(screen.getByRole('button', { name: 'Accepter' })).toBeEnabled();
   });
 });

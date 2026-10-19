@@ -526,6 +526,36 @@ export interface SettlementQuarterClosure {
   bordereauRef?: string;
 }
 
+/**
+ * Avancement du lot trimestriel (Diagramme 2, Art. 16-18) —
+ * `GET /settlement/quarter/:q/pipeline`, forme exacte de
+ * `QuarterlyPipelineDto`/`PipelineStepViewDto` (back
+ * `settlement-pipeline.dto.ts`). Étapes 1-4 réalisées via
+ * `POST /settlement/quarter/:q/pipeline/:step/complete` ; l'étape 5
+ * (`PV_REGLEMENT`) découle de la clôture trimestrielle.
+ */
+export const PIPELINE_STEPS = ['SAISIE', 'SYNTHESE_ANNEXE_7', 'TRANSMISSION_ANNEXE_8', 'SYNTHESE_GLOBALE_REUNION', 'PV_REGLEMENT'] as const;
+export type PipelineStep = (typeof PIPELINE_STEPS)[number];
+export const MANUAL_PIPELINE_STEPS: readonly PipelineStep[] = ['SAISIE', 'SYNTHESE_ANNEXE_7', 'TRANSMISSION_ANNEXE_8', 'SYNTHESE_GLOBALE_REUNION'];
+export type PipelineStepStatus = 'DONE' | 'EN_COURS' | 'A_VENIR';
+
+export interface PipelineStepView {
+  step: PipelineStep;
+  label: string;
+  article: string;
+  status: PipelineStepStatus;
+  dueDate: string;
+  overdue: boolean;
+  completedAt?: string;
+  completedBy?: string;
+  note?: string;
+}
+
+export interface QuarterlyPipeline {
+  quarter: string;
+  steps: PipelineStepView[];
+}
+
 // `PriceGrid`/`PriceGridMetric` (grille tarifaire des règlements, B.8,
 // `GET /pricing/grid`) sont définis plus bas avec `InvoiceLine`/
 // `MeteringInvoice` (section Métrologie) — réutilisés ici par `/quarter`
@@ -614,6 +644,43 @@ export interface Sanction {
   reason: string;
   orderedAt: string;
   orderedBy: string;
+}
+
+/**
+ * Adhésions et retraits (Chapitre VI, Art. 30-35) — `GET|POST
+ * /commission/membership-requests`, forme exacte de
+ * `MembershipRequestViewDto` (back `membership.dto.ts`).
+ */
+export const MEMBERSHIP_TYPES = ['ADHESION', 'RETRAIT'] as const;
+export type MembershipType = (typeof MEMBERSHIP_TYPES)[number];
+
+export const MEMBERSHIP_STATES = ['RECUE', 'ACCEPTEE', 'REJETEE', 'EFFECTIVE', 'ANNULEE'] as const;
+export type MembershipState = (typeof MEMBERSHIP_STATES)[number];
+
+export interface MembershipRequest {
+  id: string;
+  type: MembershipType;
+  state: MembershipState;
+  companyId?: string;
+  companyCode?: string;
+  candidateName?: string;
+  agrementRef?: string;
+  receivedAt: string;
+  /** RETRAIT uniquement, calculée par le back. */
+  effectiveDate?: string;
+  decidedAt?: string;
+  decidedBy?: string;
+  decisionNote?: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface CreateMembershipRequest {
+  type: MembershipType;
+  receivedAt: string;
+  companyId?: string;
+  candidateName?: string;
+  agrementRef?: string;
 }
 
 /* ===================== Journal scellé (écran 13, Module XI) — B.2/B.3 =====================
