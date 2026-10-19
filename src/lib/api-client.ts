@@ -125,7 +125,25 @@ export function apiDelete<T>(path: string): Promise<T> {
   return request<T>('DELETE', path);
 }
 
-/** POST multipart/form-data (ex: `POST /claims/import`, champ `file`). */
-export function apiPostForm<T>(path: string, form: FormData): Promise<T> {
-  return request<T>('POST', path, { form });
+/** POST multipart/form-data (ex: `POST /claims/import?company=XXXX`, champ `file`). */
+export function apiPostForm<T>(path: string, form: FormData, query?: QueryParams): Promise<T> {
+  return request<T>('POST', path, { form, query });
+}
+
+/**
+ * Téléchargement authentifié d'un fichier (ex. `GET /documents/:id/download`,
+ * SEC-10) : la route exige le jeton, un simple lien `<a href>` ne le porterait
+ * pas. Renvoie le contenu en `Blob` ; les erreurs suivent le même traitement
+ * que les appels JSON (`ApiError`, messages génériques).
+ */
+export async function apiGetBlob(path: string): Promise<Blob> {
+  const headers = await authHeaders();
+  let res: Response;
+  try {
+    res = await fetch(buildUrl(path), { method: 'GET', headers, cache: 'no-store' });
+  } catch {
+    throw new ApiError(0, { code: 'NETWORK', message: '' });
+  }
+  if (!res.ok) return handle<Blob>(res);
+  return res.blob();
 }

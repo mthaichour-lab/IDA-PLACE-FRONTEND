@@ -3,28 +3,60 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
+import { LabeledSelect } from '@/components/referential/fields';
 import { Table, Column } from '@/components/ui/Table';
-import { Tag } from '@/components/ui/Tag';
+import { Tag, TagTone } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
+import { TranslationKey } from '@/i18n/translations';
 import { apiGet, apiPostForm } from '@/lib/api-client';
 import { buildColumnsCsv, downloadCsv } from '@/lib/csv';
 import { useAuth } from '@/lib/auth-context';
-import { ClaimColumnDef, ClaimImportReport, ClaimImportRowResult, ClaimImportWarning } from '@/lib/types';
+import { isCompanyRole } from '@/lib/auth/roles';
+import { useApiErrorMessage } from '@/lib/error-message';
+import { ClaimColumnDef, ClaimImportReport, ClaimImportRowResult, ClaimImportWarning, CompanyListItem, Paginated } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 
+const WARNING_LABELS: Record<ClaimImportWarning['code'], TranslationKey> = {
+  BAREME_NON_PUBLIE: 'import.warning.BAREME_NON_PUBLIE',
+  CIRCONSTANCE_INVALIDE: 'import.warning.CIRCONSTANCE_INVALIDE',
+  FORMULE_NEUTRALISEE: 'import.warning.FORMULE_NEUTRALISEE',
+  DECLARATION_CORRIGEE: 'import.warning.DECLARATION_CORRIGEE',
+};
+
+function warningTone(code: ClaimImportWarning['code']): TagTone {
+  return code === 'FORMULE_NEUTRALISEE' || code === 'DECLARATION_CORRIGEE' ? 'warn' : 'a';
+}
+
 export default function ImportPage() {
   const { t, locale } = useI18n();
-  const { hasPrivilege } = useAuth();
+  const { me, hasPrivilege } = useAuth();
   const { toast } = useToast();
+  const errorMessage = useApiErrorMessage();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [reportPage, setReportPage] = useState(1);
   const [warningsPage, setWarningsPage] = useState(1);
   const [journal, setJournal] = useState<ClaimImportReport[]>([]);
+  const [importError, setImportError] = useState<string | null>(null);
+  /** Rôle place : compagnie déclarante désignée explicitement (SEC-02, 400 COMPAGNIE_REQUISE sinon). */
+  const [declaringCompany, setDeclaringCompany] = useState('');
 
   const canImport = hasPrivilege('import');
+  // SEC-02 : un rôle compagnie importe pour SA compagnie (portée par le jeton) ;
+  // un rôle place doit désigner la compagnie déclarante (`?company=`).
+  const companyRole = isCompanyRole(me?.role);
+  const placeImporter = !!me && canImport && !companyRole;
+  const targetCompany = companyRole ? me?.company ?? '' : declaringCompany;
+  const ready = canImport && !!targetCompany;
+
+  const companiesQuery = useQuery({
+    queryKey: ['referential', 'companies', 'import-picker'],
+    queryFn: () => apiGet<Paginated<CompanyListItem>>('/referential/companies', { page: 1, pageSize: 100 }),
+    enabled: placeImporter,
+  });
+  const companyOptions = (companiesQuery.data?.items ?? []).filter((c) => c.status === 'ACTIF');
 
   const columnsQuery = useQuery({
     queryKey: ['claims', 'import', 'columns'],
@@ -40,25 +72,30 @@ export default function ImportPage() {
     mutationFn: (file: File) => {
       const form = new FormData();
       form.append('file', file);
-      return apiPostForm<ClaimImportReport>('/claims/import', form);
+      // Rôle compagnie : aucun paramètre, le backend retient la compagnie du jeton.
+      return apiPostForm<ClaimImportReport>('/claims/import', form, placeImporter ? { company: declaringCompany } : undefined);
     },
     onSuccess: (report) => {
+      setImportError(null);
       setJournal((prev) => [report, ...prev]);
       setReportPage(1);
       setWarningsPage(1);
       toast(t('import.toast.success'), 'ok');
     },
-    onError: () => {
-      toast(t('import.toast.error'), 'ko');
+    onError: (err: unknown) => {
+      const message = errorMessage(err, t('import.toast.error'));
+      setImportError(message);
+      toast(message, 'ko');
     },
   });
 
   const handleFiles = useCallback(
     (files: FileList | null) => {
-      if (!canImport || !files || files.length === 0) return;
+      if (!ready || !files || files.length === 0) return;
       importMutation.mutate(files[0]);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     },
-    [canImport, importMutation],
+    [ready, importMutation],
   );
 
   function onDownloadTemplate(version: 'v1' | 'v2') {
@@ -84,6 +121,7 @@ export default function ImportPage() {
         </>
       ),
     },
+    { key: 'code', header: t('import.warnings.col.code'), render: (w) => <Tag tone={warningTone(w.code)}>{WARNING_LABELS[w.code] ? t(WARNING_LABELS[w.code]) : w.code}</Tag> },
     { key: 'message', header: t('import.warnings.col.message'), render: (w) => w.message },
   ];
 
@@ -92,7 +130,12 @@ export default function ImportPage() {
     {
       key: 'verdict',
       header: t('import.col.verdict'),
-      render: (r) => <Tag tone={r.verdict === 'ELIGIBLE_IDA' ? 'ok' : 'ko'}>{r.verdict === 'ELIGIBLE_IDA' ? t('import.verdict.eligible') : t('import.verdict.ineligible')}</Tag>,
+      render: (r) => (
+        <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
+          <Tag tone={r.verdict === 'ELIGIBLE_IDA' ? 'ok' : 'ko'}>{r.verdict === 'ELIGIBLE_IDA' ? t('import.verdict.eligible') : t('import.verdict.ineligible')}</Tag>
+          {r.rejected ? <Tag tone="warn">{t('import.verdict.rejected')}</Tag> : null}
+        </span>
+      ),
     },
     {
       key: 'reasons',
@@ -117,10 +160,44 @@ export default function ImportPage() {
           {canImport ? (
             <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
               <div className="sheet-body">
-                {/* Zone de dépôt drag-drop (A.4, écran 3) */}
+                {/* SEC-02 : compagnie déclarante — choisie par un rôle place, imposée par le jeton pour un rôle compagnie. */}
+                <div style={{ marginBottom: 'var(--s-4)' }}>
+                  {placeImporter ? (
+                    companiesQuery.error ? (
+                      <div className="note ko" role="alert">
+                        <span>{t('common.error')}</span>
+                        <button type="button" onClick={() => companiesQuery.refetch()}>
+                          {t('common.retry')}
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <LabeledSelect
+                          label={t('import.company.label')}
+                          value={declaringCompany}
+                          required
+                          disabled={companiesQuery.isLoading || importMutation.isPending}
+                          onChange={setDeclaringCompany}
+                          options={[
+                            { value: '', label: companiesQuery.isLoading ? t('common.loading') : t('import.company.placeholder') },
+                            ...companyOptions.map((c) => ({ value: c.code, label: `${c.code} — ${c.name}` })),
+                          ]}
+                        />
+                        <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', margin: '4px 0 0' }}>{t('import.company.placeHint')}</p>
+                      </>
+                    )
+                  ) : companyRole ? (
+                    <p style={{ fontSize: 'var(--k-fs-s)', margin: 0 }}>
+                      {t('import.company.own')} <strong className="mono">{me?.company ?? '—'}</strong>
+                    </p>
+                  ) : null}
+                </div>
+
+                {/* Zone de dépôt drag-drop (A.4, écran 3) — inactive tant que la compagnie déclarante n'est pas choisie. */}
                 <div
                   role="button"
-                  tabIndex={0}
+                  tabIndex={ready ? 0 : -1}
+                  aria-disabled={!ready}
                   aria-label={t('import.dropzone.title')}
                   onDragOver={(e) => {
                     e.preventDefault();
@@ -132,28 +209,30 @@ export default function ImportPage() {
                     setDragOver(false);
                     handleFiles(e.dataTransfer.files);
                   }}
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => ready && fileInputRef.current?.click()}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click();
+                    if (ready && (e.key === 'Enter' || e.key === ' ')) fileInputRef.current?.click();
                   }}
                   style={{
                     border: `2px dashed ${dragOver ? 'var(--k-pri)' : 'var(--rule-strong)'}`,
                     borderRadius: 'var(--k-r-l)',
                     padding: 'var(--s-8)',
                     textAlign: 'center',
-                    cursor: 'pointer',
+                    cursor: ready ? 'pointer' : 'not-allowed',
+                    opacity: ready ? 1 : 0.6,
                     background: dragOver ? 'var(--k-mint)' : 'var(--sheet)',
                   }}
                 >
                   <strong style={{ display: 'block', marginBottom: 'var(--s-2)' }}>{t('import.dropzone.title')}</strong>
-                  <p style={{ color: 'var(--ink-2)', marginBottom: 'var(--s-3)' }}>{t('import.dropzone.subtitle')}</p>
+                  <p style={{ color: 'var(--ink-2)', marginBottom: 'var(--s-3)' }}>{ready ? t('import.dropzone.subtitle') : t('import.company.required')}</p>
                   <button
                     type="button"
+                    disabled={!ready || importMutation.isPending}
                     onClick={(e) => {
                       e.stopPropagation();
                       fileInputRef.current?.click();
                     }}
-                    style={{ padding: '8px 16px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--k-pri)', background: 'var(--k-pri)', color: '#fff', font: 'inherit', cursor: 'pointer' }}
+                    style={{ padding: '8px 16px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--k-pri)', background: 'var(--k-pri)', color: '#fff', font: 'inherit', cursor: ready ? 'pointer' : 'not-allowed' }}
                   >
                     {t('import.dropzone.button')}
                   </button>
@@ -170,6 +249,10 @@ export default function ImportPage() {
                 {importMutation.isPending ? (
                   <p role="status" style={{ marginTop: 'var(--s-3)' }}>
                     {t('import.uploading')}
+                  </p>
+                ) : importError ? (
+                  <p className="note ko" role="alert" style={{ marginTop: 'var(--s-3)' }}>
+                    {importError}
                   </p>
                 ) : null}
               </div>
@@ -189,6 +272,9 @@ export default function ImportPage() {
                     <Field label={t('import.report.file')}>
                       <span className="mono">{latestReport.fileName}</span>
                     </Field>
+                    <Field label={t('import.report.company')}>
+                      <span className="mono">{latestReport.company ?? '—'}</span>
+                    </Field>
                     <Field label={t('import.report.importedAt')}>{new Date(latestReport.importedAt).toLocaleString(locale)}</Field>
                     <Field label={t('import.report.total')}>{latestReport.totalRows}</Field>
                     <Field label={t('import.report.eligible')}>
@@ -197,7 +283,15 @@ export default function ImportPage() {
                     <Field label={t('import.report.ineligible')}>
                       <Tag tone="ko">{latestReport.ineligibleCount}</Tag>
                     </Field>
+                    <Field label={t('import.report.rejected')}>
+                      <Tag tone={latestReport.rejectedCount > 0 ? 'warn' : 'a'}>{latestReport.rejectedCount ?? 0}</Tag>
+                    </Field>
                   </dl>
+                  {latestReport.rejectedCount > 0 ? (
+                    <p className="note warn" role="status" style={{ fontSize: 'var(--k-fs-xs)' }}>
+                      {t('import.report.rejectedNote')}
+                    </p>
+                  ) : null}
 
                   <Table
                     columns={reportColumns}
@@ -263,7 +357,9 @@ export default function ImportPage() {
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {journal.map((r, i) => (
                     <li key={`${r.fileName}-${r.importedAt}-${i}`} style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-                      <span className="mono">{r.fileName}</span>
+                      <span className="mono">
+                        {r.fileName} · {r.company}
+                      </span>
                       <span>{new Date(r.importedAt).toLocaleTimeString(locale)}</span>
                     </li>
                   ))}

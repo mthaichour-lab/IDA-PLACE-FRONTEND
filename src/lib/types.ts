@@ -69,8 +69,44 @@ export interface ExpertView {
   agrement?: string;
   wilayas: string[];
   specialties: string[];
+  /** SEC-26 : pour un rôle compagnie, seulement sa propre compagnie. */
   companies: string[];
   status: ExpertStatus;
+  /** SEC-14 : RIB masqué (4 derniers caractères), rôles place uniquement — jamais renvoyé en clair. */
+  ribMasked?: string;
+}
+
+/**
+ * SEC-26 — `GET /referential/companies` renvoie à un rôle compagnie la
+ * projection PUBLIQUE de ses concurrentes : identité et statut seulement
+ * (ni correspondant, ni contacts, ni délais, ni mode d'alimentation, ni
+ * réseau d'agences, ni clé API).
+ */
+export type CompanyListItem = Pick<CompanyView, 'id' | 'code' | 'name' | 'nameAr' | 'color' | 'kind' | 'status'> & Partial<CompanyView>;
+
+/** SEC-04 — demande de changement de gouvernance d'une compagnie (`/referential/companies/:id/governance-changes`). */
+export type GovernanceChangeStatus = 'EN_ATTENTE' | 'VALIDEE' | 'REJETEE';
+
+export interface GovernancePatch {
+  status?: CompanyStatus;
+  delayOverrides?: Record<string, number>;
+  kind?: CompanyKind;
+  feedMode?: FeedMode;
+}
+
+export interface GovernanceChange {
+  id: string;
+  companyId: string;
+  companyCode: string;
+  patch: GovernancePatch;
+  reason: string;
+  status: GovernanceChangeStatus;
+  requestedById: string;
+  requestedBy: string;
+  requestedAt: string;
+  decidedById?: string;
+  decidedBy?: string;
+  decidedAt?: string;
 }
 
 /**
@@ -131,6 +167,8 @@ export interface MobileHoliday {
   createdAt: string;
   confirmedBy?: string;
   confirmedAt?: string;
+  /** SEC-30 : révision lue, renvoyée à la confirmation (409 REVISION_PERIMEE si elle a changé). */
+  revision?: number;
 }
 
 export interface CalendarHoliday {
@@ -153,6 +191,8 @@ export interface ConstatCircumstance {
   updatedBy?: string;
   validatedBy?: string;
   validatedAt?: string;
+  /** SEC-30 : révision lue, renvoyée à la validation (409 REVISION_PERIMEE si elle a changé). */
+  revision?: number;
 }
 
 export type OppositionMotifStatus = 'SAISI' | 'VALIDE_UAR';
@@ -169,6 +209,8 @@ export interface OppositionMotif {
   updatedBy?: string;
   validatedBy?: string;
   validatedAt?: string;
+  /** SEC-30 : révision lue, renvoyée à la validation. */
+  revision?: number;
 }
 
 /** `GET /referential/wilayas` — seuls les champs utiles à la saisie des populations. */
@@ -270,6 +312,8 @@ export interface BaremeVersion {
   validatedBy?: string;
   validatedAt?: string;
   cases: BaremeCase[];
+  /** SEC-30 : révision lue, renvoyée à la validation. */
+  revision?: number;
 }
 
 export type VehicleCategoryStatus = 'SAISI' | 'VALIDE_UAR';
@@ -283,6 +327,8 @@ export interface VehicleCategory {
   updatedBy?: string;
   validatedBy?: string;
   validatedAt?: string;
+  /** SEC-30 : révision lue, renvoyée à la validation. */
+  revision?: number;
 }
 
 /** Parts du cas couvrant le code déclaré, dans une version `VALIDE_UAR`. */
@@ -321,6 +367,12 @@ export interface ClaimView {
   id: string;
   numEconstat: string;
   company: string;
+  /** SEC-27 : critères d'éligibilité déclarés (non nominatifs). */
+  nombreVehicules?: number;
+  territoire?: 'ALGERIE' | 'ETRANGER';
+  dommagesCorporelsDeclares?: boolean;
+  /** SEC-26 : vrai si les champs nominatifs (plaque, police, assuré) d'une autre compagnie sont masqués (« •••• »). */
+  masked?: boolean;
 }
 
 /* ===================== Cockpit (écran 1, Module I) — B.11/HANDOFF ===================== */
@@ -465,7 +517,10 @@ export interface MatchQueueItem {
   status: MatchStatus;
   econstatShared: boolean;
   criteria: MatchCriteria;
+  /** Auteur de la dernière décision — SEC-26 : « Compagnie X » ou « Opérateur de place » pour un lecteur d'une autre compagnie. */
   confirmedBy?: string;
+  /** SEC-28 : compagnie de l'auteur de la dernière décision (`PLACE` pour un rôle place). */
+  confirmedByCompany?: string;
   confirmedAt?: string;
   rejectReason?: string;
   at: string;
@@ -493,13 +548,35 @@ export interface MatchQueueItem {
   responsabiliteB?: DeclarationResponsabilite;
   /** Vrai si A et B portent chacune un code de barème et que ces codes diffèrent. */
   divergence: boolean;
+  /** SEC-03 : vrai si les champs nominatifs de l'autre compagnie sont masqués (« •••• ») tant que l'appariement n'est pas confirmé. */
+  masked?: boolean;
 }
 
 /** `GET /matching/:id` (`MatchItemDetailDto`) : la ligne + les id des dossiers, cible de `PATCH /claims/:id/responsabilite`. */
 export interface MatchItemDetail extends MatchQueueItem {
+  /** Vide (`''`) quand la déclaration A est celle d'une autre compagnie et que la ligne est masquée (SEC-03). */
   claimAId: string;
+  /** Absent tant que rien n'est apparié, ou quand la ligne est masquée pour l'autre compagnie (SEC-03). */
   claimBId?: string;
 }
+
+/** SEC-28 — `GET /matching/:id/decisions` : une décision de l'historique (ordre chronologique). */
+export interface MatchDecisionHistoryEntry {
+  id: string;
+  action: MatchDecisionAction;
+  previousStatus: MatchStatus;
+  newStatus: MatchStatus;
+  reason?: string;
+  linkDeclId?: string;
+  /** Auteur — « Compagnie X » / « Opérateur de place » pour un lecteur d'une autre compagnie. */
+  decidedBy: string;
+  decidedByRole: string;
+  decidedByCompany?: string;
+  decidedAt: string;
+}
+
+/** Statuts déjà tranchés : revenir dessus exige un motif (400 MOTIF_REQUIS, SEC-28). */
+export const MATCH_TERMINAL_STATUSES: readonly MatchStatus[] = ['CONFIRME_MANUEL', 'REJETE', 'COMPLEMENT'];
 
 export interface MatchCounters {
   TOUS: number;
@@ -540,6 +617,8 @@ export interface ClaimImportRowResult {
   verdict: ClaimImportVerdict;
   reasons: string[];
   data: Record<string, unknown>;
+  /** SEC-02 : ligne refusée sans création de dossier (compagnie A différente de la compagnie déclarante). */
+  rejected?: boolean;
 }
 
 export interface ClaimImportReport {
@@ -548,6 +627,10 @@ export interface ClaimImportReport {
   totalRows: number;
   eligibleCount: number;
   ineligibleCount: number;
+  /** SEC-02 : lignes refusées sans création de dossier (comptées aussi dans `ineligibleCount`). */
+  rejectedCount: number;
+  /** SEC-02 : compagnie au nom de laquelle les dossiers ont été créés. */
+  company: string;
   rows: ClaimImportRowResult[];
   /** Valeurs des colonnes 48-53 ignorées : jamais un motif d'inéligibilité. */
   warnings: ClaimImportWarning[];
@@ -558,7 +641,8 @@ export interface ClaimImportWarning {
   /** N° de colonne dans le fichier (48 à 53). */
   column: number;
   columnKey: string;
-  code: 'BAREME_NON_PUBLIE' | 'CIRCONSTANCE_INVALIDE';
+  /** `FORMULE_NEUTRALISEE` (SEC-39) et `DECLARATION_CORRIGEE` (SEC-02/SEC-49) : avertissements, jamais un motif d'inéligibilité. */
+  code: 'BAREME_NON_PUBLIE' | 'CIRCONSTANCE_INVALIDE' | 'FORMULE_NEUTRALISEE' | 'DECLARATION_CORRIGEE';
   message: string;
 }
 
@@ -637,6 +721,23 @@ export interface RecoursItem {
   createdAt: string;
 }
 
+/** SEC-17 — `GET /recours/:id/history` (rôles place uniquement, 404 sinon) : une transition. */
+export interface RecoursHistoryEntry {
+  at: string;
+  action: string;
+  fromState?: string;
+  toState: string;
+  /** Identifiant stable de l'auteur (jamais le nom affiché). */
+  actorId: string;
+  actorRole: string;
+  /** Compagnie partie au nom de laquelle l'acte est accompli. */
+  onBehalfOf?: string;
+  reason?: string;
+  resolutionKind?: string;
+  commissionCaseId?: string;
+  pvRef?: string;
+}
+
 export interface RecoursTransitionResult {
   id: string;
   state: RecoursState;
@@ -652,8 +753,9 @@ export type SettlementCompanyStatus = 'CLOTURE' | 'EN_COURS';
 
 export interface SettlementMonthlyCompany {
   code: string;
+  /** SEC-34 : nombre de recours RÉGLÉS dont le règlement tombe dans le mois. */
   claimsCount: number;
-  /** Nombre de recours résolus (REGLE/REJETE/FORCLOS) sur la période. */
+  /** SEC-34 : identique à `claimsCount` (la synthèse ne retient que les recours réglés, par mois de règlement). */
   resolvedCount: number;
   totalAmount: number;
   status: SettlementCompanyStatus;
@@ -721,6 +823,7 @@ export interface SettlementQuarter {
   positions: SettlementPosition[];
   net: SettlementNet[];
   closedAt?: string;
+  /** SEC-26 : absent pour les rôles compagnie. */
   closedBy?: string;
 }
 
@@ -790,7 +893,9 @@ export interface PipelineStepView {
   dueDate: string;
   overdue: boolean;
   completedAt?: string;
+  /** SEC-26 : absent pour les rôles compagnie. */
   completedBy?: string;
+  /** SEC-26 : absent pour les rôles compagnie. */
   note?: string;
 }
 
@@ -848,6 +953,7 @@ export interface CommissionPenaltyResult {
   reason: string;
   orderedAt: string;
   orderedBy: string;
+  status: SanctionStatus;
 }
 
 export interface CommissionPvSignResult extends CommissionCase {}
@@ -877,6 +983,9 @@ export type SanctionType = 'PENALITE_FINANCIERE' | 'AVERTISSEMENT' | 'SUSPENSION
  * `SanctionViewDto` (back `commission.dto.ts`) — enregistrement séparé lié
  * par `commissionCaseId`, pas embarqué dans `CommissionCase`.
  */
+/** SEC-32 : une pénalité/sanction proposée n'est prononcée qu'après le contreseing d'un second membre. */
+export type SanctionStatus = 'A_CONTRESIGNER' | 'PRONONCEE';
+
 export interface Sanction {
   id: string;
   commissionCaseId?: string;
@@ -887,6 +996,9 @@ export interface Sanction {
   reason: string;
   orderedAt: string;
   orderedBy: string;
+  status: SanctionStatus;
+  countersignedBy?: string;
+  countersignedAt?: string;
 }
 
 /**
@@ -911,6 +1023,8 @@ export interface MembershipRequest {
   receivedAt: string;
   /** RETRAIT uniquement, calculée par le back. */
   effectiveDate?: string;
+  /** SEC-47 : référence du courrier reçu. */
+  letterRef?: string;
   decidedAt?: string;
   decidedBy?: string;
   decisionNote?: string;
@@ -921,6 +1035,9 @@ export interface MembershipRequest {
 export interface CreateMembershipRequest {
   type: MembershipType;
   receivedAt: string;
+  /** SEC-47 : référence du courrier reçu, obligatoire. */
+  letterRef: string;
+  /** RETRAIT : identifiant (UUID) de la compagnie au référentiel. */
   companyId?: string;
   candidateName?: string;
   agrementRef?: string;
@@ -1000,8 +1117,10 @@ export interface MonitoringCompanyScore {
   /** Note lettrée dérivée de `score` (affichage uniquement) — `null` si `score` est `null`. */
   grade: 'A' | 'B' | 'C' | 'D' | null;
   rank: number;
-  details: Record<keyof MonitoringWeights, MonitoringComponentValue>;
-  profile: MonitoringCompanyProfile;
+  /** SEC-26 : absent pour une AUTRE compagnie que celle d'un rôle compagnie (classement seul). */
+  details?: Record<keyof MonitoringWeights, MonitoringComponentValue>;
+  /** SEC-26 : absent pour une AUTRE compagnie que celle d'un rôle compagnie. */
+  profile?: MonitoringCompanyProfile;
 }
 
 export interface MonitoringScores {
@@ -1056,6 +1175,23 @@ export interface FraudCase {
   detectedAt: string;
   /** Plaque du premier dossier lié ayant une plaque renseignée — `undefined` possible, rendre `—` côté affichage (jamais fabriquer de valeur). */
   plateA?: string;
+  /** SEC-26, rôle compagnie seulement : nombre de dossiers d'autres compagnies dans le cas (leurs id ne sont pas publiés). */
+  counterpartClaims?: number;
+  /** SEC-26, rôle compagnie seulement : nombre d'autres compagnies impliquées (leurs codes ne sont pas publiés). */
+  counterpartCompanies?: number;
+}
+
+/** SEC-36 — couverture de la dernière analyse anti-fraude. */
+export interface FraudAnalysisStatus {
+  claimsAnalyzed: number;
+  /** Vrai si le plafond d'analyse a été atteint : les dossiers les plus anciens n'ont pas été analysés. */
+  truncated: boolean;
+  computedAt?: string;
+}
+
+/** `GET /fraud/cases` : page de cas + couverture de l'analyse (SEC-36). */
+export interface FraudCasesPage extends Paginated<FraudCase> {
+  analysis?: FraudAnalysisStatus;
 }
 
 export type FraudActionType = 'APPARIEMENT_MANUEL' | 'DELIAGE' | 'RELIAGE' | 'TRANSMISSION_TARDIVE';
@@ -1111,7 +1247,8 @@ export interface InvoiceLine extends PriceGridMetric {
   amount: number;
 }
 
-export type InvoiceStatus = 'EMISE' | 'PAYEE' | 'EN_RETARD';
+/** SEC-37 : `SIMULEE` — facture calculée sur une consommation simulée, jamais émise (refusée en production). */
+export type InvoiceStatus = 'SIMULEE' | 'EMISE' | 'PAYEE' | 'EN_RETARD';
 
 export interface MeteringInvoice {
   company: string;
@@ -1123,6 +1260,8 @@ export interface MeteringInvoice {
   totalTVA: number;
   totalTTC: number;
   status: InvoiceStatus;
+  /** SEC-37 : vrai pour une facture simulée. */
+  simulated?: boolean;
 }
 
 /**
@@ -1280,6 +1419,20 @@ export interface DocumentView {
   sizeBytes: number;
   uploadedBy: string;
   uploadedAt: string;
-  /** URL pré-signée à durée courte — recalculée à chaque appel, ne jamais la mémoriser au-delà du rendu courant. */
+  /**
+   * SEC-10 : URL S3 pré-signée à durée courte (≈15 min), ou route API
+   * authentifiée `/api/v1/documents/:id/download` (stockage local) — cette
+   * dernière se télécharge avec le jeton, jamais par un simple lien.
+   */
+  url: string;
+}
+
+/** Réponse de `POST /documents/upload` — SEC-10 : `id` (plus de `key`). */
+export interface DocumentUploadResult {
+  id: string;
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  mode?: string;
   url: string;
 }

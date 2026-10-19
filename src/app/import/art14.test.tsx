@@ -23,12 +23,19 @@ const V2: ClaimColumnDef[] = [
   { index: 53, key: 'vehicleCategoryB', label: 'Catégorie véhicule B', group: 'BAREME_ART14', type: 'string' },
 ];
 
+const COMPANIES = { page: 1, total: 2, items: [
+  { id: '00000000-0000-4000-8000-000000000001', code: 'CAAT', name: 'CAAT', color: '#123456', kind: 'INSURER', status: 'ACTIF' },
+  { id: '00000000-0000-4000-8000-000000000002', code: 'SAA', name: 'SAA', color: '#654321', kind: 'INSURER', status: 'ACTIF' },
+] };
+
 const REPORT: ClaimImportReport = {
   fileName: 'lot.csv',
   importedAt: '2026-10-19T08:00:00.000Z',
   totalRows: 2,
   eligibleCount: 1,
   ineligibleCount: 1,
+  rejectedCount: 0,
+  company: 'CAAT',
   rows: [
     { rowNumber: 1, verdict: 'ELIGIBLE_IDA', reasons: [], data: {} },
     { rowNumber: 2, verdict: 'HORS_IDA', reasons: ['Dommages corporels déclarés'], data: {} },
@@ -49,6 +56,7 @@ function mockApi(report: ClaimImportReport = REPORT) {
     if (req.pathname === '/api/v1/me') return { body: ME };
     if (req.pathname === '/api/v1/claims/import/columns') return { body: V1 };
     if (req.pathname === '/api/v1/claims/import/columns/v2') return { body: V2 };
+    if (req.pathname === '/api/v1/referential/companies') return { body: COMPANIES };
     if (req.method === 'POST' && req.pathname === '/api/v1/claims/import') return { body: report };
     return undefined;
   });
@@ -95,6 +103,7 @@ describe('Écran 3 — modèles v1/v2 et avertissements (décision PO §5)', () 
     const user = userEvent.setup();
 
     await screen.findByRole('button', { name: 'Modèle v2 — barème Art. 14 (53 colonnes)' });
+    await user.selectOptions(await screen.findByLabelText('Compagnie déclarante'), await screen.findByRole('option', { name: 'CAAT — CAAT' }));
     await user.upload(container.querySelector('input[type="file"]') as HTMLInputElement, new File(['x'], 'lot.csv', { type: 'text/csv' }));
 
     const warnings = await screen.findByRole('region', { name: 'Avertissements' });
@@ -112,6 +121,7 @@ describe('Écran 3 — modèles v1/v2 et avertissements (décision PO §5)', () 
     const user = userEvent.setup();
 
     await screen.findByRole('button', { name: 'Modèle v1 (47 colonnes)' });
+    await user.selectOptions(await screen.findByLabelText('Compagnie déclarante'), await screen.findByRole('option', { name: 'CAAT — CAAT' }));
     await user.upload(container.querySelector('input[type="file"]') as HTMLInputElement, new File(['x'], 'lot.csv', { type: 'text/csv' }));
 
     await waitFor(() => expect(screen.getByText('Dommages corporels déclarés')).toBeInTheDocument());

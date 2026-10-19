@@ -58,7 +58,7 @@ export function MotifsSection({ eligibilityQuery }: { eligibilityQuery: ReturnTy
   const [motifModal, setMotifModal] = useState<{ mode: 'create' } | { mode: 'edit'; code: string } | null>(null);
   const [motifForm, setMotifForm] = useState<MotifForm>(EMPTY_MOTIF);
 
-  const onError = (err: unknown) => toast(apiErrorMessage(err, t('referential.toast.error')), 'ko');
+  const onError = (err: unknown) => toast(apiErrorMessage(err, t('referential.toast.error'), t), 'ko');
 
   const saveCircumstance = useMutation({
     mutationFn: ({ number, labelFr, labelAr }: { number: number; labelFr: string; labelAr: string }) =>

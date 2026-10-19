@@ -57,7 +57,7 @@ export function PopulationSection() {
   });
   const wilayaName = useMemo(() => new Map((wilayasQuery.data ?? []).map((w) => [w.code, w.name])), [wilayasQuery.data]);
 
-  const onError = (err: unknown) => toast(apiErrorMessage(err, t('referential.toast.error')), 'ko');
+  const onError = (err: unknown) => toast(apiErrorMessage(err, t('referential.toast.error'), t), 'ko');
 
   const save = useMutation({
     mutationFn: (f: PopulationForm) =>

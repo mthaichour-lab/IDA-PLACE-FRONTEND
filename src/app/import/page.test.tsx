@@ -1,4 +1,5 @@
 import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { mockFetchRouter, renderWithProviders } from '@/test/render';
 import { ClaimColumnDef, MeResponse } from '@/lib/types';
@@ -11,6 +12,11 @@ const ME_WITH_IMPORT: MeResponse = {
   role: 'OPERATEUR_PLACE',
   privileges: ['import'],
 };
+
+const COMPANIES = { page: 1, total: 2, items: [
+  { id: '00000000-0000-4000-8000-000000000001', code: 'CAAT', name: 'CAAT', color: '#123456', kind: 'INSURER', status: 'ACTIF' },
+  { id: '00000000-0000-4000-8000-000000000002', code: 'SAA', name: 'SAA', color: '#654321', kind: 'INSURER', status: 'ACTIF' },
+] };
 
 const ME_WITHOUT_IMPORT: MeResponse = {
   user: { id: 'dev-tresorier', name: 'Trésorier (dev)', email: 'tresorier@compagnie.dz' },
@@ -34,6 +40,7 @@ describe('Écran Import des dossiers (/import) — affichage conditionnel par pr
     mockFetchRouter((pathname) => {
       if (pathname === '/api/v1/me') return ME_WITHOUT_IMPORT;
       if (pathname === '/api/v1/claims/import/columns') return COLUMNS;
+      if (pathname === '/api/v1/referential/companies') return COMPANIES;
       return undefined;
     });
 
@@ -48,6 +55,7 @@ describe('Écran Import des dossiers (/import) — affichage conditionnel par pr
     mockFetchRouter((pathname) => {
       if (pathname === '/api/v1/me') return ME_WITH_IMPORT;
       if (pathname === '/api/v1/claims/import/columns') return COLUMNS;
+      if (pathname === '/api/v1/referential/companies') return COMPANIES;
       return undefined;
     });
 
@@ -62,11 +70,16 @@ describe('Écran Import des dossiers (/import) — affichage conditionnel par pr
     mockFetchRouter((pathname) => {
       if (pathname === '/api/v1/me') return ME_WITH_IMPORT;
       if (pathname === '/api/v1/claims/import/columns') return COLUMNS;
+      if (pathname === '/api/v1/referential/companies') return COMPANIES;
       return undefined;
     });
 
     renderWithProviders(<ImportPage />);
     const dropzone = await screen.findByLabelText(/déposez votre fichier/i);
+    // Rôle place : zone inactive (hors tabulation) tant que la compagnie déclarante n'est pas choisie (SEC-02).
+    expect(dropzone).toHaveAttribute('tabindex', '-1');
+    expect(dropzone).toHaveAttribute('aria-disabled', 'true');
+    await userEvent.setup().selectOptions(screen.getByLabelText('Compagnie déclarante'), await screen.findByRole('option', { name: 'CAAT — CAAT' }));
     expect(dropzone).toHaveAttribute('tabindex', '0');
     expect(dropzone).toHaveAttribute('role', 'button');
   });
@@ -75,6 +88,7 @@ describe('Écran Import des dossiers (/import) — affichage conditionnel par pr
     mockFetchRouter((pathname) => {
       if (pathname === '/api/v1/me') return ME_WITH_IMPORT;
       if (pathname === '/api/v1/claims/import/columns') return COLUMNS;
+      if (pathname === '/api/v1/referential/companies') return COMPANIES;
       return undefined;
     });
 

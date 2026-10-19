@@ -1,7 +1,9 @@
 'use client';
 
 import { useI18n } from '@/i18n/provider';
+import type { TranslationKey } from '@/i18n/translations';
 import { ApiError } from '@/lib/api-error';
+import { describeApiError } from '@/lib/error-message';
 
 /**
  * Briques de formulaire de l'écran 12 (Référentiel de place), partagées par
@@ -128,8 +130,13 @@ export function RowActions({ children }: { children: React.ReactNode }) {
   return <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>{children}</span>;
 }
 
-/** Message du backend (ex. 409 « quatre yeux ») s'il existe, sinon le libellé de repli. */
-export function apiErrorMessage(err: unknown, fallback: string): string {
+/**
+ * Libellé d'erreur : code métier connu → texte traduit (`t` fourni, voir
+ * `lib/error-message.ts`) ; sinon message du backend (ex. 409) s'il existe ;
+ * sinon le libellé de repli.
+ */
+export function apiErrorMessage(err: unknown, fallback: string, t?: (key: TranslationKey) => string): string {
+  if (t) return describeApiError(err, t, fallback);
   return err instanceof ApiError && err.message ? err.message : fallback;
 }
 

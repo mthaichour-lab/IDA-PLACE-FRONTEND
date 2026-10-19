@@ -68,7 +68,7 @@ export function IrsamSection() {
     void queryClient.invalidateQueries({ queryKey: ['referential', 'irsam-benchmarks'] });
     void queryClient.invalidateQueries({ queryKey: ['stats', 'summary'] });
   };
-  const onError = (err: unknown) => toast(apiErrorMessage(err, t('referential.toast.error')), 'ko');
+  const onError = (err: unknown) => toast(apiErrorMessage(err, t('referential.toast.error'), t), 'ko');
 
   const create = useMutation({
     mutationFn: (f: IrsamForm) =>

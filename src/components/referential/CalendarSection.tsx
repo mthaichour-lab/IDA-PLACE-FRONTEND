@@ -77,7 +77,7 @@ export function CalendarSection() {
     void queryClient.invalidateQueries({ queryKey: ['referential', 'mobile-holidays'] });
     void queryClient.invalidateQueries({ queryKey: ['referential', 'calendar'] });
   };
-  const onError = (err: unknown) => toast(apiErrorMessage(err, t('referential.toast.error')), 'ko');
+  const onError = (err: unknown) => toast(apiErrorMessage(err, t('referential.toast.error'), t), 'ko');
 
   const saveHoliday = useMutation({
     mutationFn: (form: HolidayForm) => {

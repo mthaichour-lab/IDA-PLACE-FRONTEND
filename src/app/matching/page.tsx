@@ -256,7 +256,7 @@ export default function MatchingPage() {
       void queryClient.invalidateQueries({ queryKey: ['matching'] });
     },
     onError: (err) => {
-      toast(apiErrorMessage(err, t('matching.toast.error')), 'ko');
+      toast(apiErrorMessage(err, t('matching.toast.error'), t), 'ko');
     },
   });
 

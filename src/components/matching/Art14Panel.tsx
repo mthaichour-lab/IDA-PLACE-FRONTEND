@@ -130,7 +130,7 @@ export function Art14Panel({ item }: { item: MatchQueueItem }) {
       toast(t('matching.art14.toast.saved'), 'ok');
       setEditing(null);
     },
-    onError: (err) => toast(apiErrorMessage(err, t('matching.art14.toast.error')), 'ko'),
+    onError: (err) => toast(apiErrorMessage(err, t('matching.art14.toast.error'), t), 'ko'),
   });
 
   function openEditor(side: Side) {

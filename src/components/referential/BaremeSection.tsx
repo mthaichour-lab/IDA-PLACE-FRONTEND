@@ -78,7 +78,7 @@ export function BaremeSection() {
   const published = versions.some((v) => v.status === 'VALIDE_UAR');
   const draft = selected?.status === 'BROUILLON';
 
-  const onError = (err: unknown) => toast(apiErrorMessage(err, t('referential.toast.error')), 'ko');
+  const onError = (err: unknown) => toast(apiErrorMessage(err, t('referential.toast.error'), t), 'ko');
   const refreshVersions = () => void queryClient.invalidateQueries({ queryKey: BAREME_VERSIONS_KEY });
   const refreshCategories = () => void queryClient.invalidateQueries({ queryKey: VEHICLE_CATEGORIES_KEY });
 
