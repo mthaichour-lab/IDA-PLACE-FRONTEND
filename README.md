@@ -149,6 +149,17 @@ du choix et comment migrer vers `next-intl` si besoin plus tard.
   rechargé par l'API. Toujours combiné à un `refetchInterval` TanStack de
   repli, jamais comme seul mécanisme de rafraîchissement (voir `/cockpit`).
 
+## Image Docker et CI (SEC-23)
+
+- `Dockerfile` multi-étapes : `npm ci --ignore-scripts`, build de production
+  Keycloak (les `NEXT_PUBLIC_*` passent en `--build-arg`, l'image est propre
+  à un environnement), contrôle « pas de `x-dev-user` ni de source map »,
+  exécution `output: 'standalone'` en utilisateur `nextjs` (uid 1001), sans
+  npm, avec `HEALTHCHECK` sur `/auth/logged-out`.
+- `.github/workflows/ci.yml` : lint, tests, refus d'un build non sûr, build
+  Keycloak, absence du mode dev dans `.next/`, en-têtes de sécurité,
+  `npm audit --omit=dev --audit-level=high`, gitleaks, build de l'image.
+
 ## Scripts
 
 | Script | Rôle |

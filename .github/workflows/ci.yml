@@ -1,0 +1,108 @@
+# IDA Place — intégration continue du frontend (SEC-23 / SEC-42 / SEC-01 / SEC-22).
+# Bloque la fusion si : typage, tests, build de production Keycloak, absence
+# du mode dev dans le bundle, en-têtes de sécurité, audit des dépendances de
+# production (élevé/critique) ou analyse de secrets échouent.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: '1'
+
+jobs:
+  verify:
+    name: Lint, tests, build de production
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Aucun script d'installation tiers exécuté.
+      - name: Installation
+        run: npm ci --ignore-scripts
+
+      - name: Lint (tsc --noEmit)
+        run: npm run lint
+
+      - name: Tests
+        run: npm test
+
+      - name: Le build de production refuse une configuration non sûre
+        run: |
+          if NEXT_PUBLIC_AUTH_MODE=dev NEXT_PUBLIC_API_URL=http://api.invalid npx next build; then
+            echo "Le build aurait dû échouer (mode dev / API http)" >&2
+            exit 1
+          fi
+
+      - name: Build de production (Keycloak, URL https factices)
+        env:
+          NEXT_PUBLIC_AUTH_MODE: keycloak
+          NEXT_PUBLIC_API_URL: https://api.ida-place.invalid
+          NEXT_PUBLIC_KEYCLOAK_URL: https://auth.ida-place.invalid
+          NEXT_PUBLIC_KEYCLOAK_REALM: ida-place
+          NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: ida-place-web
+        run: npm run build
+
+      - name: Le mode d'authentification de développement est absent du bundle
+        run: |
+          if grep -rl "x-dev-user" .next/; then
+            echo "x-dev-user trouvé dans .next/" >&2
+            exit 1
+          fi
+          if find .next -name "*.map" | grep -q .; then
+            echo "Source maps présentes dans .next/" >&2
+            exit 1
+          fi
+
+      - name: En-têtes de sécurité du serveur de production
+        run: |
+          cp -r .next/static .next/standalone/.next/static
+          PORT=3012 HOSTNAME=127.0.0.1 node .next/standalone/server.js > server.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf -o /dev/null http://127.0.0.1:3012/auth/logged-out && break; sleep 1; done
+          node scripts/check-security-headers.mjs http://127.0.0.1:3012/cockpit || { cat server.log; exit 1; }
+
+      - name: Audit des dépendances de production
+        run: npm audit --omit=dev --audit-level=high
+
+  secrets:
+    name: Analyse de secrets (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks (historique complet)
+        run: |
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.21.2 \
+            detect --source /repo --redact --verbose --exit-code 1
+
+  docker:
+    name: Image Docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build de l'image (non-root, standalone)
+        run: |
+          docker build \
+            --build-arg NEXT_PUBLIC_API_URL=https://api.ida-place.invalid \
+            --build-arg NEXT_PUBLIC_KEYCLOAK_URL=https://auth.ida-place.invalid \
+            -t ida-place-frontend:ci .
+          test "$(docker run --rm --entrypoint id ida-place-frontend:ci -u)" != "0"

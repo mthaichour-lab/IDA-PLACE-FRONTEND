@@ -1,0 +1,24 @@
+# Contexte de build Docker minimal (SEC-23) : ni secrets, ni artefacts locaux.
+.git
+.github
+.next
+node_modules
+coverage
+*.log
+*.tsbuildinfo
+next-env.d.ts
+Dockerfile
+.dockerignore
+# Aucun fichier d'environnement local dans l'image (les NEXT_PUBLIC_* passent
+# par --build-arg) ; seuls les exemples documentés sont conservés.
+.env
+.env.*
+!.env.example
+!.env.production.example
+# Documentation et outillage des agents
+HANDOFF.md
+AGENTS.md
+CLAUDE.md
+.claude
+.vscode
+.idea

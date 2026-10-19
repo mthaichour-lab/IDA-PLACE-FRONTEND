@@ -10,6 +10,7 @@ import { assertProductionEnv, staticSecurityHeaders } from './config/build-env';
  *   identité de développement) : voir `config/build-env.ts`.
  * - En-têtes de sécurité statiques sur toutes les routes, sans
  *   `X-Powered-By` ; la CSP (nonce par requête) est posée par `src/proxy.ts`.
+ * - `output: 'standalone'` pour l'image Docker (SEC-23).
  */
 export default function nextConfig(phase: string): NextConfig {
   const isProdBuild = phase === PHASE_PRODUCTION_BUILD;
@@ -23,6 +24,12 @@ export default function nextConfig(phase: string): NextConfig {
   return {
     reactStrictMode: true,
     poweredByHeader: false,
+    // SEC-23 : serveur autonome minimal pour l'image Docker (voir Dockerfile).
+    // Racine de traçage = le projet (un package-lock.json parent sur le poste
+    // de développement ne doit pas changer l'arborescence produite).
+    output: 'standalone',
+    outputFileTracingRoot: process.cwd(),
+    turbopack: { root: process.cwd() },
     async headers() {
       return [{ source: '/:path*', headers: staticSecurityHeaders(isProd) }];
     },
