@@ -1,5 +1,28 @@
 # HANDOFF — pour l'agent Frontend
 
+## Remédiation sécurité du 2026-10-19 (branche `security/frontend`)
+
+À lire avant toute évolution — détails dans le README :
+
+- **Authentification** (SEC-01) : OIDC Keycloak Authorization Code + PKCE
+  (`src/lib/auth/keycloak.ts`, `auth-context.tsx`), jeton en mémoire,
+  `Authorization: Bearer`. Le mode `dev` (`x-dev-user`) n'existe qu'en
+  développement (`NEXT_PUBLIC_AUTH_MODE=dev`) ; `next build` échoue s'il est
+  configuré (`config/build-env.ts`). Les anciennes mentions « en-tête dev
+  envoyé systématiquement » plus bas dans ce document sont caduques.
+- **Appels API** : toujours le gabarit `apiPath` (ex. apiPath`/recours/${id}`) pour les segments
+  interpolés (SEC-50) ; jamais de `pageSize` > 100 — `fetchAllPages` pour
+  une population complète (SEC-13) ; `GET /ledger` est paginé.
+- **Temps réel** (SEC-07) : `useRealtime` invalide les requêtes de
+  `REALTIME_INVALIDATIONS` ; ne jamais lire de donnée métier dans un payload.
+- **Rôle compagnie** (SEC-38) : `isCompanyRole(me.role)` + `me.company`,
+  jamais de compagnie par défaut.
+- **Exports CSV** : `src/lib/csv.ts` uniquement (SEC-39). Liens de documents :
+  `safeDocumentUrl` ; couleurs : `safeColor` (SEC-50).
+- **CSP** (SEC-22) : nonce posé par `src/proxy.ts`, pages dynamiques ; tout
+  nouveau domaine appelé par le navigateur doit être ajouté à `connect-src`
+  (`config/build-env.ts`).
+
 Le socle (coque, tokens, composants transverses, i18n, auth scaffold,
 client HTTP) est posé et **ne devrait pas avoir besoin d'être réécrit** —
 seulement étendu.
