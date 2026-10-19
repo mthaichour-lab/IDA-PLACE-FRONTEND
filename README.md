@@ -85,6 +85,21 @@ construit par le backend à partir des claims du jeton vérifié.
 - Durées : jeton d'accès court (5 min), rotation des jetons de
   rafraîchissement (*Revoke refresh token* activé).
 
+## En-têtes de sécurité (SEC-22)
+
+- `src/proxy.ts` : `Content-Security-Policy` par requête avec nonce
+  (`script-src 'self' 'nonce-…' 'strict-dynamic'`, `connect-src` = API en
+  https + wss et Keycloak, `frame-ancestors 'none'`, `object-src 'none'`,
+  `base-uri 'self'`, `form-action 'self'` + Keycloak). Les pages sont donc
+  rendues dynamiquement (`await connection()` dans `src/app/layout.tsx`).
+  `style-src` garde `'unsafe-inline'` : l'interface applique la charte par
+  attributs `style` rendus côté serveur, qu'un nonce ne couvre pas.
+- `next.config.ts` `headers()` : HSTS (production), `nosniff`,
+  `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`,
+  `Cross-Origin-Opener-Policy` ; `poweredByHeader: false`.
+- Contrôle : `node scripts/check-security-headers.mjs <url>` sur un serveur
+  démarré (utilisé par la CI).
+
 ## Design tokens & thème
 
 Déclarés dans `src/styles/tokens.css` (valeurs EXACTES de la Partie A.2).
