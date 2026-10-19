@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
 import { AttachmentsPanel } from '@/components/documents/AttachmentsPanel';
 import { CoChip } from '@/components/ui/CoChip';
@@ -240,13 +240,9 @@ export default function ExchangesPage() {
   const regleActiveItems = regleSubTab === 'SILENCE' ? silenceItems : compensatedItems;
   const reglePageItems = useMemo(() => regleActiveItems.slice((reglePage - 1) * PAGE_SIZE, reglePage * PAGE_SIZE), [regleActiveItems, reglePage]);
 
-  const onRealtimeEvent = useCallback(() => {
-    void listQuery.refetch();
-    void regleAllQuery.refetch();
-    void countersQuery.refetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  useRealtime(['recours.timer'], onRealtimeEvent);
+  // SEC-07 : l'événement invalide les requêtes `['recours', …]` (liste,
+  // REGLE, compteurs) — rechargées par l'API, jamais lues dans le payload.
+  useRealtime(['recours.timer']);
 
   const items = isRegleFilter ? reglePageItems : listQuery.data?.items ?? [];
 

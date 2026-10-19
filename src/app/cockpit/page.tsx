@@ -19,7 +19,7 @@ import {
   PlaceCalendar,
   SettlementNet,
 } from '@/lib/types';
-import { RealtimeEventName, useRealtime } from '@/lib/realtime';
+import { RealtimeSignal, useRealtime } from '@/lib/realtime';
 
 // Polling de repli (A.1/B.12) : `metering.tick` n'est émis par aucun module
 // réel au moment de cette passe (voir HANDOFF.md) — le flux temps réel
@@ -71,10 +71,6 @@ function ymd(y: number, m: number, d: number): string {
   return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return !!v && typeof v === 'object';
-}
-
 const headerActionStyle: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
@@ -111,22 +107,17 @@ export default function CockpitPage() {
     queryFn: () => apiGet<PlaceCalendar>('/referential/calendar'),
   });
 
-  const onRealtimeEvent = useCallback(
-    (event: RealtimeEventName, payload: unknown) => {
-      setLive(true);
-      void query.refetch();
-      if (pausedRef.current) return;
-      setFeed((prev) =>
-        [
-          { id: `${event}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, event, payload, receivedAt: Date.now() },
-          ...prev,
-        ].slice(0, FEED_MAX_ENTRIES),
-      );
-    },
-    [query],
-  );
+  // SEC-07 : `useRealtime` invalide lui-même `['cockpit', …]` ; ce
+  // callback ne reçoit que le signal réduit (type, identifiant, état).
+  const onRealtimeSignal = useCallback((signal: RealtimeSignal) => {
+    setLive(true);
+    if (pausedRef.current) return;
+    setFeed((prev) =>
+      [{ key: `${signal.event}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, signal, receivedAt: Date.now() }, ...prev].slice(0, FEED_MAX_ENTRIES),
+    );
+  }, []);
 
-  useRealtime(['claim.ingested', 'match.updated', 'metering.tick'], onRealtimeEvent);
+  useRealtime(['claim.ingested', 'match.updated', 'metering.tick', 'recours.timer'], onRealtimeSignal);
 
   const data = query.data;
 
@@ -446,52 +437,29 @@ function AlertsSection({ alerts, t }: { alerts: CockpitAlerteConventionnelle[]; 
 /* ===================== Flux temps réel ===================== */
 
 interface FeedEntry {
-  id: string;
-  event: RealtimeEventName;
-  payload: unknown;
+  key: string;
+  signal: RealtimeSignal;
   receivedAt: number;
 }
 
+const FEED_TITLES: Partial<Record<RealtimeSignal['event'], TranslationKey>> = {
+  'claim.ingested': 'cockpit.feed.ingestion',
+  'match.updated': 'cockpit.feed.matching',
+  'recours.timer': 'cockpit.feed.recours',
+  'metering.tick': 'cockpit.feed.metering',
+};
+
 /**
- * Description d'une entrée de flux — construite UNIQUEMENT à partir des
- * champs RÉELLEMENT présents sur le payload reçu (voir `claims.service.ts`
- * `emitEvent('claim.ingested', {fileName, totalRows, eligibleCount,
- * ineligibleCount, importedAt})` et `matching.service.ts`
- * `emitEvent('match.updated', {item, decision})` OU `{claimId,
- * matchedWith}` selon l'origine — décision manuelle vs recalcul automatique
- * après import). Jamais de champ inventé (ex. compagnie, wilaya, référence
- * de dossier) quand il est absent du payload réel — voir HANDOFF.md pour
- * l'écart assumé avec le texte du guide illustré sur ce point précis.
+ * Description d'une entrée de flux — SEC-07 : le backend ne diffuse plus
+ * que l'identifiant et l'état de l'objet modifié, aux seules compagnies
+ * concernées. Aucune donnée métier (nom, police, plaque, agent) n'est lue
+ * dans le payload : le détail se consulte dans l'écran concerné, rechargé
+ * par l'API (qui applique le filtrage par compagnie).
  */
 function describeFeedEntry(entry: FeedEntry, t: (k: TranslationKey) => string): { title: string; detail: string } {
-  const payload = entry.payload;
-
-  if (entry.event === 'claim.ingested' && isRecord(payload) && typeof payload.fileName === 'string') {
-    const totalRows = typeof payload.totalRows === 'number' ? payload.totalRows : undefined;
-    const eligibleCount = typeof payload.eligibleCount === 'number' ? payload.eligibleCount : undefined;
-    const counts = totalRows !== undefined && eligibleCount !== undefined ? ` — ${eligibleCount}/${totalRows} ${t('cockpit.feed.ingestion.eligibleSuffix')}` : '';
-    return { title: t('cockpit.feed.ingestion'), detail: `${payload.fileName}${counts}` };
-  }
-
-  if (entry.event === 'match.updated' && isRecord(payload)) {
-    const decisionRaw = payload.decision;
-    if (isRecord(decisionRaw)) {
-      const status = typeof decisionRaw.status === 'string' ? decisionRaw.status : '—';
-      const decidedBy = typeof decisionRaw.decidedBy === 'string' ? decisionRaw.decidedBy : '—';
-      const itemRaw = payload.item;
-      const itemId = isRecord(itemRaw) && typeof itemRaw.id === 'string' ? itemRaw.id : undefined;
-      return { title: t('cockpit.feed.matching'), detail: `${itemId ? `${itemId} · ` : ''}${status} (${decidedBy})` };
-    }
-    if (typeof payload.claimId === 'string') {
-      const matchedWith = typeof payload.matchedWith === 'string' ? payload.matchedWith : undefined;
-      return {
-        title: t('cockpit.feed.matching'),
-        detail: matchedWith ? `${payload.claimId} ⇄ ${matchedWith}` : `${payload.claimId} — ${t('cockpit.feed.matching.noCandidate')}`,
-      };
-    }
-  }
-
-  return { title: entry.event, detail: '' };
+  const { event, id, state } = entry.signal;
+  const titleKey = FEED_TITLES[event];
+  return { title: titleKey ? t(titleKey) : event, detail: [id, state].filter(Boolean).join(' · ') };
 }
 
 function FeedSection({
@@ -541,7 +509,7 @@ function FeedSection({
             {feed.map((entry) => {
               const { title, detail } = describeFeedEntry(entry, t);
               return (
-                <div className="feed-row" key={entry.id}>
+                <div className="feed-row" key={entry.key}>
                   <span className="feed-icon" aria-hidden="true">
                     •
                   </span>

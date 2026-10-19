@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { FolioHeader } from '@/components/FolioHeader';
 import { Tag } from '@/components/ui/Tag';
@@ -181,12 +181,8 @@ export default function LedgerPage() {
     refetchInterval: POLL_INTERVAL_MS,
   });
 
-  const onRealtimeEvent = useCallback(() => {
-    void listQuery.refetch();
-    void verifyQuery.refetch();
-  }, [listQuery, verifyQuery]);
-
-  useRealtime(['ledger.appended'], onRealtimeEvent);
+  // SEC-07 : invalide `['ledger', …]` (liste + vérification), rechargées par l'API.
+  useRealtime(['ledger.appended']);
 
   // Déclenche une vérification immédiate au clic, en plus du polling 30s
   // (`refetchInterval` ci-dessus, conservé) — toujours les deux, jamais l'un

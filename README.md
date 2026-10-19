@@ -121,10 +121,13 @@ du choix et comment migrer vers `next-intl` si besoin plus tard.
   (`src/lib/api-client.ts`), jamais de `fetch` direct dans une page — ça
   centralise l'authentification (Bearer / en-tête dev), le préfixe `/api/v1` et la normalisation
   d'erreur (`ApiError`, forme `{code,message,details}`).
-- **Temps réel** : `useRealtime(events, onEvent)` (`src/lib/realtime.ts`,
-  Socket.IO) pour s'abonner au `RealtimeModule` back — toujours combiné à
-  un `refetchInterval` TanStack de repli, jamais comme seul mécanisme de
-  rafraîchissement (voir `/cockpit`).
+- **Temps réel** : `useRealtime(events, onSignal?)` (`src/lib/realtime.ts`,
+  Socket.IO, handshake `auth.token`) pour s'abonner au `RealtimeModule`
+  back. Chaque événement invalide les requêtes déclarées dans
+  `REALTIME_INVALIDATIONS` (SEC-07) : le payload, réduit à
+  `{ id, état }`, n'est jamais lu comme donnée métier — le détail est
+  rechargé par l'API. Toujours combiné à un `refetchInterval` TanStack de
+  repli, jamais comme seul mécanisme de rafraîchissement (voir `/cockpit`).
 
 ## Scripts
 

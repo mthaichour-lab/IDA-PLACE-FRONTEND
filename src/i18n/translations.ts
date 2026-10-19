@@ -337,8 +337,8 @@ const fr = {
   'cockpit.feed.empty': 'Aucun événement reçu pour le moment.',
   'cockpit.feed.matching': 'Matching',
   'cockpit.feed.ingestion': 'Ingestion',
-  'cockpit.feed.matching.noCandidate': 'aucune contrepartie trouvée',
-  'cockpit.feed.ingestion.eligibleSuffix': 'éligibles',
+  'cockpit.feed.recours': 'Recours',
+  'cockpit.feed.metering': 'Métrologie',
 
   // ----- Matching (écran 2, Module A §6.3) -----
   'matching.title': 'Confrontation & matching',

@@ -208,11 +208,11 @@ describe('Écran Cockpit de place (/cockpit)', () => {
     expect(screen.getByText('Aucun événement reçu pour le moment.')).toBeInTheDocument();
 
     act(() => {
-      triggerRealtimeEvent('claim.ingested', { fileName: 'import-oct.csv', totalRows: 10, eligibleCount: 8, ineligibleCount: 2, importedAt: '2026-10-18T09:00:00.000Z' });
+      triggerRealtimeEvent('match.updated', { id: 'MATCH-0042', state: 'CONFIRME' });
     });
 
-    expect(screen.getByText('Ingestion')).toBeInTheDocument();
-    expect(screen.getByText(/import-oct\.csv — 8\/10 éligibles/)).toBeInTheDocument();
+    expect(screen.getByText('Matching')).toBeInTheDocument();
+    expect(screen.getByText('MATCH-0042 · CONFIRME')).toBeInTheDocument();
 
     const pauseButton = screen.getByRole('button', { name: 'Pause' });
     act(() => {
@@ -221,11 +221,29 @@ describe('Écran Cockpit de place (/cockpit)', () => {
     expect(screen.getByRole('button', { name: 'Reprendre' })).toBeInTheDocument();
 
     act(() => {
-      triggerRealtimeEvent('claim.ingested', { fileName: 'import-nov.csv', totalRows: 5, eligibleCount: 5, ineligibleCount: 0, importedAt: '2026-11-01T09:00:00.000Z' });
+      triggerRealtimeEvent('match.updated', { id: 'MATCH-0043', state: 'REJETE' });
     });
 
-    expect(screen.queryByText(/import-nov\.csv/)).not.toBeInTheDocument();
-    expect(screen.getByText(/import-oct\.csv/)).toBeInTheDocument();
+    expect(screen.queryByText(/MATCH-0043/)).not.toBeInTheDocument();
+    expect(screen.getByText(/MATCH-0042/)).toBeInTheDocument();
+  });
+
+  it('SEC-07 : aucune donnée métier du payload n’est affichée, et le résumé est rechargé par l’API', async () => {
+    mockApis(SUMMARY);
+    const fetchFn = vi.mocked(fetch);
+    renderWithProviders(<CockpitPage />);
+    await waitFor(() => expect(screen.getByText('Flux temps réel')).toBeInTheDocument());
+    const summaryCalls = () => fetchFn.mock.calls.filter(([input]) => String(input).includes('/cockpit/summary')).length;
+    const before = summaryCalls();
+
+    act(() => {
+      // Payload « historique » trop bavard : seuls id/état doivent survivre.
+      triggerRealtimeEvent('claim.ingested', { id: 'IMP-7', state: 'TERMINE', fileName: 'assures-saa.csv', policyNumber: 'POL-123', decidedBy: 'agent.x' });
+    });
+
+    expect(screen.getByText('IMP-7 · TERMINE')).toBeInTheDocument();
+    expect(screen.queryByText(/assures-saa|POL-123|agent\.x/)).not.toBeInTheDocument();
+    await waitFor(() => expect(summaryCalls()).toBeGreaterThan(before));
   });
 
   it("affiche un état d'erreur avec action de nouvelle tentative si l'API échoue", async () => {

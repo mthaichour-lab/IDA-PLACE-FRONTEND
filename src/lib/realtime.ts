@@ -1,5 +1,6 @@
 'use client';
 
+import { QueryKey, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { API_BASE_URL } from './api-client';
@@ -9,25 +10,65 @@ import { getAccessToken } from './auth/session';
 export type RealtimeEventName = 'claim.ingested' | 'match.updated' | 'recours.timer' | 'metering.tick' | 'ledger.appended';
 
 /**
- * Hook d'abonnement au flux temps réel du back-end (`RealtimeModule`,
- * B.12/HANDOFF §1) — Socket.IO, namespace `/realtime`, salon unique
- * `tenant:place` pour l'instant côté back. S'abonne à une liste
- * d'événements et appelle `onEvent` à chaque réception ; le composant
- * appelant décide quoi faire (typiquement `refetch()` d'une query
- * TanStack) — ce hook ne lit ni n'interprète jamais le payload lui-même
- * (aucune règle métier côté front, C.1).
+ * Requêtes TanStack invalidées à la réception de chaque événement (SEC-07).
  *
- * Limite connue (à signaler au Testeur) : au moment de ce sprint, le back
- * n'émet encore que `metering.tick` (démonstration périodique, 15s) ; les
- * événements `claim.ingested`/`match.updated` arriveront quand l'agent
- * Backend les branchera sur ClaimsModule/MatchingModule (voir HANDOFF
- * backend). En conséquence, CE HOOK NE DOIT JAMAIS ÊTRE LE SEUL MÉCANISME
- * DE RAFRAÎCHISSEMENT : chaque écran qui l'utilise prévoit aussi un
- * `refetchInterval` de repli (polling) sur sa query TanStack.
+ * Le backend ne diffuse plus qu'un payload minimal (identifiant et état,
+ * aux seules compagnies parties + salon de place) : le front n'en lit
+ * AUCUNE donnée métier, il invalide les requêtes concernées et recharge le
+ * détail par l'API, qui applique le filtrage par compagnie. Préfixes de
+ * clés : une entrée `['matching']` invalide toutes les requêtes
+ * `['matching', …]`.
  */
-export function useRealtime(events: RealtimeEventName[], onEvent: (event: RealtimeEventName, payload: unknown) => void): void {
-  const handlerRef = useRef(onEvent);
-  handlerRef.current = onEvent;
+export const REALTIME_INVALIDATIONS: Record<RealtimeEventName, QueryKey[]> = {
+  'claim.ingested': [['cockpit'], ['matching'], ['claims'], ['monitoring'], ['fraud'], ['stats']],
+  'match.updated': [['cockpit'], ['matching'], ['monitoring']],
+  'recours.timer': [['cockpit'], ['recours'], ['monitoring']],
+  'metering.tick': [['metering']],
+  'ledger.appended': [['ledger']],
+};
+
+/** Ce que l'interface peut afficher d'un événement : son type, et l'identifiant/l'état s'ils sont fournis (jamais d'autre champ). */
+export interface RealtimeSignal {
+  event: RealtimeEventName;
+  id?: string;
+  state?: string;
+}
+
+const SIGNAL_FIELD_MAX = 64;
+
+function shortString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 && value.length <= SIGNAL_FIELD_MAX ? value : undefined;
+}
+
+/** Réduit un payload reçu à `{ event, id?, state? }` — tout autre champ est ignoré. */
+export function toRealtimeSignal(event: RealtimeEventName, payload: unknown): RealtimeSignal {
+  const record = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
+  const id = shortString(record.id);
+  const state = shortString(record.state) ?? shortString(record.status) ?? shortString(record.etat);
+  return { event, ...(id ? { id } : {}), ...(state ? { state } : {}) };
+}
+
+/**
+ * Hook d'abonnement au flux temps réel du back-end (`RealtimeModule`,
+ * B.12/HANDOFF §1) — Socket.IO, namespace `/realtime`.
+ *
+ * Authentification du handshake (SEC-01/SEC-07) : `auth.token` (jeton
+ * Keycloak courant, réévalué à chaque reconnexion) ; `auth.devUser` en
+ * développement uniquement. L'URL suit `NEXT_PUBLIC_API_URL` : en https,
+ * Socket.IO ouvre une connexion `wss://` (le build de production refuse
+ * une API en http, SEC-40).
+ *
+ * À chaque événement : invalidation des requêtes de
+ * `REALTIME_INVALIDATIONS`, puis `onSignal` optionnel (indicateur « en
+ * direct », journal d'événements) avec le seul signal réduit.
+ *
+ * Le flux temps réel n'est JAMAIS le seul mécanisme de rafraîchissement :
+ * chaque écran qui l'utilise garde un `refetchInterval` de repli.
+ */
+export function useRealtime(events: RealtimeEventName[], onSignal?: (signal: RealtimeSignal) => void): void {
+  const queryClient = useQueryClient();
+  const handlerRef = useRef(onSignal);
+  handlerRef.current = onSignal;
   const key = events.join(',');
 
   useEffect(() => {
@@ -40,7 +81,7 @@ export function useRealtime(events: RealtimeEventName[], onEvent: (event: Realti
         // Un navigateur ne peut pas poser d'en-tête sur un WebSocket : `auth`
         // est le seul canal d'authentification du handshake Socket.IO. Sous
         // forme de fonction, il est réévalué à chaque (re)connexion, donc
-        // avec le jeton Keycloak renouvelé (SEC-01/SEC-07).
+        // avec le jeton Keycloak renouvelé.
         auth: (cb) => {
           if (process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_AUTH_MODE === 'dev') {
             cb({ devUser: devUser() });
@@ -51,12 +92,16 @@ export function useRealtime(events: RealtimeEventName[], onEvent: (event: Realti
       });
       for (const ev of key.split(',') as RealtimeEventName[]) {
         if (!ev) continue;
-        socket.on(ev, (payload: unknown) => handlerRef.current(ev, payload));
+        socket.on(ev, (payload: unknown) => {
+          for (const queryKey of REALTIME_INVALIDATIONS[ev] ?? []) {
+            void queryClient.invalidateQueries({ queryKey });
+          }
+          handlerRef.current?.(toRealtimeSignal(ev, payload));
+        });
       }
       socket.on('connect_error', () => {
-        // Flux temps réel indisponible (back arrêté, ou pas encore démarré
-        // par l'agent Backend) — l'écran reste utilisable via le polling de
-        // repli déjà prévu par l'appelant.
+        // Flux temps réel indisponible (back arrêté, jeton refusé) — l'écran
+        // reste utilisable via le polling de repli prévu par l'appelant.
       });
     } catch {
       // socket.io-client indisponible dans cet environnement — repli silencieux sur le polling.
@@ -64,5 +109,5 @@ export function useRealtime(events: RealtimeEventName[], onEvent: (event: Realti
     return () => {
       socket?.disconnect();
     };
-  }, [key]);
+  }, [key, queryClient]);
 }

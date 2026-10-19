@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
 import { CompanyPeriodPicker } from '@/components/metering/CompanyPeriodPicker';
 import { ConsumptionHistoryChart } from '@/components/metering/ConsumptionHistoryChart';
@@ -69,10 +69,8 @@ export default function MeteringPage() {
     enabled: !!company && !!period && !!historyMetric,
   });
 
-  const onRealtimeEvent = useCallback(() => {
-    void invoiceQuery.refetch();
-  }, [invoiceQuery]);
-  useRealtime(['metering.tick'], onRealtimeEvent);
+  // SEC-07 : invalide `['metering', …]` (facture, historique), rechargées par l'API.
+  useRealtime(['metering.tick']);
 
   const saveGridMutation = useMutation({
     mutationFn: (next: PriceGrid) => apiPut<PriceGrid>('/pricing/grid', next),
