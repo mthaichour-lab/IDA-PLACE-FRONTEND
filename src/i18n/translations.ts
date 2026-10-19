@@ -1108,6 +1108,7 @@ const fr = {
   'error.code.COMPAGNIE_INCONNUE': 'Compagnie inconnue du référentiel.',
   'error.code.FORMAT_INVALIDE': 'Le contenu du fichier ne correspond pas à son extension. Formats acceptés : .csv et .xlsx.',
   'error.code.FORMAT_XLS_NON_PRIS_EN_CHARGE': 'Le format Excel 97-2003 (.xls) n’est pas pris en charge : enregistrez le fichier en .xlsx ou en .csv.',
+  'error.code.FORMAT_COLONNES': 'Le fichier ne suit pas le modèle d’import : l’en-tête doit comporter les 47 colonnes. Téléchargez le modèle et reprenez-le.',
   'error.code.ARCHIVE_REFUSEE': 'Classeur .xlsx refusé : archive invalide ou trop volumineuse une fois décompressée.',
   'error.code.IMPORT_TROP_DE_LIGNES': 'Le fichier contient trop de lignes pour un seul import : découpez-le en plusieurs fichiers.',
   'error.code.PARAMETRE_INCONNU': 'Requête refusée : paramètre non reconnu par le serveur.',
