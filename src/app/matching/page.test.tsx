@@ -19,6 +19,7 @@ function queueItem(i: number, overrides: Partial<MatchQueueItem> = {}): MatchQue
     econstatShared: true,
     criteria: { econstatPartage: true, plaquesCroisees: true, policeCroisee: true, dateHeure: true, compagniesCroisees: true, gps: true },
     at: new Date().toISOString(),
+    divergence: false,
     ...overrides,
   };
 }

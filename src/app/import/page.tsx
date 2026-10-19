@@ -9,11 +9,11 @@ import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { apiGet, apiPostForm } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
-import { ClaimColumnDef, ClaimImportReport, ClaimImportRowResult } from '@/lib/types';
+import { ClaimColumnDef, ClaimImportReport, ClaimImportRowResult, ClaimImportWarning } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 
-/** Construit un CSV (placeholder documenté — pas un classeur Excel mis en forme) à partir du modèle 47 colonnes. */
+/** Construit un CSV (placeholder documenté — pas un classeur Excel mis en forme) à partir d'un modèle de colonnes (v1 ou v2). */
 function buildColumnsCsv(columns: ClaimColumnDef[]): string {
   const header = 'index;key;label;group;type;enumValues';
   const lines = columns.map((c) => [c.index, c.key, c.label, c.group, c.type, c.enumValues?.join('|') ?? ''].join(';'));
@@ -39,6 +39,7 @@ export default function ImportPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [reportPage, setReportPage] = useState(1);
+  const [warningsPage, setWarningsPage] = useState(1);
   const [journal, setJournal] = useState<ClaimImportReport[]>([]);
 
   const canImport = hasPrivilege('import');
@@ -46,6 +47,11 @@ export default function ImportPage() {
   const columnsQuery = useQuery({
     queryKey: ['claims', 'import', 'columns'],
     queryFn: () => apiGet<ClaimColumnDef[]>('/claims/import/columns'),
+  });
+
+  const columnsV2Query = useQuery({
+    queryKey: ['claims', 'import', 'columns', 'v2'],
+    queryFn: () => apiGet<ClaimColumnDef[]>('/claims/import/columns/v2'),
   });
 
   const importMutation = useMutation({
@@ -57,6 +63,7 @@ export default function ImportPage() {
     onSuccess: (report) => {
       setJournal((prev) => [report, ...prev]);
       setReportPage(1);
+      setWarningsPage(1);
       toast(t('import.toast.success'), 'ok');
     },
     onError: () => {
@@ -72,15 +79,31 @@ export default function ImportPage() {
     [canImport, importMutation],
   );
 
-  function onDownloadTemplate() {
-    const cols = columnsQuery.data;
+  function onDownloadTemplate(version: 'v1' | 'v2') {
+    const cols = version === 'v1' ? columnsQuery.data : columnsV2Query.data;
     if (!cols) return;
-    downloadText('modele-47-colonnes-IDA.csv', buildColumnsCsv(cols));
+    downloadText(version === 'v1' ? 'modele-47-colonnes-IDA.csv' : `modele-v2-${cols.length}-colonnes-IDA.csv`, buildColumnsCsv(cols));
   }
 
   const latestReport = journal[0];
   const reportRowsTotal = latestReport?.rows.length ?? 0;
   const reportRows = latestReport ? latestReport.rows.slice((reportPage - 1) * PAGE_SIZE, reportPage * PAGE_SIZE) : [];
+
+  const warnings = latestReport?.warnings ?? [];
+  const columnLabel = new Map((columnsV2Query.data ?? []).map((c) => [c.index, c.label]));
+  const warningColumns: Column<ClaimImportWarning>[] = [
+    { key: 'rowNumber', header: t('import.col.row'), render: (w) => <span className="mono">{w.rowNumber}</span> },
+    {
+      key: 'column',
+      header: t('import.warnings.col.column'),
+      render: (w) => (
+        <>
+          <span className="mono">{w.column}</span> · {columnLabel.get(w.column) ?? w.columnKey}
+        </>
+      ),
+    },
+    { key: 'message', header: t('import.warnings.col.message'), render: (w) => w.message },
+  ];
 
   const reportColumns: Column<ClaimImportRowResult>[] = [
     { key: 'rowNumber', header: t('import.col.row'), render: (r) => <span className="mono">{r.rowNumber}</span> },
@@ -203,6 +226,24 @@ export default function ImportPage() {
                     onPageChange={setReportPage}
                     getRowKey={(r) => String(r.rowNumber)}
                   />
+
+                  {warnings.length > 0 ? (
+                    <section aria-label={t('import.warnings.title')} style={{ marginTop: 'var(--s-5)' }}>
+                      <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>
+                        {t('import.warnings.title')} ({warnings.length})
+                      </strong>
+                      <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginTop: 0 }}>{t('import.warnings.note')}</p>
+                      <Table
+                        columns={warningColumns}
+                        rows={warnings.slice((warningsPage - 1) * PAGE_SIZE, warningsPage * PAGE_SIZE)}
+                        page={warningsPage}
+                        total={warnings.length}
+                        pageSize={PAGE_SIZE}
+                        onPageChange={setWarningsPage}
+                        getRowKey={(w) => `${w.rowNumber}-${w.column}`}
+                      />
+                    </section>
+                  ) : null}
                 </>
               )}
             </div>
@@ -215,14 +256,24 @@ export default function ImportPage() {
           </div>
           <div className="sheet-body">
             <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginTop: 0 }}>{t('import.template.note')}</p>
-            <button
-              type="button"
-              onClick={onDownloadTemplate}
-              disabled={!columnsQuery.data}
-              style={{ padding: '8px 16px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--rule-strong)', background: 'var(--paper)', color: 'var(--ink)', font: 'inherit', cursor: columnsQuery.data ? 'pointer' : 'not-allowed', width: '100%' }}
-            >
-              {t('import.template.download')} ({columnsQuery.data?.length ?? '…'})
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-2)' }}>
+              {(
+                [
+                  { version: 'v1', label: t('import.template.v1'), data: columnsQuery.data },
+                  { version: 'v2', label: t('import.template.v2'), data: columnsV2Query.data },
+                ] as const
+              ).map(({ version, label, data }) => (
+                <button
+                  key={version}
+                  type="button"
+                  onClick={() => onDownloadTemplate(version)}
+                  disabled={!data}
+                  style={{ padding: '8px 16px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--rule-strong)', background: 'var(--paper)', color: 'var(--ink)', font: 'inherit', cursor: data ? 'pointer' : 'not-allowed', width: '100%' }}
+                >
+                  {label} ({data?.length ?? '…'} {t('import.template.columns')})
+                </button>
+              ))}
+            </div>
 
             {journal.length > 1 ? (
               <div style={{ marginTop: 'var(--s-5)' }}>

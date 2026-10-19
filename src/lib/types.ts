@@ -244,6 +244,85 @@ export interface IrsamBenchmark {
   validatedAt?: string;
 }
 
+/* ===================== Barème Art. 14 et catégories de véhicule (décision PO §5) ===================== */
+
+export type BaremeVersionStatus = 'BROUILLON' | 'VALIDE_UAR' | 'ARCHIVE';
+
+export interface BaremeCase {
+  code: string;
+  label: string;
+  /** Parts de responsabilité en % ; partA + partB = 100. */
+  partA: number;
+  partB: number;
+  createdBy: string;
+  createdAt: string;
+  updatedBy?: string;
+}
+
+export interface BaremeVersion {
+  id: string;
+  label: string;
+  status: BaremeVersionStatus;
+  sourceRef?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedBy?: string;
+  validatedBy?: string;
+  validatedAt?: string;
+  cases: BaremeCase[];
+}
+
+export type VehicleCategoryStatus = 'SAISI' | 'VALIDE_UAR';
+
+export interface VehicleCategory {
+  code: string;
+  label: string;
+  status: VehicleCategoryStatus;
+  createdBy: string;
+  createdAt: string;
+  updatedBy?: string;
+  validatedBy?: string;
+  validatedAt?: string;
+}
+
+/** Parts du cas couvrant le code déclaré, dans une version `VALIDE_UAR`. */
+export interface TauxSelonBareme {
+  baremeVersionId: string;
+  versionLabel: string;
+  partA: number;
+  partB: number;
+}
+
+/** Saisie Art. 14 d'une déclaration : A = son assuré, B = la partie adverse. */
+export interface DeclarationResponsabilite {
+  circonstancesA?: number[];
+  circonstancesB?: number[];
+  baremeVersionId?: string;
+  baremeCode?: string;
+  vehicleCategoryA?: string;
+  vehicleCategoryB?: string;
+  responsabiliteDeclareeA?: number;
+  responsabiliteDeclareeB?: number;
+  tauxSelonBareme?: TauxSelonBareme;
+}
+
+/** Corps de `PATCH /claims/:id/responsabilite` : champ absent = inchangé, `null` = effacé. */
+export interface ClaimResponsabilitePatch {
+  circonstancesA?: number[] | null;
+  circonstancesB?: number[] | null;
+  baremeCode?: string | null;
+  baremeVersionId?: string;
+  vehicleCategoryA?: string | null;
+  vehicleCategoryB?: string | null;
+}
+
+/** Sous-ensemble de `ClaimViewDto` utile pour retrouver un dossier (`GET /claims`). */
+export interface ClaimView {
+  id: string;
+  numEconstat: string;
+  company: string;
+}
+
 /* ===================== Cockpit (écran 1, Module I) — B.11/HANDOFF ===================== */
 
 /**
@@ -410,6 +489,10 @@ export interface MatchQueueItem {
   /** N° police/attestation "soi-même" de chaque déclaration (même convention que `plateA`/`plateB`). */
   policeA?: string;
   policeB?: string;
+  responsabiliteA?: DeclarationResponsabilite;
+  responsabiliteB?: DeclarationResponsabilite;
+  /** Vrai si A et B portent chacune un code de barème et que ces codes diffèrent. */
+  divergence: boolean;
 }
 
 export interface MatchCounters {
@@ -433,7 +516,7 @@ export interface MatchDecisionResult {
 
 /* ===================== Import des dossiers (écran 3, Module XII) — B.4/B.11 ===================== */
 
-export type ClaimColumnGroup = 'IDENTIFICATION' | 'ELIGIBILITE';
+export type ClaimColumnGroup = 'IDENTIFICATION' | 'ELIGIBILITE' | 'BAREME_ART14';
 
 export interface ClaimColumnDef {
   index: number;
@@ -460,6 +543,17 @@ export interface ClaimImportReport {
   eligibleCount: number;
   ineligibleCount: number;
   rows: ClaimImportRowResult[];
+  /** Valeurs des colonnes 48-53 ignorées : jamais un motif d'inéligibilité. */
+  warnings: ClaimImportWarning[];
+}
+
+export interface ClaimImportWarning {
+  rowNumber: number;
+  /** N° de colonne dans le fichier (48 à 53). */
+  column: number;
+  columnKey: string;
+  code: 'BAREME_NON_PUBLIE' | 'CIRCONSTANCE_INVALIDE';
+  message: string;
 }
 
 /* ===================== Échanges Annexes 2/3/4 — Recours (écran 4, Module B §6.4) — B.2/B.3 =====================
@@ -1119,6 +1213,15 @@ export interface StatsSummary {
   irsam: IrsamComparison | null;
   /** Distingue « non renseignée » et « en attente de validation UAR » quand `irsam` est `null`. */
   irsamStatus: 'NON_RENSEIGNE' | 'EN_ATTENTE_VALIDATION' | 'VALIDE';
+  baremeCodes: StatsRepartition;
+  /** Catégorie du véhicule assuré par la compagnie déclarante (véhicule A). */
+  vehicleCategories: StatsRepartition;
+}
+
+export interface StatsRepartition {
+  items: Array<{ code: string; count: number }>;
+  /** Dossiers sans valeur (non renseignés ou antérieurs au modèle étendu). */
+  sansValeur: number;
 }
 
 export interface IrsamComparison {

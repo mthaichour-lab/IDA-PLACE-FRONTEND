@@ -3,6 +3,7 @@
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
+import { Art14Panel } from '@/components/matching/Art14Panel';
 import { CoChip } from '@/components/ui/CoChip';
 import { ScoreBar } from '@/components/ui/ScoreBar';
 import { Tabs } from '@/components/ui/Tabs';
@@ -616,6 +617,8 @@ export default function MatchingPage() {
           )}
         </div>
       </div>
+
+      {selected ? <Art14Panel key={selected.id} item={selected} /> : null}
     </>
   );
 }

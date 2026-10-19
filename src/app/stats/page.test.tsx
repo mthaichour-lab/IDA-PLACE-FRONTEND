@@ -20,7 +20,12 @@ const MONTHLY: MonthlyActivity[] = [
   { month: '2026-10', declarations: 110, econstat: 85, autresCanaux: 25, annexes2: 15, oppositions: 4, indemnises: 10 },
 ];
 
-const SUMMARY: StatsSummary = { declarations: 200, oppositionRatePct: 16, settledAmount: 8_220_000, avgSettlementDays: 24.5, irsam: null, irsamStatus: 'NON_RENSEIGNE' };
+const SUMMARY: StatsSummary = { declarations: 200, oppositionRatePct: 16, settledAmount: 8_220_000, avgSettlementDays: 24.5,
+  irsam: null,
+  irsamStatus: 'NON_RENSEIGNE',
+  baremeCodes: { items: [], sansValeur: 0 },
+  vehicleCategories: { items: [], sansValeur: 0 },
+};
 
 function mockStatsApi(overrides: { wilayas?: WilayaStat[]; monthly?: MonthlyActivity[]; summary?: StatsSummary } = {}) {
   mockFetchJson({

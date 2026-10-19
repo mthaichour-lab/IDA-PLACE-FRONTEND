@@ -42,7 +42,7 @@ const POPULATION: WilayaPopulation = {
   valid: true,
 };
 
-const SUMMARY: StatsSummary = { declarations: 200, oppositionRatePct: 16, settledAmount: 1_000, avgSettlementDays: 24.5, irsam: null, irsamStatus: 'NON_RENSEIGNE' };
+const SUMMARY: StatsSummary = { declarations: 200, oppositionRatePct: 16, settledAmount: 1_000, avgSettlementDays: 24.5, irsam: null, irsamStatus: 'NON_RENSEIGNE', baremeCodes: { items: [], sansValeur: 0 }, vehicleCategories: { items: [], sansValeur: 0 } };
 
 function mockStats({ populations = [] as WilayaPopulation[], summary = SUMMARY } = {}) {
   const wilayaCalls: string[] = [];

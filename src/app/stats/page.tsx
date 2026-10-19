@@ -11,8 +11,9 @@ import { Tile, TileGrid, UNAVAILABLE_BACKGROUND } from '@/components/ui/TileGrid
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { apiGet } from '@/lib/api-client';
+import { publishedCases, publishedCategories, useBaremeVersions, useVehicleCategories } from '@/lib/bareme';
 import { currentUtcYear, formatIsoDay } from '@/lib/iso-date';
-import { MonthlyActivity, StatsSummary, WilayaPopulation, WilayaStat } from '@/lib/types';
+import { MonthlyActivity, StatsRepartition, StatsSummary, WilayaPopulation, WilayaStat } from '@/lib/types';
 
 type MeasureKey = 'declarations' | 'montants' | 'per100k';
 
@@ -56,6 +57,41 @@ function irsamExtra(summary: StatsSummary, t: (k: TranslationKey) => string, loc
   return parts.join(' · ');
 }
 
+/** Répartition Art. 14 (décision PO §5) : les dossiers sans valeur sont toujours comptés à part. */
+function RepartitionBlock({ title, data, published }: { title: string; data: StatsRepartition; published: boolean }) {
+  const { t, locale } = useI18n();
+  const max = Math.max(1, ...data.items.map((i) => i.count));
+  return (
+    <section aria-label={title}>
+      <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{title}</strong>
+      {data.items.length === 0 && !published ? (
+        <div className="note warn" role="status" style={{ marginBottom: 'var(--s-2)' }}>
+          <span>{t('stats.art14.notPublished')}</span>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 'var(--s-2)' }}>
+          {data.items.map((i) => (
+            <div key={i.code} style={{ display: 'grid', gridTemplateColumns: '96px 1fr 56px', alignItems: 'center', gap: 8 }}>
+              <span className="mono" style={{ fontSize: 'var(--k-fs-xs)' }}>
+                {i.code}
+              </span>
+              <div style={{ height: 10, borderRadius: 'var(--k-r-pill)', background: 'var(--rule)', overflow: 'hidden' }}>
+                <div style={{ width: `${(i.count / max) * 100}%`, height: '100%', background: 'var(--k-pri-2)' }} />
+              </div>
+              <span className="mono" style={{ fontSize: 'var(--k-fs-xs)', textAlign: 'end' }}>
+                {i.count.toLocaleString(locale)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      <p style={{ margin: 0, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
+        {t('stats.art14.sansValeur')} : <span className="mono">{data.sansValeur.toLocaleString(locale)}</span>
+      </p>
+    </section>
+  );
+}
+
 export default function StatsPage() {
   const { t, locale } = useI18n();
   const [measure, setMeasure] = useState<MeasureKey>('declarations');
@@ -82,6 +118,9 @@ export default function StatsPage() {
     queryKey: ['referential', 'wilaya-populations'],
     queryFn: () => apiGet<WilayaPopulation[]>('/referential/wilaya-populations'),
   });
+
+  const versionsQuery = useBaremeVersions();
+  const categoriesQuery = useVehicleCategories();
 
   const wilayas = wilayasQuery.data ?? [];
   const monthly = monthlyQuery.data ?? [];
@@ -306,6 +345,20 @@ export default function StatsPage() {
           )}
         </div>
       </div>
+
+      {summary ? (
+        <div className="sheet" style={{ marginTop: 'var(--s-5)' }}>
+          <div className="sheet-head">
+            <span>{t('stats.art14.title')}</span>
+          </div>
+          <div className="sheet-body">
+            <div className="grid g-side2">
+              <RepartitionBlock title={t('stats.art14.byCode')} data={summary.baremeCodes} published={publishedCases(versionsQuery.data).length > 0} />
+              <RepartitionBlock title={t('stats.art14.byCategory')} data={summary.vehicleCategories} published={publishedCategories(categoriesQuery.data).length > 0} />
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

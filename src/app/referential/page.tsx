@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
+import { BaremeSection } from '@/components/referential/BaremeSection';
 import { CalendarSection } from '@/components/referential/CalendarSection';
 import { LabeledInput, LabeledSelect } from '@/components/referential/fields';
 import { IrsamSection } from '@/components/referential/IrsamSection';
@@ -21,7 +22,7 @@ import { AgencyView, CompanyKind, CompanyStatus, CompanyView, ConventionParams, 
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 
-type SectionKey = 'companies' | 'agencies' | 'experts' | 'convention' | 'calendar' | 'motifs' | 'population' | 'irsam';
+type SectionKey = 'companies' | 'agencies' | 'experts' | 'convention' | 'calendar' | 'motifs' | 'bareme' | 'population' | 'irsam';
 
 function statusTone(status: string): TagTone {
   if (status === 'ACTIF') return 'ok';
@@ -84,10 +85,11 @@ function toFormBody(f: CompanyForm) {
  * convention|calendar|motifs`) via TanStack Query — voir HANDOFF.md pour
  * les écarts assumés avec la capture ("performance" des experts).
  *
- * Décisions PO §1 à §4 (2026-10-18) : « Barème & motifs » en trois blocs,
- * fériés mobiles dans « Calendrier ouvré », sections « Populations de
- * référence » et « Référence IRSAM ». Saisie : privilège `params` ;
- * validation UAR : `validateRef` (le backend renvoie 409 « quatre yeux »).
+ * Décisions PO §1 à §5 (2026-10-18) : « Barème & motifs » en trois blocs,
+ * fériés mobiles dans « Calendrier ouvré », sections « Barème Art. 14 »,
+ * « Populations de référence » et « Référence IRSAM ». Saisie : privilège
+ * `params` ; validation UAR : `validateRef` (le backend renvoie 409
+ * « quatre yeux »).
  */
 export default function ReferentialPage() {
   const { t, locale } = useI18n();
@@ -215,6 +217,12 @@ export default function ReferentialPage() {
       subtitle: `${motifsQuery.data?.length ?? '…'} ${t('referential.nav.motifs.unit')} · ${t('referential.nav.motifs.subtitleSuffix')}`,
     },
     {
+      key: 'bareme',
+      mono: 'BA',
+      title: t('referential.nav.bareme.title'),
+      subtitle: t('referential.nav.bareme.subtitleSuffix'),
+    },
+    {
       key: 'population',
       mono: 'PO',
       title: t('referential.nav.population.title'),
@@ -283,6 +291,8 @@ export default function ReferentialPage() {
           <CalendarSection />
         ) : section === 'motifs' ? (
           <MotifsSection eligibilityQuery={motifsQuery} />
+        ) : section === 'bareme' ? (
+          <BaremeSection />
         ) : section === 'population' ? (
           <PopulationSection />
         ) : (
