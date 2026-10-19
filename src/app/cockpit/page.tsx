@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
+import { PlaceOnlyGuard } from '@/components/PlaceOnlyGuard';
 import { LineChart } from '@/components/ui/BarChart';
 import { CoChip } from '@/components/ui/CoChip';
 import { Kpi, KpiRow } from '@/components/ui/Kpi';
@@ -84,7 +85,16 @@ const headerActionStyle: React.CSSProperties = {
   fontSize: 'var(--k-fs-s)',
 };
 
+/** SEC-05/SEC-21 : écran réservé aux rôles de la place (403 pour un rôle compagnie). */
 export default function CockpitPage() {
+  return (
+    <PlaceOnlyGuard titleKey="cockpit.title">
+      <CockpitContent />
+    </PlaceOnlyGuard>
+  );
+}
+
+function CockpitContent() {
   const { t, locale } = useI18n();
   const [live, setLive] = useState(false);
   const [paused, setPaused] = useState(false);

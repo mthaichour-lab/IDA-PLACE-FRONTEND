@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { TruncationNote } from '@/components/ui/TruncationNote';
 import { FolioHeader } from '@/components/FolioHeader';
+import { PlaceOnlyGuard } from '@/components/PlaceOnlyGuard';
 import { Tag } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
@@ -140,7 +141,16 @@ function ShieldIcon() {
   );
 }
 
+/** SEC-05/SEC-21 : écran réservé aux rôles de la place (403 pour un rôle compagnie). */
 export default function LedgerPage() {
+  return (
+    <PlaceOnlyGuard titleKey="ledger.title">
+      <LedgerContent />
+    </PlaceOnlyGuard>
+  );
+}
+
+function LedgerContent() {
   const { t, locale } = useI18n();
   const { toast } = useToast();
   const [from, setFrom] = useState('');

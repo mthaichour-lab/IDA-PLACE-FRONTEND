@@ -1067,6 +1067,7 @@ const fr = {
   'commission.membership.form.agrementRef': "Référence d'agrément (branche automobile)",
   'commission.membership.form.company': 'Compagnie adhérente',
   'commission.membership.form.letterRef': 'Référence du courrier reçu (obligatoire)',
+  'commission.membership.detail.letterRef': 'Référence du courrier reçu',
   'commission.membership.form.submit': 'Enregistrer la demande',
   'commission.membership.detail.decidedAt': 'Décision',
   'commission.membership.detail.decisionNote': 'Motif / note',
@@ -1093,6 +1094,10 @@ const fr = {
   'documents.attachments.download': 'Télécharger',
   'documents.attachments.downloading': 'téléchargement…',
   'documents.attachments.toast.downloadError': "Le téléchargement de la pièce a échoué.",
+
+  // ----- Écrans réservés aux rôles de la place (SEC-05, SEC-21) -----
+  'placeOnly.badge': 'Accès réservé',
+  'placeOnly.body': 'Cet écran est réservé aux rôles de la place (opérateur, UAR, commission, audit) : il n’est pas accessible à un profil compagnie.',
 
   // ----- Valeurs masquées (SEC-03, SEC-26) -----
   'common.masked': 'masqué',

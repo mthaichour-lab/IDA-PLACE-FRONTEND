@@ -374,7 +374,7 @@ export function MembershipTab() {
             </p>
             {selected.letterRef ? (
               <p style={{ color: 'var(--ink-2)', fontSize: 'var(--k-fs-s)' }}>
-                {t('commission.membership.form.letterRef')} : <span className="mono">{selected.letterRef}</span>
+                {t('commission.membership.detail.letterRef')} : <span className="mono">{selected.letterRef}</span>
               </p>
             ) : null}
             {selected.agrementRef ? (

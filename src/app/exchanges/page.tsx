@@ -129,9 +129,15 @@ function stateTone(state: RecoursState): TagTone {
   return 'ok';
 }
 
+/** SEC-06 : montants à deux décimales au plus — centimes affichés seulement s'il y en a. */
+function centimes(amount: number): { minimumFractionDigits: number; maximumFractionDigits: number } {
+  const digits = Number.isInteger(amount) ? 0 : 2;
+  return { minimumFractionDigits: digits, maximumFractionDigits: digits };
+}
+
 function formatDzd(amount: number, locale: string): string {
   try {
-    return new Intl.NumberFormat(locale, { style: 'currency', currency: 'DZD', maximumFractionDigits: 0 }).format(amount);
+    return new Intl.NumberFormat(locale, { style: 'currency', currency: 'DZD', ...centimes(amount) }).format(amount);
   } catch {
     return `${amount.toLocaleString()} DA`;
   }
