@@ -1328,11 +1328,52 @@ non), pas un nouvel état `RECOURS_STATES`, aucun nouveau champ sur `Recours`.
   conformément à son rôle (remonte, ne corrige jamais).
 - Vérifié après correctif : `tsc --noEmit` propre, 102/102 tests (Vitest),
   build réussi.
-- 2 autres points du guide (onglets Commission "Adhésions & retraits"/
-  "Plafond conventionnel", pipeline "Avancement du lot" de `/quarter`)
-  explicitement REPORTÉS par décision du Product Owner — aucune donnée/
-  processus documenté pour construire un workflow réel sans l'inventer,
-  voir `QUESTIONS_UAR.md` §7/§8 (backend).
+- Onglets Commission "Adhésions & retraits" et pipeline "Avancement du
+  lot" : construits le 2026-10-19 (voir l'entrée ci-dessous) ; seul
+  "Plafond conventionnel" reste reporté (`QUESTIONS_UAR.md` §7, backend).
+
+### Points UAR 1-5, 7, 8 — écrans (2026-10-19, équipe 4 rôles + PO expert)
+
+Décisions et périmètre : `QUESTIONS_UAR.md` §1-5, §7, §8 (backend).
+
+- `/commission` : onglet « Adhésions & retraits »
+  (`src/components/commission/MembershipTab.tsx`), actions selon
+  `membership`, « Constater l'effet » désactivé avant la date d'effet. Pas
+  d'onglet « Plafond conventionnel » (aucune procédure documentée).
+- `/quarter` : section « Avancement du lot »
+  (`src/components/settlement/PipelineSection.tsx`), polling 30 s, et
+  bouton « Clôturer le trimestre » sur l'étape 5, visible seulement une fois
+  les étapes 1-4 faites et avec `closeQuarter`, avec confirmation.
+  **Correction** : l'entrée « Pièces jointes » ci-dessus affirmait que
+  `/quarter` gérait déjà le 403 de la clôture — c'était faux, aucune action
+  de clôture n'existait à l'écran avant ce bouton.
+- `/referential` : motifs en 3 blocs (« RG-01 » absent, testé), fériés
+  mobiles, populations (import CSV), IRSAM, barème Art. 14
+  (`src/components/referential/*`).
+- `/stats` : sélecteur d'année, « Pour 100 000 hab. », tuiles « n.d. »,
+  KPI IRSAM conditionnel, répartitions barème/catégories avec « Sans
+  valeur ».
+- `/exchanges` : motif d'opposition (liste, ou attestation « pas une
+  non-déclaration »).
+- `/matching` : panneau Art. 14 (`src/components/matching/Art14Panel.tsx`)
+  sur `GET /matching/:id` (`claimAId`/`claimBId`).
+- `/import` : modèles v1 (47) / v2 (53), avertissements séparés.
+- `/cockpit` : la note du cycle renvoie désormais à « Avancement du lot »
+  (elle disait la réunion UAR et le règlement « non suivis »).
+
+**Vérifié** : `tsc` OK, 175/175 tests, build OK. Un test a échoué une
+seule fois dans un worktree, non reproduit sur 5 exécutions ensuite
+(probable délai dépassé au démarrage à froid) ; le Testeur a aussi vu 3
+dépassements de délai quand les tests front tournent en même temps que
+ceux du back.
+
+**Environnement** : la stratégie de contrôle des applications Windows
+bloque les binaires natifs (`@next/swc-win32-x64-msvc`,
+`@rollup/rollup-win32-x64-msvc`) installés par un `npm ci` neuf dans un
+worktree, même copiés à l'identique. Ne jamais les remplacer par une
+jonction vers le dépôt principal : supprimer le worktree risquerait
+d'effacer la cible. Contournement utilisé : un `index.js` qui charge le
+binaire du dépôt principal (fichiers non commités).
 
 ## Scripts
 
