@@ -11,8 +11,8 @@ const ME: MeResponse = {
 };
 
 const WILAYAS: WilayaStat[] = [
-  { code: '16', name: 'Alger', col: 1, row: 1, declarations: 120, montants: 5_000_000 },
-  { code: '31', name: 'Oran', col: 2, row: 1, declarations: 80, montants: 3_000_000 },
+  { code: '16', name: 'Alger', col: 1, row: 1, declarations: 120, montants: 5_000_000, per100k: null, populationRef: null },
+  { code: '31', name: 'Oran', col: 2, row: 1, declarations: 80, montants: 3_000_000, per100k: null, populationRef: null },
 ];
 
 const MONTHLY: MonthlyActivity[] = [
@@ -20,7 +20,7 @@ const MONTHLY: MonthlyActivity[] = [
   { month: '2026-10', declarations: 110, econstat: 85, autresCanaux: 25, annexes2: 15, oppositions: 4, indemnises: 10 },
 ];
 
-const SUMMARY: StatsSummary = { declarations: 200, oppositionRatePct: 16, settledAmount: 8_220_000, avgSettlementDays: 24.5 };
+const SUMMARY: StatsSummary = { declarations: 200, oppositionRatePct: 16, settledAmount: 8_220_000, avgSettlementDays: 24.5, irsam: null, irsamStatus: 'NON_RENSEIGNE' };
 
 function mockStatsApi(overrides: { wilayas?: WilayaStat[]; monthly?: MonthlyActivity[]; summary?: StatsSummary } = {}) {
   mockFetchJson({
@@ -34,8 +34,7 @@ function mockStatsApi(overrides: { wilayas?: WilayaStat[]; monthly?: MonthlyActi
 /**
  * Écran Statistiques de la place (/stats, écran 11, Module H §6.10) — KPI de
  * synthèse, carte des wilayas (référentiel réel) avec bascule déclarations/
- * montants (pas de "pour 100k hab.", omis faute de référentiel démographique
- * — voir stats.service.ts back), zones à forte sinistralité, activité
+ * montants (« Pour 100 000 hab. » : voir `referentiels.test.tsx`), zones à forte sinistralité, activité
  * mensuelle réelle (Annexes 2/oppositions/réglés — RecoursModule), et
  * répartition par canal de déclaration (e-constat vs autres canaux).
  */

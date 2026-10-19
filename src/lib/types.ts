@@ -96,11 +96,152 @@ export interface PublicHoliday {
 export interface PlaceCalendar {
   weekendDays: string[];
   fixedHolidays: PublicHoliday[];
+  /** Union fériés fixes + mobiles (prévisionnels et confirmés), bornée par `?from&to` (décision PO §2). */
+  holidays: CalendarHoliday[];
 }
 
 export interface EligibilityMotif {
   article: string;
   label: string;
+}
+
+/* ===================== Référentiels de place, décisions PO §1 à §4 (écran 12) ===================== */
+/*
+ * Forme exacte des vues back `convention-referential.service.ts` et
+ * `place-metrics-referential.service.ts` (`GET /referential/...`).
+ */
+
+export type MobileHolidayKind = 'AWAL_MOHARRAM' | 'ACHOURA' | 'MAWLID_ENNABAOUI' | 'AID_EL_FITR' | 'AID_EL_ADHA';
+export type MobileHolidayStatus = 'PREVISIONNEL' | 'CONFIRME';
+
+export interface MobileHolidayKindOption {
+  kind: MobileHolidayKind;
+  label: string;
+}
+
+export interface MobileHoliday {
+  id: string;
+  date: string;
+  kind: MobileHolidayKind;
+  label: string;
+  hijriYear?: number;
+  status: MobileHolidayStatus;
+  sourceRef?: string;
+  createdBy: string;
+  createdAt: string;
+  confirmedBy?: string;
+  confirmedAt?: string;
+}
+
+export interface CalendarHoliday {
+  date: string;
+  label: string;
+  type: 'FIXE' | 'MOBILE';
+  kind?: MobileHolidayKind;
+  status: 'LEGAL' | MobileHolidayStatus;
+  sourceRef?: string;
+}
+
+export type ConstatCircumstanceStatus = 'STANDARD_A_CONFIRMER' | 'VALIDE_UAR';
+
+export interface ConstatCircumstance {
+  number: number;
+  labelFr: string;
+  labelAr?: string;
+  status: ConstatCircumstanceStatus;
+  createdBy: string;
+  updatedBy?: string;
+  validatedBy?: string;
+  validatedAt?: string;
+}
+
+export type OppositionMotifStatus = 'SAISI' | 'VALIDE_UAR';
+
+export interface OppositionMotif {
+  code: string;
+  label: string;
+  /** Vrai : ne peut jamais motiver une opposition (non-déclaration, Art. 10). */
+  forbidden: boolean;
+  sourceRef?: string;
+  status: OppositionMotifStatus;
+  createdBy: string;
+  createdAt: string;
+  updatedBy?: string;
+  validatedBy?: string;
+  validatedAt?: string;
+}
+
+/** `GET /referential/wilayas` — seuls les champs utiles à la saisie des populations. */
+export interface WilayaRef {
+  code: string;
+  name: string;
+}
+
+export type PopulationSourceType = 'RECENSEMENT_RGPH' | 'ESTIMATION_ONS' | 'AUTRE';
+
+export interface WilayaPopulation {
+  id: string;
+  wilayaCode: string;
+  referenceYear: number;
+  population: number;
+  sourceType: PopulationSourceType;
+  sourceRef: string;
+  createdBy: string;
+  createdAt: string;
+  /** Faux si l'année précède le périmètre actuel de la wilaya : jamais utilisée dans un calcul. */
+  valid: boolean;
+  invalidReason?: string;
+}
+
+export interface PopulationImportRow {
+  line: number;
+  status: 'ACCEPTEE' | 'REJETEE';
+  reason?: string;
+  wilayaCode?: string;
+  referenceYear?: number;
+  population?: number;
+}
+
+/** Rapport d'import CSV des populations — tout ou rien : `written` est faux dès qu'une ligne est rejetée. */
+export interface PopulationImportReport {
+  fileName: string;
+  totalRows: number;
+  acceptedCount: number;
+  rejectedCount: number;
+  written: boolean;
+  writtenCount: number;
+  rows: PopulationImportRow[];
+}
+
+export interface PopulationReference {
+  population: number;
+  referenceYear: number;
+  sourceType: PopulationSourceType;
+  sourceRef: string;
+}
+
+export type IrsamIndicator = 'DELAI_MOYEN_REGLEMENT_RECOURS_JOURS';
+export type IrsamStatus = 'SAISI' | 'VALIDE_UAR' | 'ARCHIVE';
+
+export interface IrsamMeasureDefinition {
+  startEvent: string;
+  endEvent: string;
+  scope: string;
+}
+
+export interface IrsamBenchmark {
+  id: string;
+  indicator: IrsamIndicator;
+  value: number;
+  periodFrom: string;
+  periodTo: string;
+  measureDefinition: IrsamMeasureDefinition;
+  sourceRef: string;
+  status: IrsamStatus;
+  createdBy: string;
+  createdAt: string;
+  validatedBy?: string;
+  validatedAt?: string;
 }
 
 /* ===================== Cockpit (écran 1, Module I) — B.11/HANDOFF ===================== */
@@ -357,6 +498,8 @@ export const RECOURS_ALLOWED_ACTIONS: Record<RecoursState, RecoursAction[]> = {
 export interface RecoursOppositionOrContestation {
   raisedAt: string;
   reason?: string;
+  /** Opposition uniquement : code du motif (`GET /referential/opposition-motifs`), si un motif a été choisi. */
+  reasonCode?: string;
   status: string;
   deadlineAt?: string;
   decidedAt?: string;
@@ -930,9 +1073,9 @@ export interface PlaceMeteringSummary {
  * RecoursModule, StatsModule n'étant pas dans la liste des contrats figés
  * (B.11).
  *
- * `pour100k` OMIS (pas de référentiel démographique officiel dans le dossier
- * technique ni le guide illustré) plutôt qu'inventé — pas de mesure
- * "pour 100 000 hab." côté front tant qu'aucune source n'est fournie.
+ * `per100k` : calculé par le back seulement pour une année étudiée
+ * (`?year=`) et une population de référence saisie et valide (décision PO
+ * §3), sinon `null` — jamais interpolé ni inventé côté front.
  * `annexes2`/`oppositions`/`indemnises` RÉELS (RecoursModule, depuis sprint
  * 3). "e-constat mobile vs agence" reste approximé par canal réel
  * (`econstat` = canal ECONSTAT, `autresCanaux` = ERP+IMPORT+API) — le modèle
@@ -951,6 +1094,10 @@ export interface WilayaStat {
   lng?: number;
   declarations: number;
   montants: number;
+  /** Déclarations pour 100 000 habitants — `null` sans année étudiée ou sans population valide. */
+  per100k: number | null;
+  /** Population utilisée pour `per100k` (source et année, infobulle de tuile), `null` si aucune. */
+  populationRef: PopulationReference | null;
 }
 
 export interface MonthlyActivity {
@@ -963,12 +1110,25 @@ export interface MonthlyActivity {
   indemnises: number;
 }
 
-/** KPI de synthèse `/stats` (nouveau, voir stats.service.ts back — KPI volontairement omis documentés là-bas : comparatif IRSAM, pour100k). */
+/** KPI de synthèse `/stats` (voir stats.service.ts back). `irsam` reste `null` tant qu'aucune référence n'est validée UAR (décision PO §4). */
 export interface StatsSummary {
   declarations: number;
   oppositionRatePct: number;
   settledAmount: number;
   avgSettlementDays: number | null;
+  irsam: IrsamComparison | null;
+  /** Distingue « non renseignée » et « en attente de validation UAR » quand `irsam` est `null`. */
+  irsamStatus: 'NON_RENSEIGNE' | 'EN_ATTENTE_VALIDATION' | 'VALIDE';
+}
+
+export interface IrsamComparison {
+  value: number;
+  periodFrom: string;
+  periodTo: string;
+  sourceRef: string;
+  measureDefinition: IrsamMeasureDefinition;
+  /** `avgSettlementDays` − valeur IRSAM (jours), `null` si aucun recours réglé. */
+  deltaDays: number | null;
 }
 
 /* ===================== Paramétrage (écran 14, Admin §5.1) — matrice réelle, utilisateurs mock ===================== */

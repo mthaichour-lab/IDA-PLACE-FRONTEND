@@ -6,7 +6,16 @@ export interface Tile {
   col: number;
   row: number;
   intensity?: number; // 0..1
+  /** Infobulle complète, à la place de « code — libellé : valeur ». */
+  title?: string;
+  /** Donnée non disponible (ex. sans population de référence) : tuile hachurée, hors échelle de couleurs. */
+  unavailable?: boolean;
+  /** Texte affiché dans une tuile `unavailable` (ex. « n.d. »). */
+  unavailableLabel?: string;
 }
+
+/** Hachure « donnée non disponible » — tokens uniquement, réutilisée par les légendes. */
+export const UNAVAILABLE_BACKGROUND = 'repeating-linear-gradient(45deg, var(--paper) 0 3px, var(--rule-strong) 3px 5px)';
 
 /**
  * Carte en tuiles générique (A.3) — grille `cols:13 × rows:8` (écran 11,
@@ -29,11 +38,16 @@ export function TileGrid({ tiles, cols = 13 }: { tiles: Tile[]; cols?: number })
         <div
           key={tile.key}
           className="tile"
-          title={`${tile.code} — ${tile.label}${tile.value !== undefined ? ` : ${tile.value}` : ''}`}
-          style={{ background: `color-mix(in srgb, var(--k-pri-2) ${Math.round(intensity * 70)}%, var(--paper))` }}
+          data-unavailable={tile.unavailable ? 'true' : undefined}
+          title={tile.title ?? `${tile.code} — ${tile.label}${tile.value !== undefined ? ` : ${tile.value}` : ''}`}
+          style={
+            tile.unavailable
+              ? { background: UNAVAILABLE_BACKGROUND, color: 'var(--ink-3)' }
+              : { background: `color-mix(in srgb, var(--k-pri-2) ${Math.round(intensity * 70)}%, var(--paper))` }
+          }
         >
           <strong>{tile.code}</strong>
-          {tile.value !== undefined ? <span>{tile.value}</span> : null}
+          {tile.unavailable ? <span>{tile.unavailableLabel}</span> : tile.value !== undefined ? <span>{tile.value}</span> : null}
         </div>,
       );
     }

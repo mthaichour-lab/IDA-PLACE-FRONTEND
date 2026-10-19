@@ -392,6 +392,11 @@ a {
   font-weight: 600;
 }
 
+.tab:disabled {
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+
 .tab-count {
   display: inline-block;
   margin-inline-start: 6px;

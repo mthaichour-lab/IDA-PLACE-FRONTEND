@@ -14,9 +14,11 @@ import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { apiGet, apiPost } from '@/lib/api-client';
+import { ApiError } from '@/lib/api-error';
 import { useAuth } from '@/lib/auth-context';
 import { useRealtime } from '@/lib/realtime';
 import {
+  OppositionMotif,
   Paginated,
   RecoursAction,
   RecoursFilter,
@@ -104,9 +106,13 @@ interface TimelineEntry {
  * n'expose aucun endpoint dédié, voir HANDOFF.md), mais chaque étape vraiment
  * survenue est reconstituée honnêtement, triée chronologiquement.
  */
-function buildTimeline(r: RecoursItem): TimelineEntry[] {
+function buildTimeline(r: RecoursItem, motifLabels: Map<string, string>): TimelineEntry[] {
   const entries: TimelineEntry[] = [{ key: 'annexe2', label: 'exchanges.detail.timeline.annexe2', at: r.requestSentAt }];
-  if (r.opposition) entries.push({ key: 'annexe3', label: 'exchanges.detail.timeline.annexe3', at: r.opposition.raisedAt, reason: r.opposition.reason });
+  if (r.opposition) {
+    const code = r.opposition.reasonCode;
+    const reason = [code ? motifLabels.get(code) ?? code : undefined, r.opposition.reason].filter(Boolean).join(' — ');
+    entries.push({ key: 'annexe3', label: 'exchanges.detail.timeline.annexe3', at: r.opposition.raisedAt, reason: reason || undefined });
+  }
   if (r.contestation) entries.push({ key: 'annexe4', label: 'exchanges.detail.timeline.annexe4', at: r.contestation.raisedAt, reason: r.contestation.reason });
   if (r.commissionAt) entries.push({ key: 'commission', label: 'exchanges.detail.timeline.commission', at: r.commissionAt });
   if (r.resolution) {
@@ -246,9 +252,42 @@ export default function ExchangesPage() {
 
   const [reason, setReason] = useState('');
 
+  /**
+   * Action « opposer » (décision PO §1) : tant qu'aucun motif admis
+   * (`forbidden=false`) n'existe au catalogue, motif libre + attestation
+   * obligatoire « pas une non-déclaration » ; sinon liste déroulante
+   * obligatoire, le motif interdit restant visible mais grisé. `reasonCode`
+   * n'est envoyé que si un motif est choisi.
+   */
+  const [opposing, setOpposing] = useState(false);
+  const [reasonCode, setReasonCode] = useState('');
+  const [attested, setAttested] = useState(false);
+
+  const motifsQuery = useQuery({
+    queryKey: ['referential', 'opposition-motifs'],
+    queryFn: () => apiGet<OppositionMotif[]>('/referential/opposition-motifs'),
+    enabled: !!selected,
+  });
+  // Catalogue indisponible (erreur) : même repli que le catalogue vide — motif libre + attestation.
+  const motifs = motifsQuery.data ?? [];
+  const hasAdmittedMotifs = motifs.some((m) => !m.forbidden);
+  const motifLabels = useMemo(() => new Map(motifs.map((m) => [m.code, m.label])), [motifs]);
+
+  function resetOpposition() {
+    setOpposing(false);
+    setReasonCode('');
+    setAttested(false);
+  }
+
+  function openRecours(r: RecoursItem | null) {
+    setSelected(r);
+    setReason('');
+    resetOpposition();
+  }
+
   const transitionMutation = useMutation({
-    mutationFn: ({ id, action, reason: r }: { id: string; action: RecoursAction; reason?: string }) =>
-      apiPost<RecoursTransitionResult>(`/recours/${id}/transition`, { action, reason: r || undefined }),
+    mutationFn: ({ id, action, reason: r, reasonCode: code }: { id: string; action: RecoursAction; reason?: string; reasonCode?: string }) =>
+      apiPost<RecoursTransitionResult>(`/recours/${id}/transition`, { action, reason: r || undefined, reasonCode: code || undefined }),
     onSuccess: async (result, variables) => {
       // Rafraîchit la fiche complète (opposition/contestation/resolution) plutôt que de
       // ne retenir que {state, timer} — nécessaire pour que le fil d'échanges reconstruit
@@ -256,11 +295,13 @@ export default function ExchangesPage() {
       const fresh = await apiGet<RecoursItem>(`/recours/${variables.id}`);
       setSelected((prev) => (prev && prev.id === variables.id ? fresh : prev));
       setReason('');
+      resetOpposition();
       toast(t('exchanges.detail.transition.toast.ok'), 'ok');
       void queryClient.invalidateQueries({ queryKey: ['recours'] });
     },
-    onError: () => {
-      toast(t('exchanges.detail.transition.toast.error'), 'ko');
+    onError: (err: unknown) => {
+      // Message du backend s'il existe (ex. 400 « motif interdit — Art. 10 »).
+      toast(err instanceof ApiError && err.message ? err.message : t('exchanges.detail.transition.toast.error'), 'ko');
     },
   });
 
@@ -378,14 +419,14 @@ export default function ExchangesPage() {
               total={isRegleFilter ? regleActiveItems.length : listQuery.data?.total ?? 0}
               pageSize={PAGE_SIZE}
               onPageChange={isRegleFilter ? setReglePage : setPage}
-              onRowClick={setSelected}
+              onRowClick={openRecours}
               getRowKey={(r) => r.id}
             />
           )}
         </div>
       </div>
 
-      <Modal open={!!selected} title={selected ? `${t('exchanges.detail.titlePrefix')} ${selected.id}` : ''} onClose={() => setSelected(null)}>
+      <Modal open={!!selected} title={selected ? `${t('exchanges.detail.titlePrefix')} ${selected.id}` : ''} onClose={() => openRecours(null)}>
         {selected ? (
           <>
             <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--s-3)', marginBottom: 'var(--s-4)' }}>
@@ -441,7 +482,8 @@ export default function ExchangesPage() {
                     className="tag a"
                     style={{ cursor: canTransition ? 'pointer' : 'not-allowed', border: 'none' }}
                     disabled={!canTransition || transitionMutation.isPending}
-                    onClick={() => transitionMutation.mutate({ id: selected.id, action, reason })}
+                    aria-expanded={action === 'opposer' ? opposing : undefined}
+                    onClick={() => (action === 'opposer' ? setOpposing(true) : transitionMutation.mutate({ id: selected.id, action, reason }))}
                   >
                     {t(`exchanges.action.${action}` as TranslationKey)}
                   </button>
@@ -450,12 +492,65 @@ export default function ExchangesPage() {
                   <span style={{ color: 'var(--ink-3)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.action.none')}</span>
                 ) : null}
               </div>
+
+              {opposing && canTransition && RECOURS_ALLOWED_ACTIONS[selected.state].includes('opposer') ? (
+                <div
+                  role="group"
+                  aria-label={t('exchanges.action.opposer')}
+                  style={{ marginTop: 'var(--s-3)', padding: 'var(--s-3)', border: '1px solid var(--rule)', borderRadius: 'var(--k-r-s)', display: 'flex', flexDirection: 'column', gap: 'var(--s-3)' }}
+                >
+                  {motifsQuery.isLoading ? (
+                    <p style={{ margin: 0 }}>{t('common.loading')}</p>
+                  ) : hasAdmittedMotifs ? (
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
+                      {t('exchanges.opposition.motif.label')}
+                      <select
+                        required
+                        value={reasonCode}
+                        onChange={(e) => setReasonCode(e.target.value)}
+                        style={{ font: 'inherit', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', padding: '6px 10px', background: 'var(--paper)', color: 'var(--ink)' }}
+                      >
+                        <option value="" disabled>
+                          {t('exchanges.opposition.motif.placeholder')}
+                        </option>
+                        {motifs.map((m) => (
+                          <option key={m.code} value={m.code} disabled={m.forbidden}>
+                            {m.forbidden ? `${m.label} — ${t('referential.oppositionMotifs.forbidden')}` : m.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : (
+                    <>
+                      <p style={{ margin: 0, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>{t('exchanges.opposition.noCatalog')}</p>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 'var(--k-fs-s)', color: 'var(--ink)' }}>
+                        <input type="checkbox" required checked={attested} onChange={(e) => setAttested(e.target.checked)} />
+                        <span>{t('exchanges.opposition.attest')}</span>
+                      </label>
+                    </>
+                  )}
+                  <div style={{ display: 'flex', gap: 'var(--s-2)', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className="tag a"
+                      style={{ border: 'none', cursor: 'pointer' }}
+                      disabled={transitionMutation.isPending || motifsQuery.isLoading || (hasAdmittedMotifs ? !reasonCode : !attested)}
+                      onClick={() => transitionMutation.mutate({ id: selected.id, action: 'opposer', reason, reasonCode: hasAdmittedMotifs ? reasonCode : undefined })}
+                    >
+                      {t('exchanges.opposition.confirm')}
+                    </button>
+                    <button type="button" className="tag a" style={{ border: 'none', cursor: 'pointer' }} onClick={resetOpposition}>
+                      {t('common.cancel')}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div>
               <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.timeline')}</strong>
               <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {buildTimeline(selected).map((entry) => (
+                {buildTimeline(selected, motifLabels).map((entry) => (
                   <li key={entry.key} style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
                       <strong style={{ color: 'var(--ink)' }}>{t(entry.label)}</strong>

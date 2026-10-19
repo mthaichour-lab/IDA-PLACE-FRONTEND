@@ -14,6 +14,7 @@ const ME: MeResponse = {
 const CALENDAR: PlaceCalendar = {
   weekendDays: ['FRIDAY', 'SATURDAY'],
   fixedHolidays: [{ date: '2026-11-01', label: 'Anniversaire du déclenchement de la guerre de libération nationale' }],
+  holidays: [],
 };
 
 /**

@@ -3,6 +3,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
+import { CalendarSection } from '@/components/referential/CalendarSection';
+import { LabeledInput, LabeledSelect } from '@/components/referential/fields';
+import { IrsamSection } from '@/components/referential/IrsamSection';
+import { MotifsSection } from '@/components/referential/MotifsSection';
+import { PopulationSection } from '@/components/referential/PopulationSection';
 import { CoChip } from '@/components/ui/CoChip';
 import { Modal } from '@/components/ui/Modal';
 import { Table, Column } from '@/components/ui/Table';
@@ -12,23 +17,11 @@ import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { apiGet, apiPost, apiPut } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
-import {
-  AgencyView,
-  CompanyKind,
-  CompanyStatus,
-  CompanyView,
-  ConventionParams,
-  EligibilityMotif,
-  ExpertView,
-  FeedMode,
-  Paginated,
-  PlaceCalendar,
-  PublicHoliday,
-} from '@/lib/types';
+import { AgencyView, CompanyKind, CompanyStatus, CompanyView, ConventionParams, EligibilityMotif, ExpertView, FeedMode, Paginated } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 
-type SectionKey = 'companies' | 'agencies' | 'experts' | 'convention' | 'calendar' | 'motifs';
+type SectionKey = 'companies' | 'agencies' | 'experts' | 'convention' | 'calendar' | 'motifs' | 'population' | 'irsam';
 
 function statusTone(status: string): TagTone {
   if (status === 'ACTIF') return 'ok';
@@ -89,8 +82,12 @@ function toFormBody(f: CompanyForm) {
  * reconstruit sur la capture de référence du guide illustré. Branché sur
  * l'API réelle du back-end (`GET /referential/companies|agencies|experts|
  * convention|calendar|motifs`) via TanStack Query — voir HANDOFF.md pour
- * les écarts assumés avec la capture (taxonomie "17 cas/RG-01" des motifs,
- * jours fériés mobiles, "performance" des experts).
+ * les écarts assumés avec la capture ("performance" des experts).
+ *
+ * Décisions PO §1 à §4 (2026-10-18) : « Barème & motifs » en trois blocs,
+ * fériés mobiles dans « Calendrier ouvré », sections « Populations de
+ * référence » et « Référence IRSAM ». Saisie : privilège `params` ;
+ * validation UAR : `validateRef` (le backend renvoie 409 « quatre yeux »).
  */
 export default function ReferentialPage() {
   const { t, locale } = useI18n();
@@ -102,8 +99,6 @@ export default function ReferentialPage() {
   const [companiesPage, setCompaniesPage] = useState(1);
   const [agenciesPage, setAgenciesPage] = useState(1);
   const [expertsPage, setExpertsPage] = useState(1);
-  const [holidaysPage, setHolidaysPage] = useState(1);
-  const [motifsPage, setMotifsPage] = useState(1);
 
   const [editCompany, setEditCompany] = useState<CompanyView | null>(null);
   const [editForm, setEditForm] = useState<CompanyForm>(EMPTY_FORM);
@@ -134,11 +129,6 @@ export default function ReferentialPage() {
   const conventionQuery = useQuery({
     queryKey: ['referential', 'convention'],
     queryFn: () => apiGet<ConventionParams>('/referential/convention'),
-  });
-
-  const calendarQuery = useQuery({
-    queryKey: ['referential', 'calendar'],
-    queryFn: () => apiGet<PlaceCalendar>('/referential/calendar'),
   });
 
   const motifsQuery = useQuery({
@@ -224,6 +214,18 @@ export default function ReferentialPage() {
       title: t('referential.nav.motifs.title'),
       subtitle: `${motifsQuery.data?.length ?? '…'} ${t('referential.nav.motifs.unit')} · ${t('referential.nav.motifs.subtitleSuffix')}`,
     },
+    {
+      key: 'population',
+      mono: 'PO',
+      title: t('referential.nav.population.title'),
+      subtitle: t('referential.nav.population.subtitleSuffix'),
+    },
+    {
+      key: 'irsam',
+      mono: 'IR',
+      title: t('referential.nav.irsam.title'),
+      subtitle: t('referential.nav.irsam.subtitleSuffix'),
+    },
   ];
 
   return (
@@ -278,9 +280,13 @@ export default function ReferentialPage() {
         ) : section === 'convention' ? (
           <ConventionPanel query={conventionQuery} />
         ) : section === 'calendar' ? (
-          <CalendarPanel query={calendarQuery} page={holidaysPage} onPageChange={setHolidaysPage} />
+          <CalendarSection />
+        ) : section === 'motifs' ? (
+          <MotifsSection eligibilityQuery={motifsQuery} />
+        ) : section === 'population' ? (
+          <PopulationSection />
         ) : (
-          <MotifsPanel query={motifsQuery} page={motifsPage} onPageChange={setMotifsPage} />
+          <IrsamSection />
         )}
       </div>
 
@@ -569,91 +575,6 @@ function ConventionPanel({ query }: { query: ReturnType<typeof useQuery<Conventi
   );
 }
 
-/* ===================== Calendrier ouvré ===================== */
-
-function CalendarPanel({ query, page, onPageChange }: { query: ReturnType<typeof useQuery<PlaceCalendar>>; page: number; onPageChange: (p: number) => void }) {
-  const { t, locale } = useI18n();
-
-  const holidays = query.data?.fixedHolidays ?? [];
-  const pageRows = holidays.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  const columns: Column<PublicHoliday>[] = [
-    { key: 'date', header: t('referential.calendar.col.date'), render: (r) => new Date(r.date).toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' }) },
-    { key: 'label', header: t('referential.calendar.col.label'), render: (r) => r.label },
-  ];
-
-  return (
-    <div className="sheet">
-      <div className="sheet-head">
-        <span>{t('referential.nav.calendar.title')}</span>
-      </div>
-      <div className="sheet-body">
-        {query.isLoading ? (
-          <p>{t('common.loading')}</p>
-        ) : query.error || !query.data ? (
-          <div className="note ko" role="alert">
-            <span>{t('common.error')}</span>
-            <button type="button" onClick={() => query.refetch()}>
-              {t('common.retry')}
-            </button>
-          </div>
-        ) : (
-          <>
-            <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('referential.calendar.weekend.title')}</strong>
-            <p style={{ marginTop: 0, marginBottom: 'var(--s-4)' }}>
-              {query.data.weekendDays.map((d) => t(`referential.calendar.day.${d}` as TranslationKey)).join(' – ')}
-            </p>
-
-            <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('referential.calendar.holidays.title')}</strong>
-            <Table columns={columns} rows={pageRows} page={page} total={holidays.length} pageSize={PAGE_SIZE} onPageChange={onPageChange} getRowKey={(r) => r.date} />
-
-            <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginTop: 'var(--s-3)' }}>{t('referential.calendar.mobileNote')}</p>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ===================== Barème & motifs ===================== */
-
-function MotifsPanel({ query, page, onPageChange }: { query: ReturnType<typeof useQuery<EligibilityMotif[]>>; page: number; onPageChange: (p: number) => void }) {
-  const { t } = useI18n();
-
-  const motifs = query.data ?? [];
-  const pageRows = motifs.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  const columns: Column<EligibilityMotif>[] = [
-    { key: 'article', header: t('referential.motifs.col.article'), render: (r) => <span className="mono">{r.article}</span> },
-    { key: 'label', header: t('referential.motifs.col.label'), render: (r) => r.label },
-  ];
-
-  return (
-    <div className="sheet">
-      <div className="sheet-head">
-        <span>{t('referential.nav.motifs.title')}</span>
-      </div>
-      <div className="sheet-body">
-        {query.isLoading ? (
-          <p>{t('common.loading')}</p>
-        ) : query.error || !query.data ? (
-          <div className="note ko" role="alert">
-            <span>{t('common.error')}</span>
-            <button type="button" onClick={() => query.refetch()}>
-              {t('common.retry')}
-            </button>
-          </div>
-        ) : (
-          <>
-            <Table columns={columns} rows={pageRows} page={page} total={motifs.length} pageSize={PAGE_SIZE} onPageChange={onPageChange} getRowKey={(r) => `${r.article}-${r.label}`} />
-            <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginTop: 'var(--s-3)' }}>{t('referential.motifs.note')}</p>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
 /* ===================== Utilitaires partagés ===================== */
 
 function Pager({ page, total, pageSize, onPageChange, t }: { page: number; total: number; pageSize: number; onPageChange: (p: number) => void; t: (k: TranslationKey) => string }) {
@@ -681,38 +602,5 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <dt style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>{label}</dt>
       <dd style={{ margin: 0 }}>{children}</dd>
     </div>
-  );
-}
-
-function LabeledInput({ label, value, onChange, type = 'text' }: { label: string; value: string; onChange: (v: string) => void; type?: string }) {
-  return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
-      {label}
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{ padding: '6px 10px', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', font: 'inherit', background: 'var(--paper)', color: 'var(--ink)' }}
-      />
-    </label>
-  );
-}
-
-function LabeledSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: string[] }) {
-  return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
-      {label}
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{ font: 'inherit', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', padding: '6px 10px', background: 'var(--paper)', color: 'var(--ink)' }}
-      >
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
-      </select>
-    </label>
   );
 }

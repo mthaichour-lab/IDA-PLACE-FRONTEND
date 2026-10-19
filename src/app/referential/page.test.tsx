@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { mockFetchRouter, renderWithProviders } from '@/test/render';
-import { CompanyView, ConventionParams, EligibilityMotif, MeResponse, PlaceCalendar } from '@/lib/types';
+import { CompanyView, ConstatCircumstance, ConventionParams, EligibilityMotif, MeResponse, OppositionMotif, PlaceCalendar } from '@/lib/types';
 import ReferentialPage from './page';
 
 function company(i: number, overrides: Partial<CompanyView> = {}): CompanyView {
@@ -29,11 +29,17 @@ const CONVENTION: ConventionParams = {
   maxAmountDA: 500_000,
 };
 
+const YEAR = new Date().getUTCFullYear();
+
 const CALENDAR: PlaceCalendar = {
   weekendDays: ['FRIDAY', 'SATURDAY'],
   fixedHolidays: [
-    { date: '2026-01-01', label: "Jour de l'an" },
-    { date: '2026-05-01', label: 'Fête du travail' },
+    { date: `${YEAR}-01-01`, label: "Jour de l'an" },
+    { date: `${YEAR}-05-01`, label: 'Fête du travail' },
+  ],
+  holidays: [
+    { date: `${YEAR}-01-01`, label: "Jour de l'an", type: 'FIXE', status: 'LEGAL' },
+    { date: `${YEAR}-05-01`, label: 'Fête du travail', type: 'FIXE', status: 'LEGAL' },
   ],
 };
 
@@ -41,6 +47,25 @@ const MOTIFS: EligibilityMotif[] = [
   { article: 'Art. 4', label: 'Nombre de véhicules impliqués ≠ 2' },
   { article: 'Art. 3', label: 'Territoire hors Algérie' },
 ];
+
+const CIRCUMSTANCES: ConstatCircumstance[] = Array.from({ length: 17 }, (_, i) => ({
+  number: i + 1,
+  labelFr: i === 0 ? "en stationnement / à l'arrêt" : `circonstance ${i + 1}`,
+  status: 'STANDARD_A_CONFIRMER',
+  createdBy: 'system:seed',
+}));
+
+const NON_DECLARATION: OppositionMotif = {
+  code: 'NON_DECLARATION',
+  label: 'Non-déclaration du sinistre',
+  forbidden: true,
+  sourceRef: 'Guide pédagogique UAR, diapo 10 (Art. 10)',
+  status: 'SAISI',
+  createdBy: 'system:seed',
+  createdAt: '2026-10-18T00:00:00.000Z',
+};
+
+const OPPOSITION_MOTIFS: OppositionMotif[] = [NON_DECLARATION];
 
 const ME_OPERATEUR: MeResponse = {
   user: { id: 'dev-op', name: 'Opérateur Place (dev)', email: 'operateur@finlab.dz' },
@@ -63,6 +88,9 @@ function baseRouter(overrides: Partial<Record<string, unknown>> = {}) {
     if (pathname === '/api/v1/referential/convention') return overrides.convention ?? CONVENTION;
     if (pathname === '/api/v1/referential/calendar') return overrides.calendar ?? CALENDAR;
     if (pathname === '/api/v1/referential/motifs') return overrides.motifs ?? MOTIFS;
+    if (pathname === '/api/v1/referential/mobile-holidays') return overrides.mobileHolidays ?? [];
+    if (pathname === '/api/v1/referential/constat-circumstances') return overrides.circumstances ?? CIRCUMSTANCES;
+    if (pathname === '/api/v1/referential/opposition-motifs') return overrides.oppositionMotifs ?? OPPOSITION_MOTIFS;
     return undefined;
   };
 }
@@ -182,7 +210,7 @@ describe('Écran Référentiel de place (/referential)', () => {
     expect(screen.getByText(/vendredi/i)).toBeInTheDocument();
     expect(screen.getByText(/samedi/i)).toBeInTheDocument();
     expect(screen.getByText('Fête du travail')).toBeInTheDocument();
-    expect(screen.getByText(/observation lunaire/i)).toBeInTheDocument();
+    expect(screen.getByText(/aucune conversion hégirienne automatique/i)).toBeInTheDocument();
   });
 
   it("affiche le catalogue réel des motifs d'inéligibilité (sans code/compte inventé)", async () => {

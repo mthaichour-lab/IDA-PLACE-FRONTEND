@@ -66,6 +66,11 @@ export async function apiPut<T>(path: string, body?: unknown): Promise<T> {
   return handle<T>(res);
 }
 
+export async function apiDelete<T>(path: string): Promise<T> {
+  const res = await fetch(buildUrl(path), { method: 'DELETE', headers: devHeaders() });
+  return handle<T>(res);
+}
+
 /**
  * POST multipart/form-data (ex: `POST /claims/import`, champ `file`) — pas
  * de `Content-Type` manuel : le navigateur fixe le boundary lui-même.

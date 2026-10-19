@@ -1,22 +1,25 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
 import { BarChart } from '@/components/ui/BarChart';
 import { Kpi, KpiRow } from '@/components/ui/Kpi';
 import { Tabs } from '@/components/ui/Tabs';
-import { Tile, TileGrid } from '@/components/ui/TileGrid';
+import { POPULATION_SOURCE_LABELS } from '@/components/referential/labels';
+import { Tile, TileGrid, UNAVAILABLE_BACKGROUND } from '@/components/ui/TileGrid';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { apiGet } from '@/lib/api-client';
-import { MonthlyActivity, StatsSummary, WilayaStat } from '@/lib/types';
+import { currentUtcYear, formatIsoDay } from '@/lib/iso-date';
+import { MonthlyActivity, StatsSummary, WilayaPopulation, WilayaStat } from '@/lib/types';
 
-type MeasureKey = 'declarations' | 'montants';
+type MeasureKey = 'declarations' | 'montants' | 'per100k';
 
 const MEASURES: { key: MeasureKey; label: TranslationKey }[] = [
   { key: 'declarations', label: 'stats.measure.declarations' },
   { key: 'montants', label: 'stats.measure.montants' },
+  { key: 'per100k', label: 'stats.measure.per100k' },
 ];
 
 const MONTHLY_SERIES: { key: keyof Pick<MonthlyActivity, 'declarations' | 'annexes2' | 'oppositions' | 'indemnises'>; label: TranslationKey }[] = [
@@ -40,9 +43,24 @@ function formatDzd(amount: number, locale: string): string {
   }
 }
 
+function measureValue(w: WilayaStat, measure: MeasureKey): number | null {
+  return measure === 'per100k' ? w.per100k : w[measure];
+}
+
+/** Ligne « vs IRSAM » du KPI délai moyen — jamais de valeur en dur : seule une référence validée UAR est comparée (décision PO §4). */
+function irsamExtra(summary: StatsSummary, t: (k: TranslationKey) => string, locale: string): string {
+  const ref = summary.irsam;
+  if (!ref) return t(summary.irsamStatus === 'EN_ATTENTE_VALIDATION' ? 'stats.kpi.irsam.pending' : 'stats.kpi.irsam.notSet');
+  const parts = [`${t('stats.kpi.irsam.vs')} ${ref.value} j (${formatIsoDay(ref.periodFrom, locale, 'short')} – ${formatIsoDay(ref.periodTo, locale, 'short')}, ${ref.sourceRef})`];
+  if (ref.deltaDays !== null) parts.push(`${t('stats.kpi.irsam.delta')} ${ref.deltaDays > 0 ? '+' : ''}${ref.deltaDays} j`);
+  return parts.join(' · ');
+}
+
 export default function StatsPage() {
   const { t, locale } = useI18n();
   const [measure, setMeasure] = useState<MeasureKey>('declarations');
+  /** Année étudiée — '' = toutes les années (le back ne calcule alors pas `per100k`). */
+  const [year, setYear] = useState('');
 
   const summaryQuery = useQuery({
     queryKey: ['stats', 'summary'],
@@ -50,8 +68,8 @@ export default function StatsPage() {
   });
 
   const wilayasQuery = useQuery({
-    queryKey: ['stats', 'wilayas'],
-    queryFn: () => apiGet<WilayaStat[]>('/stats/wilayas'),
+    queryKey: ['stats', 'wilayas', year],
+    queryFn: () => apiGet<WilayaStat[]>('/stats/wilayas', { year: year || undefined }),
   });
 
   const monthlyQuery = useQuery({
@@ -59,28 +77,66 @@ export default function StatsPage() {
     queryFn: () => apiGet<MonthlyActivity[]>('/stats/monthly'),
   });
 
+  // Populations de référence (écran 12) : sans aucune population valide, la mesure « Pour 100 000 hab. » est désactivée.
+  const populationsQuery = useQuery({
+    queryKey: ['referential', 'wilaya-populations'],
+    queryFn: () => apiGet<WilayaPopulation[]>('/referential/wilaya-populations'),
+  });
+
   const wilayas = wilayasQuery.data ?? [];
+  const monthly = monthlyQuery.data ?? [];
+  const summary = summaryQuery.data;
+
+  const hasPopulation = (populationsQuery.data ?? []).some((p) => p.valid);
+  const per100kDisabledReason = !hasPopulation ? t('stats.per100k.disabled.noPopulation') : !year ? t('stats.per100k.disabled.noYear') : null;
+  const activeMeasure: MeasureKey = measure === 'per100k' && per100kDisabledReason ? 'declarations' : measure;
+
+  // Année courante lue après le montage seulement : la page est pré-rendue au
+  // build, une année calculée au rendu pourrait différer à l'hydratation.
+  const [thisYear, setThisYear] = useState<number | null>(null);
+  useEffect(() => setThisYear(currentUtcYear()), []);
+
+  const yearOptions = useMemo(() => {
+    const years = new Set<number>(monthly.map((m) => Number(m.month.slice(0, 4))).filter((y) => Number.isInteger(y) && y > 0));
+    if (thisYear !== null) years.add(thisYear);
+    return [...years].sort((a, b) => b - a);
+  }, [monthly, thisYear]);
 
   // Intensité de tuile (0..1) : simple normalisation d'affichage par rapport
   // au maximum de la mesure sélectionnée — aucune règle métier, juste une
-  // échelle de couleur (même esprit que ScoreBar).
+  // échelle de couleur (même esprit que ScoreBar). Une wilaya sans valeur
+  // (`per100k` null) est hachurée « n.d. » et exclue de l'échelle.
   const tiles: Tile[] = useMemo(() => {
-    const max = Math.max(1, ...wilayas.map((w) => w[measure]));
-    return wilayas.map((w) => ({
-      key: w.code,
-      code: w.code,
-      label: w.name,
-      value: w[measure],
-      col: w.col,
-      row: w.row,
-      intensity: w[measure] / max,
-    }));
-  }, [wilayas, measure]);
+    const max = Math.max(1, ...wilayas.map((w) => measureValue(w, activeMeasure) ?? 0));
+    return wilayas.map((w) => {
+      const value = measureValue(w, activeMeasure);
+      const base = { key: w.code, code: w.code, label: w.name, col: w.col, row: w.row };
+      if (value === null) {
+        return { ...base, unavailable: true, unavailableLabel: t('stats.per100k.nd'), title: `${w.code} — ${w.name} : ${t('stats.per100k.nd')} — ${t('stats.per100k.missing')}` };
+      }
+      const ref = activeMeasure === 'per100k' ? w.populationRef : null;
+      return {
+        ...base,
+        value,
+        intensity: value / max,
+        title: ref
+          ? `${w.code} — ${w.name} : ${value} · ${t('stats.per100k.tooltip.population')} ${ref.population.toLocaleString(locale)} (${t(POPULATION_SOURCE_LABELS[ref.sourceType])} ${ref.referenceYear}, ${ref.sourceRef})`
+          : undefined,
+      };
+    });
+  }, [wilayas, activeMeasure, t, locale]);
 
-  const topWilayas = useMemo(() => [...wilayas].filter((w) => w[measure] > 0).sort((a, b) => b[measure] - a[measure]).slice(0, TOP_WILAYAS_COUNT), [wilayas, measure]);
+  const missingPopulationCount = activeMeasure === 'per100k' ? wilayas.filter((w) => w.per100k === null).length : 0;
 
-  const monthly = monthlyQuery.data ?? [];
-  const summary = summaryQuery.data;
+  const topWilayas = useMemo(
+    () =>
+      wilayas
+        .map((w) => ({ w, value: measureValue(w, activeMeasure) }))
+        .filter((x): x is { w: WilayaStat; value: number } => x.value !== null && x.value > 0)
+        .sort((a, b) => b.value - a.value)
+        .slice(0, TOP_WILAYAS_COUNT),
+    [wilayas, activeMeasure],
+  );
 
   return (
     <>
@@ -103,6 +159,12 @@ export default function StatsPage() {
           <Kpi
             value={summary.avgSettlementDays === null ? t('stats.kpi.avgSettlementDays.unavailable') : `${summary.avgSettlementDays} j`}
             label={t('stats.kpi.avgSettlementDays')}
+            extra={irsamExtra(summary, t, locale)}
+            title={
+              summary.irsam
+                ? `${t('stats.kpi.avgSettlementDays.definition')} ${t('stats.kpi.irsam.vs')} ${summary.irsam.measureDefinition.startEvent} → ${summary.irsam.measureDefinition.endEvent} · ${summary.irsam.measureDefinition.scope}`
+                : t('stats.kpi.avgSettlementDays.definition')
+            }
           />
         </KpiRow>
       )}
@@ -111,9 +173,33 @@ export default function StatsPage() {
         <div className="sheet">
           <div className="sheet-head">
             <span>{t('stats.map.title')}</span>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
+              {t('stats.year.label')}
+              <select
+                value={year}
+                onChange={(e) => setYear(e.target.value)}
+                style={{ font: 'inherit', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', padding: '4px 8px', background: 'var(--paper)', color: 'var(--ink)' }}
+              >
+                <option value="">{t('stats.year.all')}</option>
+                {yearOptions.map((y) => (
+                  <option key={y} value={String(y)}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           <div className="sheet-body">
-            <Tabs items={MEASURES.map((m) => ({ key: m.key, label: t(m.label) }))} activeKey={measure} onChange={(k) => setMeasure(k as MeasureKey)} />
+            <Tabs
+              items={MEASURES.map((m) => ({
+                key: m.key,
+                label: t(m.label),
+                ...(m.key === 'per100k' && per100kDisabledReason ? { disabled: true, title: per100kDisabledReason } : {}),
+              }))}
+              activeKey={activeMeasure}
+              onChange={(k) => setMeasure(k as MeasureKey)}
+            />
+            {per100kDisabledReason ? <p style={{ marginTop: 0, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}>{per100kDisabledReason}</p> : null}
 
             {wilayasQuery.isLoading ? (
               <p>{t('common.loading')}</p>
@@ -122,7 +208,15 @@ export default function StatsPage() {
                 <span>{t('stats.empty')}</span>
               </div>
             ) : (
-              <TileGrid tiles={tiles} cols={13} />
+              <>
+                <TileGrid tiles={tiles} cols={13} />
+                {activeMeasure === 'per100k' ? (
+                  <p style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', marginBottom: 0 }}>
+                    <span aria-hidden="true" style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 2, border: '1px solid var(--rule)', background: UNAVAILABLE_BACKGROUND }} />
+                    {`${missingPopulationCount}/${wilayas.length} ${t('stats.per100k.missing')}`}
+                  </p>
+                ) : null}
+              </>
             )}
           </div>
         </div>
@@ -136,9 +230,9 @@ export default function StatsPage() {
               <p style={{ color: 'var(--ink-3)' }}>{t('stats.empty')}</p>
             ) : (
               <ol style={{ margin: 0, padding: '0 0 0 1.2em', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {topWilayas.map((w) => (
+                {topWilayas.map(({ w, value }) => (
                   <li key={w.code} style={{ fontSize: 'var(--k-fs-s)' }}>
-                    {w.name} <strong className="mono">{w[measure].toLocaleString(locale)}</strong>
+                    {w.name} <strong className="mono">{value.toLocaleString(locale)}</strong>
                   </li>
                 ))}
               </ol>
