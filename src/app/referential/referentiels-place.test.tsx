@@ -198,7 +198,7 @@ describe('Écran 12 — référentiels de place (décisions PO §1 à §4)', () 
       expect(screen.queryByRole('button', { name: 'Valider (UAR)' })).not.toBeInTheDocument();
     });
 
-    it('validateRef : bouton de validation, et le 409 « quatre yeux » s’affiche en toast avec le message du backend', async () => {
+    it('validateRef : bouton de validation, et le 409 « quatre yeux » s’affiche en toast (libellé traduit du code)', async () => {
       const fourEyes = 'Règle des quatre yeux : la validation doit être faite par une autre personne que l’auteur de la saisie.';
       const { writes } = mockReferentialApi({
         me: ME_ADMIN_UAR,
@@ -211,7 +211,8 @@ describe('Écran 12 — référentiels de place (décisions PO §1 à §4)', () 
       expect(within(screen.getByText('circonstance 1').closest('tr')!).queryByRole('button', { name: 'Valider (UAR)' })).not.toBeInTheDocument();
       await user.click(within(row).getByRole('button', { name: 'Valider (UAR)' }));
 
-      expect(await screen.findByText(fourEyes)).toBeInTheDocument();
+      // Code FOUR_EYES : libellé traduit côté interface (lib/error-message.ts).
+      expect(await screen.findByText('Règle des quatre yeux : cette action doit être accomplie par un autre membre que l’auteur.')).toBeInTheDocument();
       expect(writes.map((w) => `${w.method} ${w.pathname}`)).toEqual(['POST /api/v1/referential/constat-circumstances/2/validate']);
     });
 
@@ -471,7 +472,7 @@ describe('Écran 12 — référentiels de place (décisions PO §1 à §4)', () 
       expect(within(archivedRow).queryByRole('button')).not.toBeInTheDocument();
 
       await user.click(within(row).getByRole('button', { name: 'Valider (UAR)' }));
-      expect(await screen.findByText('Règle des quatre yeux (IRSAM).')).toBeInTheDocument();
+      expect(await screen.findByText('Règle des quatre yeux : cette action doit être accomplie par un autre membre que l’auteur.')).toBeInTheDocument();
 
       await user.click(within(row).getByRole('button', { name: 'Archiver' }));
       await waitFor(() => expect(writes).toHaveLength(2));

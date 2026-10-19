@@ -99,7 +99,9 @@ export function BaremeSection() {
   });
 
   const versionTransition = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: 'validate' | 'archive' }) => apiPost<BaremeVersion>(apiPath`/referential/bareme-versions/${id}/${action}`),
+    // SEC-30 : la validation porte la révision lue (409 REVISION_PERIMEE si la version a changé depuis).
+    mutationFn: ({ id, action, revision }: { id: string; action: 'validate' | 'archive'; revision?: number }) =>
+      apiPost<BaremeVersion>(apiPath`/referential/bareme-versions/${id}/${action}`, action === 'validate' && revision !== undefined ? { revision } : undefined),
     onSuccess: (_v, { action }) => {
       refreshVersions();
       toast(t(action === 'validate' ? 'referential.toast.validated' : 'referential.toast.saved'), 'ok');
@@ -145,7 +147,8 @@ export function BaremeSection() {
   });
 
   const validateCategory = useMutation({
-    mutationFn: (code: string) => apiPost<VehicleCategory>(apiPath`/referential/vehicle-categories/${code}/validate`),
+    mutationFn: ({ code, revision }: { code: string; revision?: number }) =>
+      apiPost<VehicleCategory>(apiPath`/referential/vehicle-categories/${code}/validate`, revision !== undefined ? { revision } : undefined),
     onSuccess: () => {
       refreshCategories();
       toast(t('referential.toast.validated'), 'ok');
@@ -176,7 +179,7 @@ export function BaremeSection() {
             </RowAction>
           ) : null}
           {canValidate && r.status === 'BROUILLON' ? (
-            <RowAction disabled={versionTransition.isPending} onClick={() => versionTransition.mutate({ id: r.id, action: 'validate' })}>
+            <RowAction disabled={versionTransition.isPending} onClick={() => versionTransition.mutate({ id: r.id, action: 'validate', revision: r.revision })}>
               {t('referential.action.validate')}
             </RowAction>
           ) : null}
@@ -240,7 +243,7 @@ export function BaremeSection() {
             </RowAction>
           ) : null}
           {canValidate && r.status !== 'VALIDE_UAR' ? (
-            <RowAction disabled={validateCategory.isPending} onClick={() => validateCategory.mutate(r.code)}>
+            <RowAction disabled={validateCategory.isPending} onClick={() => validateCategory.mutate({ code: r.code, revision: r.revision })}>
               {t('referential.action.validate')}
             </RowAction>
           ) : null}

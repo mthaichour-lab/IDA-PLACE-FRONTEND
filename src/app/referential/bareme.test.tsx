@@ -176,7 +176,8 @@ describe('Écran 12 — Barème Art. 14 (décision PO §5)', () => {
 
     const draftRow = (await screen.findByText('Barème UAR 2026')).closest('tr')!;
     await user.click(within(draftRow).getByRole('button', { name: 'Valider (UAR)' }));
-    expect(await screen.findByText(fourEyes)).toBeInTheDocument();
+    // Code FOUR_EYES : libellé traduit côté interface (lib/error-message.ts), le texte serveur n'est qu'un repli.
+    expect(await screen.findByText('Règle des quatre yeux : cette action doit être accomplie par un autre membre que l’auteur.')).toBeInTheDocument();
 
     const validRow = screen.getByText('Barème UAR 2025').closest('tr')!;
     expect(within(validRow).queryByRole('button', { name: 'Valider (UAR)' })).not.toBeInTheDocument();

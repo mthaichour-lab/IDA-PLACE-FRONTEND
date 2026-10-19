@@ -93,8 +93,9 @@ export function CalendarSection() {
   });
 
   const confirmHoliday = useMutation({
-    mutationFn: ({ id, sourceRef, date }: { id: string; sourceRef: string; date: string }) =>
-      apiPost<MobileHoliday>(apiPath`/referential/mobile-holidays/${id}/confirm`, { sourceRef: sourceRef.trim(), date: date || undefined }),
+    // SEC-30 : révision lue renvoyée ; la confirmation par l'auteur du férié est refusée (409 FOUR_EYES, message traduit).
+    mutationFn: ({ id, sourceRef, date, revision }: { id: string; sourceRef: string; date: string; revision?: number }) =>
+      apiPost<MobileHoliday>(apiPath`/referential/mobile-holidays/${id}/confirm`, { sourceRef: sourceRef.trim(), date: date || undefined, revision }),
     onSuccess: () => {
       refresh();
       toast(t('referential.calendar.mobile.toast.confirmed'), 'ok');
@@ -272,7 +273,7 @@ export function CalendarSection() {
         footer={
           <PrimaryButton
             disabled={confirmHoliday.isPending || !confirmForm.sourceRef.trim()}
-            onClick={() => confirmTarget && confirmHoliday.mutate({ id: confirmTarget.id, ...confirmForm })}
+            onClick={() => confirmTarget && confirmHoliday.mutate({ id: confirmTarget.id, ...confirmForm, revision: confirmTarget.revision })}
           >
             {t('referential.calendar.mobile.confirm')}
           </PrimaryButton>

@@ -72,7 +72,9 @@ export function MotifsSection({ eligibilityQuery }: { eligibilityQuery: ReturnTy
   });
 
   const validateCircumstance = useMutation({
-    mutationFn: (number: number) => apiPost<ConstatCircumstance>(apiPath`/referential/constat-circumstances/${number}/validate`),
+    // SEC-30 : révision lue renvoyée (409 REVISION_PERIMEE si le libellé a changé depuis).
+    mutationFn: ({ number, revision }: { number: number; revision?: number }) =>
+      apiPost<ConstatCircumstance>(apiPath`/referential/constat-circumstances/${number}/validate`, revision !== undefined ? { revision } : undefined),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['referential', 'constat-circumstances'] });
       toast(t('referential.toast.validated'), 'ok');
@@ -94,7 +96,8 @@ export function MotifsSection({ eligibilityQuery }: { eligibilityQuery: ReturnTy
   });
 
   const validateMotif = useMutation({
-    mutationFn: (code: string) => apiPost<OppositionMotif>(apiPath`/referential/opposition-motifs/${code}/validate`),
+    mutationFn: ({ code, revision }: { code: string; revision?: number }) =>
+      apiPost<OppositionMotif>(apiPath`/referential/opposition-motifs/${code}/validate`, revision !== undefined ? { revision } : undefined),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['referential', 'opposition-motifs'] });
       toast(t('referential.toast.validated'), 'ok');
@@ -134,7 +137,7 @@ export function MotifsSection({ eligibilityQuery }: { eligibilityQuery: ReturnTy
             </RowAction>
           ) : null}
           {canValidate && r.status !== 'VALIDE_UAR' ? (
-            <RowAction disabled={validateCircumstance.isPending} onClick={() => validateCircumstance.mutate(r.number)}>
+            <RowAction disabled={validateCircumstance.isPending} onClick={() => validateCircumstance.mutate({ number: r.number, revision: r.revision })}>
               {t('referential.action.validate')}
             </RowAction>
           ) : null}
@@ -171,7 +174,7 @@ export function MotifsSection({ eligibilityQuery }: { eligibilityQuery: ReturnTy
             </RowAction>
           ) : null}
           {canValidate && r.status !== 'VALIDE_UAR' ? (
-            <RowAction disabled={validateMotif.isPending} onClick={() => validateMotif.mutate(r.code)}>
+            <RowAction disabled={validateMotif.isPending} onClick={() => validateMotif.mutate({ code: r.code, revision: r.revision })}>
               {t('referential.action.validate')}
             </RowAction>
           ) : null}

@@ -5,7 +5,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
 import { BaremeSection } from '@/components/referential/BaremeSection';
 import { CalendarSection } from '@/components/referential/CalendarSection';
-import { LabeledInput, LabeledSelect } from '@/components/referential/fields';
+import { apiErrorMessage, LabeledInput, LabeledSelect } from '@/components/referential/fields';
+import { GovernancePanel } from '@/components/referential/GovernancePanel';
 import { IrsamSection } from '@/components/referential/IrsamSection';
 import { MotifsSection } from '@/components/referential/MotifsSection';
 import { PopulationSection } from '@/components/referential/PopulationSection';
@@ -18,7 +19,8 @@ import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { apiGet, apiPath, apiPost, apiPut } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
-import { AgencyView, CompanyKind, CompanyStatus, CompanyView, ConventionParams, EligibilityMotif, ExpertView, FeedMode, Paginated } from '@/lib/types';
+import { isCompanyActor } from '@/lib/recours-actions';
+import { AgencyView, CompanyKind, CompanyListItem, CompanyStatus, CompanyView, ConventionParams, EligibilityMotif, ExpertView, FeedMode, Paginated } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 
@@ -62,6 +64,7 @@ const EMPTY_FORM: CompanyForm = {
   correspondentEmail: '',
 };
 
+/** Création (`POST /referential/companies`, privilège `onboardCompany`) : la gouvernance initiale fait partie de la fiche. */
 function toFormBody(f: CompanyForm) {
   return {
     code: f.code,
@@ -71,6 +74,22 @@ function toFormBody(f: CompanyForm) {
     kind: f.kind,
     feedMode: f.feedMode,
     status: f.status,
+    correspondentName: f.correspondentName || undefined,
+    correspondentPhone: f.correspondentPhone || undefined,
+    correspondentEmail: f.correspondentEmail || undefined,
+  };
+}
+
+/**
+ * Mise à jour du PROFIL (`PUT /referential/companies/:id`) — SEC-04 : jamais
+ * `status`, `delayOverrides`, `kind` ni `feedMode` (403 GOUVERNANCE_RESERVEE),
+ * qui passent par une demande de changement de gouvernance (quatre yeux).
+ */
+function toProfileBody(f: CompanyForm) {
+  return {
+    name: f.name,
+    nameAr: f.nameAr || undefined,
+    color: f.color,
     correspondentName: f.correspondentName || undefined,
     correspondentPhone: f.correspondentPhone || undefined,
     correspondentEmail: f.correspondentEmail || undefined,
@@ -94,7 +113,7 @@ function toFormBody(f: CompanyForm) {
 export default function ReferentialPage() {
   const { t, locale } = useI18n();
   const { toast } = useToast();
-  const { hasPrivilege } = useAuth();
+  const { me, hasPrivilege } = useAuth();
   const queryClient = useQueryClient();
 
   const [section, setSection] = useState<SectionKey>('companies');
@@ -102,20 +121,22 @@ export default function ReferentialPage() {
   const [agenciesPage, setAgenciesPage] = useState(1);
   const [expertsPage, setExpertsPage] = useState(1);
 
-  const [editCompany, setEditCompany] = useState<CompanyView | null>(null);
+  const [editCompany, setEditCompany] = useState<CompanyListItem | null>(null);
+  const [governanceCompany, setGovernanceCompany] = useState<CompanyListItem | null>(null);
   const [editForm, setEditForm] = useState<CompanyForm>(EMPTY_FORM);
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState<CompanyForm>(EMPTY_FORM);
 
   const companiesQuery = useQuery({
     queryKey: ['referential', 'companies', companiesPage],
-    queryFn: () => apiGet<Paginated<CompanyView>>('/referential/companies', { page: companiesPage, pageSize: PAGE_SIZE }),
+    // SEC-26 : un rôle compagnie reçoit ses concurrentes en projection publique (identité et statut seulement).
+    queryFn: () => apiGet<Paginated<CompanyListItem>>('/referential/companies', { page: companiesPage, pageSize: PAGE_SIZE }),
   });
 
   // Carte id→compagnie complète (toutes pages confondues) — sert au rattachement compagnie↔agence sur la section Agences (l'API /referential/agencies ne renvoie que `companyId`).
   const companiesMapQuery = useQuery({
     queryKey: ['referential', 'companies', 'all'],
-    queryFn: () => apiGet<Paginated<CompanyView>>('/referential/companies', { page: 1, pageSize: 100 }),
+    queryFn: () => apiGet<Paginated<CompanyListItem>>('/referential/companies', { page: 1, pageSize: 100 }),
   });
 
   const agenciesQuery = useQuery({
@@ -148,17 +169,17 @@ export default function ReferentialPage() {
       setCreateOpen(false);
       setCreateForm(EMPTY_FORM);
     },
-    onError: () => toast(t('referential.company.toast.error'), 'ko'),
+    onError: (err: unknown) => toast(apiErrorMessage(err, t('referential.company.toast.error'), t), 'ko'),
   });
 
   const updateMutation = useMutation({
-    mutationFn: (body: ReturnType<typeof toFormBody>) => apiPut<CompanyView>(apiPath`/referential/companies/${editCompany!.id}`, body),
+    mutationFn: (body: ReturnType<typeof toProfileBody>) => apiPut<CompanyView>(apiPath`/referential/companies/${editCompany!.id}`, body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['referential', 'companies'] });
       toast(t('referential.company.toast.updated'), 'ok');
       setEditCompany(null);
     },
-    onError: () => toast(t('referential.company.toast.error'), 'ko'),
+    onError: (err: unknown) => toast(apiErrorMessage(err, t('referential.company.toast.error'), t), 'ko'),
   });
 
   useEffect(() => {
@@ -169,7 +190,7 @@ export default function ReferentialPage() {
       nameAr: editCompany.nameAr ?? '',
       color: editCompany.color,
       kind: editCompany.kind,
-      feedMode: editCompany.feedMode,
+      feedMode: editCompany.feedMode ?? 'IMPORT',
       status: editCompany.status,
       correspondentName: editCompany.correspondentName ?? '',
       correspondentPhone: editCompany.correspondentPhone ?? '',
@@ -177,7 +198,13 @@ export default function ReferentialPage() {
     });
   }, [editCompany]);
 
-  const canEdit = hasPrivilege('refedit');
+  // B.7 : un rôle compagnie ne modifie que le profil de SA compagnie ; création : privilège `onboardCompany`.
+  const companyActor = isCompanyActor(me);
+  const canEditCompany = (c: CompanyListItem) => hasPrivilege('refedit') && (!companyActor || c.code === me?.company);
+  const canCreate = hasPrivilege('onboardCompany') && !companyActor;
+  // SEC-04 : la gouvernance (demandes, quatre yeux) est consultable par les rôles place.
+  const canSeeGovernance = !!me && !companyActor;
+  const canDecideGovernance = canSeeGovernance && hasPrivilege('validateRef');
 
   const navItems: { key: SectionKey; mono: string; title: string; subtitle: string }[] = [
     {
@@ -274,17 +301,19 @@ export default function ReferentialPage() {
             query={companiesQuery}
             page={companiesPage}
             onPageChange={setCompaniesPage}
-            canEdit={canEdit}
+            canCreate={canCreate}
+            canEdit={canEditCompany}
             onCreate={() => {
               setCreateForm(EMPTY_FORM);
               setCreateOpen(true);
             }}
             onEdit={setEditCompany}
+            onGovernance={canSeeGovernance ? setGovernanceCompany : undefined}
           />
         ) : section === 'agencies' ? (
           <AgenciesPanel query={agenciesQuery} page={agenciesPage} onPageChange={setAgenciesPage} companyById={companyById} />
         ) : section === 'experts' ? (
-          <ExpertsPanel query={expertsQuery} page={expertsPage} onPageChange={setExpertsPage} />
+          <ExpertsPanel query={expertsQuery} page={expertsPage} onPageChange={setExpertsPage} showRib={!companyActor} />
         ) : section === 'convention' ? (
           <ConventionPanel query={conventionQuery} />
         ) : section === 'calendar' ? (
@@ -308,14 +337,22 @@ export default function ReferentialPage() {
           <button
             type="button"
             disabled={updateMutation.isPending}
-            onClick={() => updateMutation.mutate(toFormBody(editForm))}
+            onClick={() => updateMutation.mutate(toProfileBody(editForm))}
             style={{ padding: '8px 16px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--k-pri)', background: 'var(--k-pri)', color: '#fff', font: 'inherit', cursor: 'pointer' }}
           >
             {t('referential.company.field.submit')}
           </button>
         }
       >
-        <CompanyFormFields form={editForm} setForm={setEditForm} t={t} />
+        <CompanyFormFields form={editForm} setForm={setEditForm} t={t} profileOnly />
+      </Modal>
+
+      <Modal
+        open={!!governanceCompany}
+        title={`${t('referential.governance.title')} — ${governanceCompany?.name ?? ''}`}
+        onClose={() => setGovernanceCompany(null)}
+      >
+        {governanceCompany ? <GovernancePanel company={governanceCompany} canDecide={canDecideGovernance} /> : null}
       </Modal>
 
       <Modal
@@ -345,27 +382,35 @@ function CompaniesPanel({
   query,
   page,
   onPageChange,
+  canCreate,
   canEdit,
   onCreate,
   onEdit,
+  onGovernance,
 }: {
-  query: ReturnType<typeof useQuery<Paginated<CompanyView>>>;
+  query: ReturnType<typeof useQuery<Paginated<CompanyListItem>>>;
   page: number;
   onPageChange: (p: number) => void;
-  canEdit: boolean;
+  canCreate: boolean;
+  canEdit: (c: CompanyListItem) => boolean;
   onCreate: () => void;
-  onEdit: (c: CompanyView) => void;
+  onEdit: (c: CompanyListItem) => void;
+  onGovernance?: (c: CompanyListItem) => void;
 }) {
   const { t, locale } = useI18n();
 
-  function metaLine(c: CompanyView): string {
+  /** SEC-26 : projection publique d'une concurrente — date d'adhésion, réseau et correspondant absents. */
+  function metaLine(c: CompanyListItem): string {
     const parts: string[] = [];
     if (c.nameAr) parts.push(c.nameAr);
-    parts.push(`${t('referential.company.card.since')} ${new Date(c.createdAt).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' })}`);
-    parts.push(`${c.agencyCounts.DG} DG`);
-    parts.push(`${c.agencyCounts.DR} DR`);
-    parts.push(`${c.agencyCounts.AG} ${t('referential.company.card.agencies')}`);
+    if (c.createdAt) parts.push(`${t('referential.company.card.since')} ${new Date(c.createdAt).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' })}`);
+    if (c.agencyCounts) {
+      parts.push(`${c.agencyCounts.DG} DG`);
+      parts.push(`${c.agencyCounts.DR} DR`);
+      parts.push(`${c.agencyCounts.AG} ${t('referential.company.card.agencies')}`);
+    }
     if (c.correspondentName) parts.push(`${t('referential.company.card.correspondent')} ${c.correspondentName}`);
+    if (!c.agencyCounts && !c.createdAt) parts.push(t('referential.company.card.public'));
     return parts.join(' · ');
   }
 
@@ -373,7 +418,7 @@ function CompaniesPanel({
     <div className="sheet">
       <div className="sheet-head">
         <span>{t('referential.nav.companies.title')}</span>
-        {canEdit ? (
+        {canCreate ? (
           <button
             type="button"
             onClick={onCreate}
@@ -408,14 +453,25 @@ function CompaniesPanel({
                       </div>
                       <div className="co-card-meta">{metaLine(c)}</div>
                     </div>
-                    <span className="co-card-agencies">{c.agencyCounts.AG} {t('referential.company.card.agenciesBadge')}</span>
-                    {canEdit ? (
+                    <span className="co-card-agencies">{c.agencyCounts ? `${c.agencyCounts.AG} ${t('referential.company.card.agenciesBadge')}` : '—'}</span>
+                    {canEdit(c) ? (
                       <button
                         type="button"
                         onClick={() => onEdit(c)}
+                        aria-label={`${t('referential.company.edit')} ${c.code}`}
                         style={{ border: 'none', background: 'none', font: 'inherit', color: 'var(--ink-2)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
                       >
                         {t('referential.company.edit')}
+                      </button>
+                    ) : null}
+                    {onGovernance ? (
+                      <button
+                        type="button"
+                        onClick={() => onGovernance(c)}
+                        aria-label={`${t('referential.governance.open')} ${c.code}`}
+                        style={{ border: 'none', background: 'none', font: 'inherit', color: 'var(--ink-2)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                      >
+                        {t('referential.governance.open')}
                       </button>
                     ) : null}
                     <Tag tone={statusTone(c.status)}>{statusLabel(c.status, t)}</Tag>
@@ -431,21 +487,34 @@ function CompaniesPanel({
   );
 }
 
-function CompanyFormFields({ form, setForm, t }: { form: CompanyForm; setForm: (f: (prev: CompanyForm) => CompanyForm) => void; t: (k: TranslationKey) => string }) {
+function CompanyFormFields({
+  form,
+  setForm,
+  t,
+  profileOnly = false,
+}: {
+  form: CompanyForm;
+  setForm: (f: (prev: CompanyForm) => CompanyForm) => void;
+  t: (k: TranslationKey) => string;
+  /** SEC-04 : en modification, code et champs de gouvernance en lecture seule (demande de changement dédiée). */
+  profileOnly?: boolean;
+}) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-3)' }}>
-      <LabeledInput label={t('referential.company.field.code')} value={form.code} onChange={(v) => setForm((f) => ({ ...f, code: v.toUpperCase() }))} />
+      <LabeledInput label={t('referential.company.field.code')} value={form.code} disabled={profileOnly} onChange={(v) => setForm((f) => ({ ...f, code: v.toUpperCase() }))} />
       <LabeledInput label={t('referential.company.field.name')} value={form.name} onChange={(v) => setForm((f) => ({ ...f, name: v }))} />
       <LabeledInput label={t('referential.company.field.nameAr')} value={form.nameAr} onChange={(v) => setForm((f) => ({ ...f, nameAr: v }))} />
       <LabeledInput label={t('referential.company.field.color')} value={form.color} onChange={(v) => setForm((f) => ({ ...f, color: v }))} type="color" />
-      <LabeledSelect label={t('referential.company.field.kind')} value={form.kind} onChange={(v) => setForm((f) => ({ ...f, kind: v as CompanyKind }))} options={['INSURER', 'MUTUAL', 'SUBSIDIARY']} />
-      <LabeledSelect label={t('referential.company.field.feedMode')} value={form.feedMode} onChange={(v) => setForm((f) => ({ ...f, feedMode: v as FeedMode }))} options={['ERP', 'ECONSTAT', 'IMPORT', 'API']} />
+      <LabeledSelect label={t('referential.company.field.kind')} value={form.kind} disabled={profileOnly} onChange={(v) => setForm((f) => ({ ...f, kind: v as CompanyKind }))} options={['INSURER', 'MUTUAL', 'SUBSIDIARY']} />
+      <LabeledSelect label={t('referential.company.field.feedMode')} value={form.feedMode} disabled={profileOnly} onChange={(v) => setForm((f) => ({ ...f, feedMode: v as FeedMode }))} options={['ERP', 'ECONSTAT', 'IMPORT', 'API']} />
       <LabeledSelect
         label={t('referential.company.status')}
         value={form.status}
+        disabled={profileOnly}
         onChange={(v) => setForm((f) => ({ ...f, status: v as CompanyStatus }))}
         options={['ACTIF', 'SUSPENDU', 'EN_RETRAIT', 'EXCLU']}
       />
+      {profileOnly ? <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', margin: 0 }}>{t('referential.governance.readonlyHint')}</p> : null}
       <LabeledInput label={t('referential.company.field.correspondentName')} value={form.correspondentName} onChange={(v) => setForm((f) => ({ ...f, correspondentName: v }))} />
       <LabeledInput label={t('referential.company.field.correspondentPhone')} value={form.correspondentPhone} onChange={(v) => setForm((f) => ({ ...f, correspondentPhone: v }))} />
       <LabeledInput label={t('referential.company.field.correspondentEmail')} value={form.correspondentEmail} onChange={(v) => setForm((f) => ({ ...f, correspondentEmail: v }))} type="email" />
@@ -464,7 +533,7 @@ function AgenciesPanel({
   query: ReturnType<typeof useQuery<Paginated<AgencyView>>>;
   page: number;
   onPageChange: (p: number) => void;
-  companyById: Map<string, CompanyView>;
+  companyById: Map<string, CompanyListItem>;
 }) {
   const { t } = useI18n();
 
@@ -509,7 +578,18 @@ function AgenciesPanel({
 
 /* ===================== Experts agréés ===================== */
 
-function ExpertsPanel({ query, page, onPageChange }: { query: ReturnType<typeof useQuery<Paginated<ExpertView>>>; page: number; onPageChange: (p: number) => void }) {
+function ExpertsPanel({
+  query,
+  page,
+  onPageChange,
+  showRib,
+}: {
+  query: ReturnType<typeof useQuery<Paginated<ExpertView>>>;
+  page: number;
+  onPageChange: (p: number) => void;
+  /** SEC-14 : RIB masqué publié aux seuls rôles place (jamais en clair). */
+  showRib: boolean;
+}) {
   const { t } = useI18n();
 
   const columns: Column<ExpertView>[] = [
@@ -517,6 +597,7 @@ function ExpertsPanel({ query, page, onPageChange }: { query: ReturnType<typeof 
     { key: 'firm', header: t('referential.expert.col.firm'), render: (r) => r.firm ?? '—' },
     { key: 'wilayas', header: t('referential.expert.col.wilayas'), render: (r) => r.wilayas.join(', ') },
     { key: 'companies', header: t('referential.expert.col.companies'), render: (r) => r.companies.join(', ') || '—' },
+    ...(showRib ? [{ key: 'rib', header: t('referential.expert.col.rib'), render: (r: ExpertView) => <span className="mono">{r.ribMasked ?? '—'}</span> }] : []),
     { key: 'status', header: t('referential.company.status'), render: (r) => <Tag tone={statusTone(r.status)}>{statusLabel(r.status, t)}</Tag> },
   ];
 
