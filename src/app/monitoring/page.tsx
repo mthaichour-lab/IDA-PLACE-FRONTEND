@@ -11,6 +11,8 @@ import { ScoreBar } from '@/components/ui/ScoreBar';
 import { Table, Column } from '@/components/ui/Table';
 import { Tag, TagTone } from '@/components/ui/Tag';
 import { useI18n } from '@/i18n/provider';
+import { useAuth } from '@/lib/auth-context';
+import { isCompanyRole } from '@/lib/auth/roles';
 import { TranslationKey } from '@/i18n/translations';
 import { fetchAllPages } from '@/lib/paginate';
 import { apiGet, apiPath } from '@/lib/api-client';
@@ -81,6 +83,10 @@ function stateTone(state: string): TagTone {
 
 export default function MonitoringPage() {
   const { t } = useI18n();
+  const { me } = useAuth();
+  // SEC-26 : un rôle compagnie ne reçoit le détail (`details`, `profile`) que
+  // pour SA compagnie ; les autres lignes du classement n'ont que rang, note et score.
+  const companyRole = isCompanyRole(me?.role);
   const [page, setPage] = useState(1);
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [journeyPage, setJourneyPage] = useState(1);
@@ -92,7 +98,9 @@ export default function MonitoringPage() {
   });
 
   const companies = query.data?.companies ?? [];
-  const selected = companies.find((c) => c.code === selectedCode) ?? companies[0] ?? null;
+  const picked = companies.find((c) => c.code === selectedCode) ?? (companyRole ? companies.find((c) => c.code === me?.company) : companies[0]) ?? null;
+  // Seule une ligne détaillée alimente le profil et la vue par dossier (journeys : 403 hors de sa compagnie).
+  const selected = picked && picked.details && picked.profile ? { ...picked, details: picked.details, profile: picked.profile } : null;
   const pageRows = companies.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   // Nouvelle compagnie sélectionnée : la "Vue par dossier" repart à la page 1 (le filtre de recherche, lui, reste — sélectionner une autre compagnie n'implique pas qu'on cherchait autre chose).
@@ -121,12 +129,12 @@ export default function MonitoringPage() {
       { key: 'company', header: t('monitoring.col.company'), render: (r) => <CoChip code={r.code} /> },
       { key: 'score', header: t('monitoring.col.score'), render: (r) => renderScore(r.score, t) },
       { key: 'grade', header: t('monitoring.col.grade'), render: (r) => <Tag tone={gradeTone(r.grade)}>• {r.grade ?? '—'}</Tag> },
-      { key: 'delaisPct', header: t('monitoring.col.delaisPct'), render: (r) => <span className="mono">{formatPct(r.profile.onTimeResponsePct, t)}</span> },
-      { key: 'silencesPct', header: t('monitoring.col.silencesPct'), render: (r) => <span className="mono">{formatPct(r.profile.silencesRatePct, t)}</span> },
-      { key: 'oppEmisesPct', header: t('monitoring.col.oppEmisesPct'), render: (r) => <span className="mono">{formatPct(r.profile.oppositionsRatePct, t)}</span> },
-      { key: 'avgDelay', header: t('monitoring.col.avgDelay'), render: (r) => <span className="mono">{formatDays(r.profile.avgResponseDays, t)}</span> },
-      { key: 'forclos', header: t('monitoring.col.forclos'), render: (r) => <span className="mono">{r.profile.forclosCount}</span> },
-      { key: 'donnees', header: t('monitoring.col.donnees'), render: (r) => <span className="mono">{formatPct(r.details.qualiteDonnees.value, t)}</span> },
+      { key: 'delaisPct', header: t('monitoring.col.delaisPct'), render: (r) => <span className="mono">{r.profile ? formatPct(r.profile.onTimeResponsePct, t) : '—'}</span> },
+      { key: 'silencesPct', header: t('monitoring.col.silencesPct'), render: (r) => <span className="mono">{r.profile ? formatPct(r.profile.silencesRatePct, t) : '—'}</span> },
+      { key: 'oppEmisesPct', header: t('monitoring.col.oppEmisesPct'), render: (r) => <span className="mono">{r.profile ? formatPct(r.profile.oppositionsRatePct, t) : '—'}</span> },
+      { key: 'avgDelay', header: t('monitoring.col.avgDelay'), render: (r) => <span className="mono">{r.profile ? formatDays(r.profile.avgResponseDays, t) : '—'}</span> },
+      { key: 'forclos', header: t('monitoring.col.forclos'), render: (r) => <span className="mono">{r.profile ? r.profile.forclosCount : '—'}</span> },
+      { key: 'donnees', header: t('monitoring.col.donnees'), render: (r) => <span className="mono">{r.details ? formatPct(r.details.qualiteDonnees.value, t) : '—'}</span> },
     ],
     [t],
   );
@@ -217,6 +225,9 @@ export default function MonitoringPage() {
               <span>{t('monitoring.section.ranking')}</span>
             </div>
             <div className="sheet-body">
+              {companyRole ? (
+                <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginTop: 0 }}>{t('monitoring.restricted.note')}</p>
+              ) : null}
               <Table
                 columns={columns}
                 rows={pageRows}
@@ -224,7 +235,9 @@ export default function MonitoringPage() {
                 total={companies.length}
                 pageSize={PAGE_SIZE}
                 onPageChange={setPage}
-                onRowClick={(r) => setSelectedCode(r.code)}
+                onRowClick={(r) => {
+                  if (r.details && r.profile) setSelectedCode(r.code);
+                }}
                 getRowKey={(r) => r.code}
               />
             </div>

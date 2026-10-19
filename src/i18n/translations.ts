@@ -562,6 +562,7 @@ const fr = {
   'monitoring.section.profile': 'Profil',
   'monitoring.section.journeys': 'Vue par dossier — parcours complet',
   'monitoring.panel.empty': 'Aucune compagnie observée sur la place pour le moment.',
+  'monitoring.restricted.note': 'Classement de la place : rang, note et score pour toutes les compagnies ; le détail (taux, délais, parcours) n’est publié que pour votre compagnie.',
   'monitoring.alert.oppositions.prefix': 'Oppositions fréquentes',
   'monitoring.alert.oppositions.suffix': 'surveillance « oppositions systématiques » (§6.8).',
   'monitoring.tile.onTimePrefix': 'Réponses dans les',
