@@ -16,6 +16,7 @@ import { TranslationKey } from '@/i18n/translations';
 import { fetchAllPages } from '@/lib/paginate';
 import { apiGet, apiPost, apiPut } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
+import { isCompanyRole } from '@/lib/auth/roles';
 import { buildRecentPeriods } from '@/lib/period-options';
 import { Paginated, PlaceMeteringSummary, PlaceUser, PriceGrid, RolesMatrixResponse } from '@/lib/types';
 
@@ -69,8 +70,20 @@ function RevenueShareBar({ pct }: { pct: number }) {
 
 export default function ParamsPage() {
   const { t } = useI18n();
-  const { hasPrivilege } = useAuth();
+  const { me, isLoading, hasPrivilege } = useAuth();
   const [tab, setTab] = useState<ParamsTab>('users');
+
+  // SEC-38 : décision prise sur l'identité réelle (`GET /me`), jamais avant
+  // qu'elle soit connue ; le backend refuse de toute façon (403) chaque
+  // appel /admin/* sans le privilège.
+  if (isLoading && !me) {
+    return (
+      <>
+        <FolioHeader badge="Admin · §5.1" title={t('params.title')} subtitle={t('params.subtitle')} />
+        <p>{t('common.loading')}</p>
+      </>
+    );
+  }
 
   if (!hasPrivilege('admin')) {
     return (
@@ -109,6 +122,9 @@ export default function ParamsPage() {
 
 function UsersTab() {
   const { t, locale } = useI18n();
+  const { me } = useAuth();
+  // SEC-38 : un rôle compagnie ne peut proposer que SA compagnie.
+  const lockedCompany = isCompanyRole(me?.role) ? me?.company ?? '' : undefined;
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
@@ -340,7 +356,7 @@ function UsersTab() {
             <button
               type="button"
               disabled={createMutation.isPending || !form.name || !form.email || !form.role}
-              onClick={() => createMutation.mutate({ name: form.name, email: form.email, role: form.role, companyId: form.companyId || undefined })}
+              onClick={() => createMutation.mutate({ name: form.name, email: form.email, role: form.role, companyId: (lockedCompany ?? form.companyId) || undefined })}
               style={{ padding: '8px 16px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--k-pri)', background: 'var(--k-pri)', color: '#fff', font: 'inherit', cursor: 'pointer' }}
             >
               {t('params.users.field.submit')}
@@ -365,7 +381,12 @@ function UsersTab() {
                 ))}
               </select>
             </label>
-            <LabeledInput label={t('params.users.field.company')} value={form.companyId} onChange={(v) => setForm((f) => ({ ...f, companyId: v }))} />
+            <LabeledInput
+              label={t('params.users.field.company')}
+              value={lockedCompany ?? form.companyId}
+              disabled={lockedCompany !== undefined}
+              onChange={(v) => setForm((f) => ({ ...f, companyId: v }))}
+            />
           </div>
         </Modal>
       </div>
@@ -654,13 +675,14 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function LabeledInput({ label, value, onChange, type = 'text' }: { label: string; value: string; onChange: (v: string) => void; type?: string }) {
+function LabeledInput({ label, value, onChange, type = 'text', disabled = false }: { label: string; value: string; onChange: (v: string) => void; type?: string; disabled?: boolean }) {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
       {label}
       <input
         type={type}
         value={value}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         style={{ padding: '6px 10px', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', font: 'inherit', background: 'var(--paper)', color: 'var(--ink)' }}
       />

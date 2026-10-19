@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { apiGet, apiPut } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
+import { isCompanyRole } from '@/lib/auth/roles';
 import { buildRecentPeriods } from '@/lib/period-options';
 import { useRealtime } from '@/lib/realtime';
 import { CompanyView, InvoiceLine, MeteringHistory, MeteringInvoice, Paginated, PriceGrid } from '@/lib/types';
@@ -30,11 +31,16 @@ function formatDzd(amount: number, locale: string): string {
 
 export default function MeteringPage() {
   const { t, locale } = useI18n();
-  const { hasPrivilege } = useAuth();
+  const { me, hasPrivilege } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [company, setCompany] = useState('CAAT');
+  // SEC-38 : la compagnie de départ vient de l'identité réelle (`GET /me`,
+  // claims du jeton), jamais d'une valeur codée en dur. Rôle compagnie :
+  // uniquement SA compagnie ; rôle place : sélection libre, première
+  // compagnie du référentiel par défaut.
+  const companyRole = isCompanyRole(me?.role);
+  const [pickedCompany, setPickedCompany] = useState<string | undefined>(undefined);
   const [period, setPeriod] = useState(PERIODS[0]);
   const [invoicePage, setInvoicePage] = useState(1);
   const [historyMetric, setHistoryMetric] = useState('claimsIngested'); // "Dossiers ingérés" — sélection par défaut du guide illustré (écran 10)
@@ -44,7 +50,17 @@ export default function MeteringPage() {
   const companiesQuery = useQuery({
     queryKey: ['referential', 'companies', 'all'],
     queryFn: () => apiGet<Paginated<CompanyView>>('/referential/companies', { page: 1, pageSize: 50 }),
+    enabled: !!me,
   });
+
+  const allCompanies = companiesQuery.data?.items ?? [];
+  const companies: CompanyView[] = companyRole
+    ? allCompanies.filter((c) => c.code === me?.company)
+    : allCompanies;
+  const company = companyRole ? me?.company ?? '' : pickedCompany ?? allCompanies[0]?.code ?? '';
+  const setCompany = (code: string) => {
+    if (!companyRole) setPickedCompany(code);
+  };
 
   const invoiceQuery = useQuery({
     queryKey: ['metering', 'invoice', company, period],
@@ -83,7 +99,6 @@ export default function MeteringPage() {
     },
   });
 
-  const companies = companiesQuery.data?.items ?? [];
   const invoice = invoiceQuery.data;
   const companyLabel = companies.find((c) => c.code === company)?.name ?? company;
   const gridMetrics = gridQuery.data?.metrics ?? [];
@@ -125,6 +140,7 @@ export default function MeteringPage() {
           <CompanyPeriodPicker
             companies={companies}
             company={company}
+            companyLocked={companyRole}
             onCompanyChange={setCompany}
             period={period}
             onPeriodChange={setPeriod}
@@ -133,7 +149,11 @@ export default function MeteringPage() {
         }
       />
 
-      {invoiceQuery.isLoading ? (
+      {companyRole && !me?.company ? (
+        <div className="note warn" role="alert">
+          <span>{t('auth.companyMissing')}</span>
+        </div>
+      ) : !company || invoiceQuery.isLoading ? (
         <p>{t('common.loading')}</p>
       ) : invoiceQuery.error || !invoice ? (
         <div className="note ko" role="alert">

@@ -168,6 +168,20 @@ describe('Écran 2 — responsabilité Art. 14 (décision PO §5)', () => {
     expect(within(declaration('B')).queryByRole('button', { name: 'Saisir la responsabilité' })).not.toBeInTheDocument();
   });
 
+  it('SEC-38 : rôle compagnie sans compagnie dans le jeton : aucune saisie, même avec matchDecide', async () => {
+    mockApi({ me: { ...ME_CORRESPONDANT_CAAT, company: undefined }, detail: item() });
+    await renderPanel();
+    await within(declaration('B')).findByText('SAA');
+    expect(screen.queryByRole('button', { name: 'Saisir la responsabilité' })).not.toBeInTheDocument();
+  });
+
+  it('SEC-38 : côté B masqué avant confirmation (compagnie absente) : affiché sans planter, jamais éditable', async () => {
+    mockApi({ me: ME_OPERATOR, detail: item(undefined, undefined, { companyB: undefined as unknown as string }) });
+    await renderPanel();
+    await within(declaration('A')).findByRole('button', { name: 'Saisir la responsabilité' });
+    expect(within(declaration('B')).queryByRole('button', { name: 'Saisir la responsabilité' })).not.toBeInTheDocument();
+  });
+
   it('rôle place avec matchDecide : saisie sur les deux déclarations ; sans privilège : aucune', async () => {
     mockApi({ me: ME_OPERATOR, detail: item() });
     const { unmount } = renderWithProviders(<MatchingPage />);

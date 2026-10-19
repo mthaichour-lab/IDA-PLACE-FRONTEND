@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { apiGet, apiPatch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
+import { isCompanyRole } from '@/lib/auth/roles';
 import { publishedCases, publishedCategories, PublishedBaremeCase, useBaremeVersions, useVehicleCategories } from '@/lib/bareme';
 import { ClaimResponsabilitePatch, ConstatCircumstance, DeclarationResponsabilite, MatchItemDetail, MatchQueueItem, VehicleCategory } from '@/lib/types';
 
@@ -108,9 +109,17 @@ export function Art14Panel({ item }: { item: MatchQueueItem }) {
     ...(detail.refB ? [{ key: 'B' as const, claimId: detail.claimBId, company: detail.companyB, reference: detail.refB, block: detail.responsabiliteB }] : []),
   ];
 
+  /**
+   * SEC-38 : affichage seulement (le backend refuse toute écriture hors
+   * périmètre). Rôle compagnie (d'après le rôle réel de `/me`, pas la seule
+   * présence d'une compagnie) : uniquement la déclaration de SA compagnie,
+   * jamais celle de la compagnie adverse — y compris quand celle-ci est
+   * masquée avant confirmation de l'appariement (`company` absent). Rôle
+   * place : privilège `matchDecide`.
+   */
   function canEdit(side: Side): boolean {
-    if (!side.claimId || !side.company) return false;
-    if (me?.company) return hasPrivilege('insert') && side.company === me.company;
+    if (!me || !side.claimId || !side.company) return false;
+    if (isCompanyRole(me.role)) return !!me.company && side.company === me.company && hasPrivilege('insert');
     return hasPrivilege('matchDecide');
   }
 

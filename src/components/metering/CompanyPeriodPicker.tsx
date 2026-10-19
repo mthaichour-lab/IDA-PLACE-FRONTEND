@@ -15,6 +15,7 @@ export function CompanyPeriodPicker({
   period,
   onPeriodChange,
   periods,
+  companyLocked = false,
 }: {
   companies: CompanyView[];
   company: string;
@@ -22,6 +23,8 @@ export function CompanyPeriodPicker({
   period: string;
   onPeriodChange: (period: string) => void;
   periods: string[];
+  /** SEC-38 : rôle compagnie — seule sa propre compagnie est proposée, non modifiable. */
+  companyLocked?: boolean;
 }) {
   const { t } = useI18n();
   const selectStyle: React.CSSProperties = {
@@ -37,7 +40,8 @@ export function CompanyPeriodPicker({
     <div style={{ display: 'flex', gap: 'var(--s-3)', flexWrap: 'wrap', alignItems: 'center' }}>
       <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
         {t('metering.selector.company')}
-        <select style={selectStyle} value={company} onChange={(e) => onCompanyChange(e.target.value)}>
+        <select style={selectStyle} value={company} disabled={companyLocked} onChange={(e) => onCompanyChange(e.target.value)}>
+          {company && !companies.some((c) => c.code === company) ? <option value={company}>{company}</option> : null}
           {companies.map((c) => (
             <option key={c.id} value={c.code}>
               {c.code} — {c.name}

@@ -47,6 +47,7 @@ const fr = {
   'auth.logout': 'Se déconnecter',
   'auth.devMode': 'Mode développement',
   'auth.noCompany': 'Place',
+  'auth.companyMissing': 'Aucune compagnie n’est associée à votre compte : contactez l’administrateur de la place.',
   'wip.title': 'Écran en construction',
   'wip.subtitle': "Cet écran sera implémenté par l'agent Frontend (voir HANDOFF.md). Aucun contenu métier n'est affiché ici tant que l'écran réel n'est pas livré.",
   'referential.title': 'Référentiel de place',

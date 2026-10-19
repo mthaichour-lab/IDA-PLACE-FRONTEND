@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { mockFetchRouter, renderWithProviders } from '@/test/render';
 import { MeResponse, PlaceMeteringSummary, PlaceUser, PriceGrid, RolesMatrixResponse } from '@/lib/types';
@@ -86,6 +87,40 @@ describe('Écran Paramétrage (/params)', () => {
 
     await waitFor(() => expect(screen.getByText('Accès réservé')).toBeInTheDocument());
     expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+  });
+
+  it('SEC-38 : n’affiche ni l’accès réservé ni les onglets tant que /me n’est pas connu', async () => {
+    let releaseMe: (v: unknown) => void = () => {};
+    const meResponse = new Promise((resolve) => (releaseMe = resolve));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const { pathname } = new URL(String(input));
+        if (pathname === '/api/v1/me') {
+          await meResponse;
+          return new Response(JSON.stringify(ME_WITHOUT_ADMIN), { status: 200 });
+        }
+        return new Response(JSON.stringify({ page: 1, total: 0, items: [] }), { status: 200 });
+      }),
+    );
+    renderWithProviders(<ParamsPage />);
+
+    expect(await screen.findByText('Chargement…')).toBeInTheDocument();
+    expect(screen.queryByText('Accès réservé')).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+    releaseMe(undefined);
+    expect(await screen.findByText('Accès réservé')).toBeInTheDocument();
+  });
+
+  it('SEC-38 : un rôle compagnie disposant du privilège admin ne peut créer d’utilisateur que pour sa compagnie', async () => {
+    const correspondantAdmin: MeResponse = { ...ME_ADMIN, role: 'CORRESPONDANT_IDA', company: 'CAAT' };
+    mockParamsApi(correspondantAdmin, [placeUser()]);
+    renderWithProviders(<ParamsPage />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Créer un utilisateur' }));
+    const companyInput = screen.getByLabelText('Compagnie (si applicable)') as HTMLInputElement;
+    expect(companyInput.value).toBe('CAAT');
+    expect(companyInput).toBeDisabled();
   });
 
   it('liste les utilisateurs pour un ADMIN_UAR (privilège admin)', async () => {

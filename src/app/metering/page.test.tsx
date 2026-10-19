@@ -76,10 +76,10 @@ const HISTORY_BY_METRIC: Record<string, MeteringHistory> = {
  * commencent par `/api/v1/metering/...`, seul l'ordre des `if` évite de
  * faire matcher la facture à la place de l'historique.
  */
-function mockMeteringApi(inv: MeteringInvoice) {
+function mockMeteringApi(inv: MeteringInvoice, me: MeResponse = ME, companies: Paginated<CompanyView> = COMPANIES) {
   mockFetchRouter((pathname) => {
-    if (pathname === '/api/v1/me') return ME;
-    if (pathname === '/api/v1/referential/companies') return COMPANIES;
+    if (pathname === '/api/v1/me') return me;
+    if (pathname === '/api/v1/referential/companies') return companies;
     const historyMatch = pathname.match(/\/history\/([^/]+)$/);
     if (historyMatch) return HISTORY_BY_METRIC[historyMatch[1]] ?? historyFor(historyMatch[1], []);
     if (pathname.startsWith('/api/v1/metering/')) return inv;
@@ -107,7 +107,8 @@ describe('Écran Métrologie & facturation (/metering)', () => {
     renderWithProviders(<MeteringPage />);
 
     await waitFor(() => expect(screen.getAllByText('Dossiers').length).toBeGreaterThan(0));
-    expect(screen.getByText(/60\s?690/)).toBeInTheDocument();
+    // La facture n'est demandée qu'une fois la compagnie connue (/me puis référentiel, SEC-38).
+    expect(await screen.findByText(/60\s?690/)).toBeInTheDocument();
   });
 
   it('affiche la grille tarifaire courante', async () => {
@@ -153,5 +154,47 @@ describe('Écran Métrologie & facturation (/metering)', () => {
 
     await waitFor(() => expect(screen.getAllByText('Dossiers').length).toBeGreaterThan(0));
     expect(screen.queryByText(/Showback/i)).not.toBeInTheDocument();
+  });
+
+  describe('SEC-38 : compagnie issue de l’identité réelle, plus de CAAT par défaut', () => {
+    const SAA: CompanyView = { ...COMPANIES.items[0], id: 'co-2', code: 'SAA', name: 'SAA' };
+    const TWO: Paginated<CompanyView> = { page: 1, total: 2, items: [SAA, COMPANIES.items[0]] };
+    const invoiceUrls = () =>
+      (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
+        .map((c) => new URL(String(c[0])).pathname)
+        .filter((p) => p.startsWith('/api/v1/metering/') && !p.includes('/history/'));
+
+    it('rôle place : part de la première compagnie du référentiel, pas de CAAT codé en dur', async () => {
+      mockMeteringApi(invoice({ company: 'SAA' }), ME, TWO);
+      renderWithProviders(<MeteringPage />);
+
+      const select = (await screen.findByLabelText('Compagnie')) as HTMLSelectElement;
+      await waitFor(() => expect(select.value).toBe('SAA'));
+      expect(select).not.toBeDisabled();
+      await waitFor(() => expect(invoiceUrls().length).toBeGreaterThan(0));
+      expect(invoiceUrls().every((p) => p.startsWith('/api/v1/metering/SAA/'))).toBe(true);
+    });
+
+    it('rôle compagnie : seule sa compagnie est proposée, sélecteur verrouillé', async () => {
+      const tresorier: MeResponse = { user: { id: 't', name: 'Trésorier CAAT', email: 't@caat.dz' }, role: 'TRESORIER', privileges: [], company: 'CAAT' };
+      mockMeteringApi(invoice(), tresorier, TWO);
+      renderWithProviders(<MeteringPage />);
+
+      const select = (await screen.findByLabelText('Compagnie')) as HTMLSelectElement;
+      await waitFor(() => expect(select.value).toBe('CAAT'));
+      expect(select).toBeDisabled();
+      expect(Array.from(select.options).map((o) => o.value)).toEqual(['CAAT']);
+      await waitFor(() => expect(invoiceUrls().length).toBeGreaterThan(0));
+      expect(invoiceUrls().every((p) => p.startsWith('/api/v1/metering/CAAT/'))).toBe(true);
+    });
+
+    it('rôle compagnie sans compagnie dans le jeton : message explicite, aucun appel de facture', async () => {
+      const orphan: MeResponse = { user: { id: 'c', name: 'Correspondant', email: 'c@x.dz' }, role: 'CORRESPONDANT_IDA', privileges: [] };
+      mockMeteringApi(invoice(), orphan, TWO);
+      renderWithProviders(<MeteringPage />);
+
+      expect(await screen.findByText(/Aucune compagnie n’est associée à votre compte/)).toBeInTheDocument();
+      expect(invoiceUrls()).toEqual([]);
+    });
   });
 });
