@@ -7,6 +7,7 @@ import { Tag } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { apiGet } from '@/lib/api-client';
+import { buildLedgerCsv, downloadCsv } from '@/lib/csv';
 import { useRealtime } from '@/lib/realtime';
 import { LedgerEntry, LedgerVerifyResult } from '@/lib/types';
 
@@ -137,25 +138,6 @@ function ShieldIcon() {
   );
 }
 
-/** Export CSV client (placeholder documenté — voir rapport de livraison : l'API n'expose pas d'endpoint d'export). */
-function buildLedgerCsv(entries: LedgerEntry[]): string {
-  const header = 'id;at;type;ref;actor;summary;hash;prevHash';
-  const lines = entries.map((e) => [e.id, e.at, e.type, e.ref, e.actor, e.summary, e.hash, e.prevHash ?? ''].join(';'));
-  return [header, ...lines].join('\n');
-}
-
-function downloadText(fileName: string, content: string) {
-  const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
 export default function LedgerPage() {
   const { t, locale } = useI18n();
   const { toast } = useToast();
@@ -225,7 +207,7 @@ export default function LedgerPage() {
 
   function onExport() {
     if (filtered.length === 0) return;
-    downloadText(`journal-scelle-${new Date().toISOString().slice(0, 10)}.csv`, buildLedgerCsv(filtered));
+    downloadCsv(`journal-scelle-${new Date().toISOString().slice(0, 10)}.csv`, buildLedgerCsv(filtered));
   }
 
   return (

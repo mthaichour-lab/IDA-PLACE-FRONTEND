@@ -8,29 +8,11 @@ import { Tag } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { apiGet, apiPostForm } from '@/lib/api-client';
+import { buildColumnsCsv, downloadCsv } from '@/lib/csv';
 import { useAuth } from '@/lib/auth-context';
 import { ClaimColumnDef, ClaimImportReport, ClaimImportRowResult, ClaimImportWarning } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
-
-/** Construit un CSV (placeholder documenté — pas un classeur Excel mis en forme) à partir d'un modèle de colonnes (v1 ou v2). */
-function buildColumnsCsv(columns: ClaimColumnDef[]): string {
-  const header = 'index;key;label;group;type;enumValues';
-  const lines = columns.map((c) => [c.index, c.key, c.label, c.group, c.type, c.enumValues?.join('|') ?? ''].join(';'));
-  return [header, ...lines].join('\n');
-}
-
-function downloadText(fileName: string, content: string) {
-  const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
 
 export default function ImportPage() {
   const { t, locale } = useI18n();
@@ -82,7 +64,7 @@ export default function ImportPage() {
   function onDownloadTemplate(version: 'v1' | 'v2') {
     const cols = version === 'v1' ? columnsQuery.data : columnsV2Query.data;
     if (!cols) return;
-    downloadText(version === 'v1' ? 'modele-47-colonnes-IDA.csv' : `modele-v2-${cols.length}-colonnes-IDA.csv`, buildColumnsCsv(cols));
+    downloadCsv(version === 'v1' ? 'modele-47-colonnes-IDA.csv' : `modele-v2-${cols.length}-colonnes-IDA.csv`, buildColumnsCsv(cols));
   }
 
   const latestReport = journal[0];
