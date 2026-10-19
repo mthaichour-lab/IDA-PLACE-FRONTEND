@@ -18,17 +18,19 @@ import { fetchAllPages } from '@/lib/paginate';
 import { apiGet, apiPath, apiPost } from '@/lib/api-client';
 import { ApiError } from '@/lib/api-error';
 import { useAuth } from '@/lib/auth-context';
+import { useApiErrorMessage } from '@/lib/error-message';
 import { useRealtime } from '@/lib/realtime';
+import { isCompanyActor, visibleRecoursActions } from '@/lib/recours-actions';
 import {
   OppositionMotif,
   Paginated,
   RecoursAction,
   RecoursFilter,
+  RecoursHistoryEntry,
   RecoursItem,
   RecoursState,
   RecoursTransitionResult,
   SettlementQuarterClosure,
-  RECOURS_ALLOWED_ACTIONS,
 } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
@@ -141,9 +143,12 @@ function recoursQuery(filter: RecoursFilter, page: number, q: string) {
 
 export default function ExchangesPage() {
   const { t, locale } = useI18n();
-  const { hasPrivilege } = useAuth();
+  const { me, hasPrivilege } = useAuth();
   const { toast } = useToast();
+  const errorMessage = useApiErrorMessage();
   const queryClient = useQueryClient();
+  // SEC-17 : l'historique d'audit des transitions est réservé aux rôles place (404 sinon).
+  const placeUser = !!me && !isCompanyActor(me);
 
   const [filter, setFilter] = useState<RecoursFilter>('TOUS');
   const [page, setPage] = useState(1);
@@ -258,6 +263,25 @@ export default function ExchangesPage() {
   const [reasonCode, setReasonCode] = useState('');
   const [attested, setAttested] = useState(false);
 
+  /**
+   * Fiche ouverte relue par l'API (et rafraîchie par l'invalidation
+   * `['recours']`) : le payload temps réel se réduit à `{id, state}` et n'est
+   * jamais lu ; la ligne de liste ne sert que de valeur initiale.
+   */
+  const detailQuery = useQuery({
+    queryKey: ['recours', 'detail', selected?.id],
+    queryFn: () => apiGet<RecoursItem>(apiPath`/recours/${selected!.id}`),
+    enabled: !!selected,
+    initialData: selected ?? undefined,
+  });
+  const current = selected ? detailQuery.data ?? selected : null;
+
+  const historyQuery = useQuery({
+    queryKey: ['recours', 'history', selected?.id],
+    queryFn: () => apiGet<RecoursHistoryEntry[]>(apiPath`/recours/${selected!.id}/history`),
+    enabled: !!selected && placeUser,
+  });
+
   const motifsQuery = useQuery({
     queryKey: ['referential', 'opposition-motifs'],
     queryFn: () => apiGet<OppositionMotif[]>('/referential/opposition-motifs'),
@@ -285,20 +309,19 @@ export default function ExchangesPage() {
   const transitionMutation = useMutation({
     mutationFn: ({ id, action, reason: r, reasonCode: code }: { id: string; action: RecoursAction; reason?: string; reasonCode?: string }) =>
       apiPost<RecoursTransitionResult>(apiPath`/recours/${id}/transition`, { action, reason: r || undefined, reasonCode: code || undefined }),
-    onSuccess: async (result, variables) => {
-      // Rafraîchit la fiche complète (opposition/contestation/resolution) plutôt que de
-      // ne retenir que {state, timer} — nécessaire pour que le fil d'échanges reconstruit
-      // (`buildTimeline`) reflète immédiatement la nouvelle étape.
-      const fresh = await apiGet<RecoursItem>(apiPath`/recours/${variables.id}`);
-      setSelected((prev) => (prev && prev.id === variables.id ? fresh : prev));
+    onSuccess: () => {
+      // Fiche complète (opposition/contestation/resolution), liste, compteurs et
+      // historique relus par l'API : le fil d'échanges reflète la nouvelle étape.
       setReason('');
       resetOpposition();
       toast(t('exchanges.detail.transition.toast.ok'), 'ok');
       void queryClient.invalidateQueries({ queryKey: ['recours'] });
     },
     onError: (err: unknown) => {
-      // Message du backend s'il existe (ex. 400 « motif interdit — Art. 10 »).
-      toast(err instanceof ApiError && err.message ? err.message : t('exchanges.detail.transition.toast.error'), 'ko');
+      // Code métier traduit (CONFLIT_CONCURRENT, DECISION_COMMISSION_REQUISE…), sinon message du backend.
+      toast(errorMessage(err, t('exchanges.detail.transition.toast.error')), 'ko');
+      // 409 « modifié entre-temps » : la fiche est relue pour repartir de l'état réel.
+      if (err instanceof ApiError && err.status === 409) void queryClient.invalidateQueries({ queryKey: ['recours'] });
     },
   });
 
@@ -426,34 +449,34 @@ export default function ExchangesPage() {
         </div>
       </div>
 
-      <Modal open={!!selected} title={selected ? `${t('exchanges.detail.titlePrefix')} ${selected.id}` : ''} onClose={() => openRecours(null)}>
-        {selected ? (
+      <Modal open={!!current} title={current ? `${t('exchanges.detail.titlePrefix')} ${current.id}` : ''} onClose={() => openRecours(null)}>
+        {current ? (
           <>
             <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--s-3)', marginBottom: 'var(--s-4)' }}>
               <Field label={t('exchanges.detail.claim')}>
-                <span className="mono">{selected.claimId}</span>
+                <span className="mono">{current.claimId}</span>
               </Field>
               <Field label={t('exchanges.detail.from')}>
-                <CoChip code={selected.from} />
+                <CoChip code={current.from} />
               </Field>
               <Field label={t('exchanges.detail.to')}>
-                <CoChip code={selected.to} />
+                <CoChip code={current.to} />
               </Field>
               <Field label={t('exchanges.detail.amount')}>
-                <span className="mono">{formatDzd(selected.amount, locale)}</span>
+                <span className="mono">{formatDzd(current.amount, locale)}</span>
               </Field>
               <Field label={t('exchanges.detail.state')}>
-                <Tag tone={stateTone(selected.state)}>{t(`exchanges.state.${selected.state}` as TranslationKey)}</Tag>
+                <Tag tone={stateTone(current.state)}>{t(`exchanges.state.${current.state}` as TranslationKey)}</Tag>
               </Field>
-              <Field label={t('exchanges.detail.sentAt')}>{new Date(selected.requestSentAt).toLocaleDateString(locale)}</Field>
+              <Field label={t('exchanges.detail.sentAt')}>{new Date(current.requestSentAt).toLocaleDateString(locale)}</Field>
             </dl>
 
-            {selected.timer.deadlineAt ? (
+            {current.timer.deadlineAt ? (
               <div style={{ marginBottom: 'var(--s-4)' }}>
                 <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.deadline')}</strong>
                 <CountdownBar
-                  startAt={selected.requestSentAt}
-                  deadlineAt={selected.timer.deadlineAt}
+                  startAt={current.requestSentAt}
+                  deadlineAt={current.timer.deadlineAt}
                   renderLabel={({ remainingDays, overdue }) => `${remainingDays} ${overdue ? t('exchanges.countdown.overdue') : t('exchanges.countdown.remaining')}`}
                 />
               </div>
@@ -475,7 +498,7 @@ export default function ExchangesPage() {
                 style={{ width: '100%', marginBottom: 'var(--s-3)', padding: '6px 10px', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', font: 'inherit', background: 'var(--paper)', color: 'var(--ink)' }}
               />
               <div style={{ display: 'flex', gap: 'var(--s-2)', flexWrap: 'wrap' }}>
-                {RECOURS_ALLOWED_ACTIONS[selected.state].map((action) => (
+                {visibleRecoursActions(current, me).map((action) => (
                   <button
                     key={action}
                     type="button"
@@ -483,17 +506,17 @@ export default function ExchangesPage() {
                     style={{ cursor: canTransition ? 'pointer' : 'not-allowed', border: 'none' }}
                     disabled={!canTransition || transitionMutation.isPending}
                     aria-expanded={action === 'opposer' ? opposing : undefined}
-                    onClick={() => (action === 'opposer' ? setOpposing(true) : transitionMutation.mutate({ id: selected.id, action, reason }))}
+                    onClick={() => (action === 'opposer' ? setOpposing(true) : transitionMutation.mutate({ id: current.id, action, reason }))}
                   >
                     {t(`exchanges.action.${action}` as TranslationKey)}
                   </button>
                 ))}
-                {RECOURS_ALLOWED_ACTIONS[selected.state].length === 0 ? (
+                {visibleRecoursActions(current, me).length === 0 ? (
                   <span style={{ color: 'var(--ink-3)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.action.none')}</span>
                 ) : null}
               </div>
 
-              {opposing && canTransition && RECOURS_ALLOWED_ACTIONS[selected.state].includes('opposer') ? (
+              {opposing && canTransition && visibleRecoursActions(current, me).includes('opposer') ? (
                 <div
                   role="group"
                   aria-label={t('exchanges.action.opposer')}
@@ -539,7 +562,7 @@ export default function ExchangesPage() {
                       className="tag a"
                       style={{ border: 'none', cursor: 'pointer' }}
                       disabled={transitionMutation.isPending || motifsQuery.isLoading || (hasAdmittedMotifs ? !reasonCode : !attested)}
-                      onClick={() => transitionMutation.mutate({ id: selected.id, action: 'opposer', reason, reasonCode: hasAdmittedMotifs ? reasonCode : undefined })}
+                      onClick={() => transitionMutation.mutate({ id: current.id, action: 'opposer', reason, reasonCode: hasAdmittedMotifs ? reasonCode : undefined })}
                     >
                       {t('exchanges.opposition.confirm')}
                     </button>
@@ -554,7 +577,7 @@ export default function ExchangesPage() {
             <div>
               <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.timeline')}</strong>
               <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {buildTimeline(selected, motifLabels).map((entry) => (
+                {buildTimeline(current, motifLabels).map((entry) => (
                   <li key={entry.key} style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
                       <strong style={{ color: 'var(--ink)' }}>{t(entry.label)}</strong>
@@ -564,6 +587,7 @@ export default function ExchangesPage() {
                   </li>
                 ))}
               </ul>
+              {placeUser ? <RecoursAuditHistory query={historyQuery} locale={locale} t={t} /> : null}
             </div>
 
             {/*
@@ -573,7 +597,7 @@ export default function ExchangesPage() {
             */}
             <div style={{ marginTop: 'var(--s-4)', paddingTop: 'var(--s-4)', borderTop: '1px solid var(--rule)' }}>
               <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.attachments')}</strong>
-              <AttachmentsPanel recoursId={selected.id} />
+              <AttachmentsPanel recoursId={current.id} />
             </div>
           </>
         ) : null}
@@ -588,5 +612,68 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <dt style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>{label}</dt>
       <dd style={{ margin: 0 }}>{children}</dd>
     </div>
+  );
+}
+
+/** Libellés des actions de l'historique : actions manuelles, création et transitions automatiques (timers Art. 10/12/19). */
+const HISTORY_ACTION_LABEL: Record<string, TranslationKey> = {
+  creation: 'exchanges.history.action.creation',
+  automatique: 'exchanges.history.action.automatique',
+  accepter: 'exchanges.action.accepter',
+  opposer: 'exchanges.action.opposer',
+  lever_opposition: 'exchanges.action.lever_opposition',
+  contester: 'exchanges.action.contester',
+  transmettre_commission: 'exchanges.action.transmettre_commission',
+  cloturer_commission_favorable: 'exchanges.action.cloturer_commission_favorable',
+  cloturer_commission_defavorable: 'exchanges.action.cloturer_commission_defavorable',
+};
+
+/** SEC-17 — historique d'audit des transitions (`GET /recours/:id/history`), rôles place uniquement. */
+function RecoursAuditHistory({
+  query,
+  locale,
+  t,
+}: {
+  query: { data?: RecoursHistoryEntry[]; isLoading: boolean; error: unknown; refetch: () => unknown };
+  locale: string;
+  t: (key: TranslationKey) => string;
+}) {
+  const entries = query.data ?? [];
+  return (
+    <section aria-label={t('exchanges.history.title')} style={{ marginTop: 'var(--s-4)' }}>
+      <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.history.title')}</strong>
+      {query.isLoading ? (
+        <p style={{ fontSize: 'var(--k-fs-xs)' }}>{t('common.loading')}</p>
+      ) : query.error ? (
+        <div className="note ko" role="alert">
+          <span>{t('common.error')}</span>
+          <button type="button" onClick={() => query.refetch()}>
+            {t('common.retry')}
+          </button>
+        </div>
+      ) : entries.length === 0 ? (
+        <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', margin: 0 }}>{t('exchanges.history.empty')}</p>
+      ) : (
+        <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {entries.map((h, i) => (
+            <li key={`${h.at}-${i}`} style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', borderInlineStart: '2px solid var(--rule-strong)', paddingInlineStart: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
+                <strong style={{ color: 'var(--ink)' }}>{HISTORY_ACTION_LABEL[h.action] ? t(HISTORY_ACTION_LABEL[h.action]) : h.action}</strong>
+                <span className="mono">{new Date(h.at).toLocaleString(locale)}</span>
+              </div>
+              <div className="mono">
+                {h.fromState ?? '—'} → {h.toState}
+              </div>
+              <div>
+                {t('exchanges.history.actor')} {h.actorRole}
+                {h.onBehalfOf ? ` · ${t('exchanges.history.onBehalfOf')} ${h.onBehalfOf}` : ''}
+                {h.pvRef ? ` · ${h.pvRef}` : ''}
+              </div>
+              {h.reason ? <div>{h.reason}</div> : null}
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
   );
 }

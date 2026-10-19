@@ -63,7 +63,7 @@ describe('AttachmentsPanel', () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
       saved.push({ name: this.download, href: this.href });
     });
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = new URL(typeof input === 'string' ? input : input.toString());
       if (url.pathname === '/api/v1/me') return new Response(JSON.stringify(ME_WITH_INSERT), { status: 200 });
       if (url.pathname === '/api/v1/documents') return new Response(JSON.stringify([doc({ url: '/api/v1/documents/d-1/download' })]), { status: 200 });
@@ -80,7 +80,7 @@ describe('AttachmentsPanel', () => {
     await waitFor(() => expect(saved).toEqual([{ name: 'annexe2-recours-r-1.pdf', href: 'blob:http://localhost/doc-1' }]));
     const call = fetchMock.mock.calls.find(([input]) => String(input).includes('/documents/d-1/download'));
     expect(call).toBeDefined();
-    expect((call![1] as RequestInit).method).toBe('GET');
+    expect(call![1]?.method).toBe("GET");
     click.mockRestore();
   });
 

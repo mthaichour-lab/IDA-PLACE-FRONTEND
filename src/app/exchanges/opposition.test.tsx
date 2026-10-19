@@ -12,7 +12,7 @@ import ExchangesPage from './page';
  * interdit visible mais grisé. `reasonCode` n'est envoyé qu'avec un motif choisi.
  */
 
-const ME: MeResponse = { user: { id: 'u-corr', name: 'Correspondant', email: 'c@saa.dz' }, role: 'CORRESPONDANT_IDA', privileges: ['exchange'] };
+const ME: MeResponse = { user: { id: 'u-corr', name: 'Correspondant', email: 'c@saa.dz' }, role: 'CORRESPONDANT_IDA', privileges: ['exchange'], company: 'SAA' };
 
 const RECOURS: RecoursItem = {
   id: 'r-1',

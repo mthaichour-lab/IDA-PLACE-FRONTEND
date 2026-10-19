@@ -8,6 +8,8 @@ const ME_WITH_EXCHANGE: MeResponse = {
   user: { id: 'dev-correspondant', name: 'Correspondant IDA (dev)', email: 'correspondant@compagnie.dz' },
   role: 'CORRESPONDANT_IDA',
   privileges: ['exchange'],
+  // Compagnie destinataire des recours de test (to: 'SAA') : accepter/opposer lui reviennent (SEC-17).
+  company: 'SAA',
 };
 
 const ME_WITHOUT_EXCHANGE: MeResponse = {
@@ -122,17 +124,18 @@ describe('Écran Échanges (/exchanges)', () => {
     await waitFor(() => expect(screen.getByText('c-1')).toBeInTheDocument());
     fireEvent.click(screen.getByText('c-1').closest('tr')!);
 
-    await waitFor(() => expect(screen.getByText('Aucune action disponible dans cet état.')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Aucune action disponible dans cet état pour votre profil.')).toBeInTheDocument());
   });
 
   it('désactive les actions de transition pour AUDITEUR_CSA (lecture seule, B.7)', async () => {
-    mockExchangesApi(ME_WITHOUT_EXCHANGE, [recoursItem({ state: 'EN_ATTENTE' })]);
+    // Rôle place : seule « Transmettre en commission » lui est ouverte (SEC-17) — désactivée sans le privilège.
+    mockExchangesApi(ME_WITHOUT_EXCHANGE, [recoursItem({ state: 'CONTESTATION' })]);
     renderWithProviders(<ExchangesPage />);
 
     await waitFor(() => expect(screen.getByText('c-1')).toBeInTheDocument());
     fireEvent.click(screen.getByText('c-1').closest('tr')!);
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Accepter' })).toBeDisabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Transmettre en commission' })).toBeDisabled());
   });
 
   it('propose les onglets Réglés et Rejetés (états réels non exposés jusqu’ici)', async () => {
