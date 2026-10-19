@@ -10,7 +10,7 @@ import { Kpi, KpiRow } from '@/components/ui/Kpi';
 import { Tabs } from '@/components/ui/Tabs';
 import { Tag } from '@/components/ui/Tag';
 import { useI18n } from '@/i18n/provider';
-import { apiGet } from '@/lib/api-client';
+import { apiGet, apiPath } from '@/lib/api-client';
 import { PriceGrid, SettlementQuarter, SettlementQuarterMatrix, SettlementQuarterSummary } from '@/lib/types';
 
 function formatDzd(amount: number, locale: string): string {
@@ -48,17 +48,17 @@ export default function QuarterPage() {
 
   const quarterQuery = useQuery({
     queryKey: ['settlement', 'quarter', quarter],
-    queryFn: () => apiGet<SettlementQuarter>(`/settlement/quarter/${quarter}`),
+    queryFn: () => apiGet<SettlementQuarter>(apiPath`/settlement/quarter/${quarter}`),
   });
 
   const summaryQuery = useQuery({
     queryKey: ['settlement', 'quarter', quarter, 'summary'],
-    queryFn: () => apiGet<SettlementQuarterSummary>(`/settlement/quarter/${quarter}/summary`),
+    queryFn: () => apiGet<SettlementQuarterSummary>(apiPath`/settlement/quarter/${quarter}/summary`),
   });
 
   const matrixQuery = useQuery({
     queryKey: ['settlement', 'quarter', quarter, 'matrix'],
-    queryFn: () => apiGet<SettlementQuarterMatrix>(`/settlement/quarter/${quarter}/matrix`),
+    queryFn: () => apiGet<SettlementQuarterMatrix>(apiPath`/settlement/quarter/${quarter}/matrix`),
   });
 
   const gridQuery = useQuery({

@@ -15,7 +15,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { fetchAllPages } from '@/lib/paginate';
-import { apiGet, apiPost } from '@/lib/api-client';
+import { apiGet, apiPath, apiPost } from '@/lib/api-client';
 import { ApiError } from '@/lib/api-error';
 import { useAuth } from '@/lib/auth-context';
 import { useRealtime } from '@/lib/realtime';
@@ -284,12 +284,12 @@ export default function ExchangesPage() {
 
   const transitionMutation = useMutation({
     mutationFn: ({ id, action, reason: r, reasonCode: code }: { id: string; action: RecoursAction; reason?: string; reasonCode?: string }) =>
-      apiPost<RecoursTransitionResult>(`/recours/${id}/transition`, { action, reason: r || undefined, reasonCode: code || undefined }),
+      apiPost<RecoursTransitionResult>(apiPath`/recours/${id}/transition`, { action, reason: r || undefined, reasonCode: code || undefined }),
     onSuccess: async (result, variables) => {
       // Rafraîchit la fiche complète (opposition/contestation/resolution) plutôt que de
       // ne retenir que {state, timer} — nécessaire pour que le fil d'échanges reconstruit
       // (`buildTimeline`) reflète immédiatement la nouvelle étape.
-      const fresh = await apiGet<RecoursItem>(`/recours/${variables.id}`);
+      const fresh = await apiGet<RecoursItem>(apiPath`/recours/${variables.id}`);
       setSelected((prev) => (prev && prev.id === variables.id ? fresh : prev));
       setReason('');
       resetOpposition();

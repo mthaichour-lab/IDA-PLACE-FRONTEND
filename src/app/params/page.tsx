@@ -14,7 +14,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { fetchAllPages } from '@/lib/paginate';
-import { apiGet, apiPost, apiPut } from '@/lib/api-client';
+import { apiGet, apiPath, apiPost, apiPut } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { isCompanyRole } from '@/lib/auth/roles';
 import { buildRecentPeriods } from '@/lib/period-options';
@@ -185,7 +185,7 @@ function UsersTab() {
   }, [selected?.id]);
 
   const updateMutation = useMutation({
-    mutationFn: (body: { active: boolean; grant: string[]; revoke: string[] }) => apiPut<PlaceUser>(`/admin/users/${selected!.id}`, body),
+    mutationFn: (body: { active: boolean; grant: string[]; revoke: string[] }) => apiPut<PlaceUser>(apiPath`/admin/users/${selected!.id}`, body),
     onSuccess: (updated) => {
       setSelected(updated);
       void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
@@ -199,7 +199,7 @@ function UsersTab() {
   // d'ouvrir la modale) — même mutation PUT que la fiche détail, mais
   // déclenchée avec l'utilisateur de la ligne plutôt que `selected`.
   const toggleActiveMutation = useMutation({
-    mutationFn: (user: PlaceUser) => apiPut<PlaceUser>(`/admin/users/${user.id}`, { active: !user.active, grant: user.grant, revoke: user.revoke }),
+    mutationFn: (user: PlaceUser) => apiPut<PlaceUser>(apiPath`/admin/users/${user.id}`, { active: !user.active, grant: user.grant, revoke: user.revoke }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
       toast(t('params.users.toast.toggled'), 'ok');
@@ -541,7 +541,7 @@ function CostsTab() {
   // (toujours utilisé par `/metering`, pas retiré du composant partagé).
   const summaryQuery = useQuery({
     queryKey: ['metering', 'place-summary', period],
-    queryFn: () => apiGet<PlaceMeteringSummary>(`/metering/place-summary/${period}`),
+    queryFn: () => apiGet<PlaceMeteringSummary>(apiPath`/metering/place-summary/${period}`),
     enabled: !!period,
   });
 

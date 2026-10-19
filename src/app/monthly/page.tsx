@@ -10,7 +10,7 @@ import { Tag } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
-import { apiGet, apiPost } from '@/lib/api-client';
+import { apiGet, apiPath, apiPost } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { SettlementMonthly, SettlementMonthlyAnnexe7, SettlementMonthlyCompany, SettlementMonthlySummary } from '@/lib/types';
 
@@ -42,7 +42,7 @@ export default function MonthlyPage() {
 
   const monthlyQuery = useQuery({
     queryKey: ['settlement', 'monthly', period],
-    queryFn: () => apiGet<SettlementMonthly>(`/settlement/monthly/${period}`),
+    queryFn: () => apiGet<SettlementMonthly>(apiPath`/settlement/monthly/${period}`),
   });
 
   // Compléments additifs (`/summary`, `/annexe7`) — voir HANDOFF.md et
@@ -50,19 +50,19 @@ export default function MonthlyPage() {
   // inchangé, ces deux endpoints vivent sur des routes séparées.
   const summaryQuery = useQuery({
     queryKey: ['settlement', 'monthly', period, 'summary'],
-    queryFn: () => apiGet<SettlementMonthlySummary>(`/settlement/monthly/${period}/summary`),
+    queryFn: () => apiGet<SettlementMonthlySummary>(apiPath`/settlement/monthly/${period}/summary`),
   });
 
   const annexe7Query = useQuery({
     queryKey: ['settlement', 'monthly', period, 'annexe7'],
-    queryFn: () => apiGet<SettlementMonthlyAnnexe7>(`/settlement/monthly/${period}/annexe7`),
+    queryFn: () => apiGet<SettlementMonthlyAnnexe7>(apiPath`/settlement/monthly/${period}/annexe7`),
   });
 
   // Clôture par compagnie — forme réelle : `POST /settlement/monthly/:period/close`
   // avec `{company}` (idempotent, 409 si déjà clôturée), pas un bordereau
   // global pour toute la place.
   const closeMutation = useMutation({
-    mutationFn: (company: string) => apiPost(`/settlement/monthly/${period}/close`, { company }),
+    mutationFn: (company: string) => apiPost(apiPath`/settlement/monthly/${period}/close`, { company }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['settlement', 'monthly', period] });
       toast(t('monthly.toast.generated'), 'ok');

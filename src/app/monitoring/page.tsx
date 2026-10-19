@@ -13,7 +13,7 @@ import { Tag, TagTone } from '@/components/ui/Tag';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { fetchAllPages } from '@/lib/paginate';
-import { apiGet } from '@/lib/api-client';
+import { apiGet, apiPath } from '@/lib/api-client';
 import { MonitoringCompanyScore, MonitoringJourney, MonitoringScores, MonitoringWeights } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
@@ -103,7 +103,7 @@ export default function MonitoringPage() {
   const journeysQuery = useQuery({
     queryKey: ['monitoring', 'journeys', selected?.code],
     // SEC-13 : pages successives de 100 (plafond `FETCH_ALL_MAX_ITEMS`) pour la recherche locale.
-    queryFn: () => fetchAllPages<MonitoringJourney>(`/monitoring/companies/${selected!.code}/journeys`),
+    queryFn: () => fetchAllPages<MonitoringJourney>(apiPath`/monitoring/companies/${selected!.code}/journeys`),
     enabled: !!selected,
   });
 

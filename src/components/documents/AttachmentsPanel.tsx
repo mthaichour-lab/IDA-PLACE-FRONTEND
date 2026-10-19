@@ -7,6 +7,7 @@ import { useI18n } from '@/i18n/provider';
 import { apiGet, apiPostForm } from '@/lib/api-client';
 import { ApiError } from '@/lib/api-error';
 import { useAuth } from '@/lib/auth-context';
+import { safeDocumentUrl } from '@/lib/safe-values';
 import { DocumentView } from '@/lib/types';
 
 /** Types acceptés côté UI — simple indication (`accept`), la VRAIE validation est serveur (QUESTIONS_UAR.md §9). */
@@ -96,19 +97,29 @@ export function AttachmentsPanel({ recoursId, commissionCaseId }: AttachmentsPan
         <p style={{ color: 'var(--ink-3)' }}>{t('documents.attachments.empty')}</p>
       ) : (
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8, marginBottom: canUpload ? 'var(--s-3)' : 0 }}>
-          {items.map((doc) => (
-            <li key={doc.id} style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-              <span>
-                <a href={doc.url} target="_blank" rel="noreferrer" className="mono">
-                  {doc.filename}
-                </a>
-                <span style={{ color: 'var(--ink-3)' }}> · {formatSize(doc.sizeBytes)}</span>
-              </span>
-              <span style={{ color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
-                {t('documents.attachments.uploadedBy')} {doc.uploadedBy} · {new Date(doc.uploadedAt).toLocaleString(locale)}
-              </span>
-            </li>
-          ))}
+          {items.map((doc) => {
+            // SEC-50 : seul un lien https:/blob: est rendu cliquable.
+            const href = safeDocumentUrl(doc.url);
+            return (
+              <li key={doc.id} style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <span>
+                  {href ? (
+                    <a href={href} target="_blank" rel="noopener noreferrer" className="mono">
+                      {doc.filename}
+                    </a>
+                  ) : (
+                    <span className="mono" title={t('documents.attachments.unsafeLink')}>
+                      {doc.filename}
+                    </span>
+                  )}
+                  <span style={{ color: 'var(--ink-3)' }}> · {formatSize(doc.sizeBytes)}</span>
+                </span>
+                <span style={{ color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
+                  {t('documents.attachments.uploadedBy')} {doc.uploadedBy} · {new Date(doc.uploadedAt).toLocaleString(locale)}
+                </span>
+              </li>
+            );
+          })}
         </ul>
       )}
 

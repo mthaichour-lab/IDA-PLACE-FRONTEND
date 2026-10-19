@@ -7,7 +7,7 @@ import { Column, Table } from '@/components/ui/Table';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
-import { apiGet, apiPost } from '@/lib/api-client';
+import { apiGet, apiPath, apiPost } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { formatIsoDay } from '@/lib/iso-date';
 import { IrsamBenchmark, IrsamIndicator } from '@/lib/types';
@@ -89,7 +89,7 @@ export function IrsamSection() {
   });
 
   const validate = useMutation({
-    mutationFn: (id: string) => apiPost<IrsamBenchmark>(`/referential/irsam-benchmarks/${id}/validate`),
+    mutationFn: (id: string) => apiPost<IrsamBenchmark>(apiPath`/referential/irsam-benchmarks/${id}/validate`),
     onSuccess: () => {
       refresh();
       toast(t('referential.toast.validated'), 'ok');
@@ -98,7 +98,7 @@ export function IrsamSection() {
   });
 
   const archive = useMutation({
-    mutationFn: (id: string) => apiPost<IrsamBenchmark>(`/referential/irsam-benchmarks/${id}/archive`),
+    mutationFn: (id: string) => apiPost<IrsamBenchmark>(apiPath`/referential/irsam-benchmarks/${id}/archive`),
     onSuccess: () => {
       refresh();
       toast(t('referential.toast.saved'), 'ok');

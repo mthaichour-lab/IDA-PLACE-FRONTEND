@@ -9,7 +9,7 @@ import { Tag, TagTone } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
-import { apiGet, apiPost } from '@/lib/api-client';
+import { apiGet, apiPath, apiPost } from '@/lib/api-client';
 import { ApiError } from '@/lib/api-error';
 import { useAuth } from '@/lib/auth-context';
 import {
@@ -122,7 +122,7 @@ export function MembershipTab() {
 
   const actionMutation = useMutation({
     mutationFn: ({ id, action, body }: { id: string; action: MembershipAction; body: Record<string, string | undefined> }) =>
-      apiPost<MembershipRequest>(`/commission/membership-requests/${id}/${action}`, body),
+      apiPost<MembershipRequest>(apiPath`/commission/membership-requests/${id}/${action}`, body),
     onSuccess: (result) => {
       openDetail(result);
       toast(t('commission.membership.toast.actionOk'), 'ok');

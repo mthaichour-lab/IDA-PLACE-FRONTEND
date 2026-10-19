@@ -7,7 +7,7 @@ import { Column, Table } from '@/components/ui/Table';
 import { Tag } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
-import { apiGet, apiPost, apiPostForm, apiPut } from '@/lib/api-client';
+import { apiGet, apiPath, apiPost, apiPostForm, apiPut } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { PopulationImportReport, PopulationImportRow, PopulationSourceType, WilayaPopulation, WilayaRef } from '@/lib/types';
 import { apiErrorMessage, FormStack, Hint, LabeledInput, LabeledSelect, PrimaryButton, QueryState, RowAction, SubTitle } from './fields';
@@ -62,7 +62,7 @@ export function PopulationSection() {
   const save = useMutation({
     mutationFn: (f: PopulationForm) =>
       modal?.mode === 'edit'
-        ? apiPut<WilayaPopulation>(`/referential/wilaya-populations/${modal.id}`, { population: Number(f.population), sourceType: f.sourceType, sourceRef: f.sourceRef.trim() })
+        ? apiPut<WilayaPopulation>(apiPath`/referential/wilaya-populations/${modal.id}`, { population: Number(f.population), sourceType: f.sourceType, sourceRef: f.sourceRef.trim() })
         : apiPost<WilayaPopulation>('/referential/wilaya-populations', {
             wilayaCode: f.wilayaCode,
             referenceYear: Number(f.referenceYear),

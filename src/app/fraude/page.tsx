@@ -13,7 +13,7 @@ import { Tag, TagTone } from '@/components/ui/Tag';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { fetchAllPages } from '@/lib/paginate';
-import { apiGet } from '@/lib/api-client';
+import { apiGet, apiPath } from '@/lib/api-client';
 import { FraudAction, FraudCase, FraudSeverity, FraudSignalGroup, FraudSignalGroupResult, Paginated } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
@@ -135,7 +135,7 @@ export default function FraudePage() {
   const primaryCompany = selectedCase?.companiesInvolved[0];
   const signalsQuery = useQuery({
     queryKey: ['fraud', 'adherents', primaryCompany, 'signals'],
-    queryFn: () => apiGet<FraudSignalGroupResult[]>(`/fraud/adherents/${encodeURIComponent(primaryCompany!)}/signals`),
+    queryFn: () => apiGet<FraudSignalGroupResult[]>(apiPath`/fraud/adherents/${primaryCompany!}/signals`),
     enabled: !!primaryCompany,
   });
 

@@ -56,6 +56,22 @@ describe('AttachmentsPanel', () => {
     expect(link).toHaveAttribute('target', '_blank');
   });
 
+  it.each(['javascript:alert(document.domain)', 'data:text/html,<script>alert(1)</script>', 'http://evil.example/x.pdf', 'vbscript:msgbox(1)'])(
+    'SEC-50 : une URL %s n’est jamais rendue en lien',
+    async (url) => {
+      mockFetchRouter((pathname) => {
+        if (pathname === '/api/v1/me') return ME_WITH_INSERT;
+        if (pathname === '/api/v1/documents') return [doc({ url })];
+        return undefined;
+      });
+      renderWithProviders(<AttachmentsPanel recoursId="r-1" />);
+
+      const name = await screen.findByText('annexe2-recours-r-1.pdf');
+      expect(name.closest('a')).toBeNull();
+      expect(document.querySelector('a[href^="javascript:"], a[href^="data:"], a[href^="vbscript:"]')).toBeNull();
+    },
+  );
+
   it('affiche un état vide explicite quand aucune pièce jointe n’existe', async () => {
     mockFetchRouter((pathname) => {
       if (pathname === '/api/v1/me') return ME_WITH_INSERT;

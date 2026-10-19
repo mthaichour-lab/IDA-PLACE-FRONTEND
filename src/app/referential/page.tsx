@@ -16,7 +16,7 @@ import { Tag, TagTone } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
-import { apiGet, apiPost, apiPut } from '@/lib/api-client';
+import { apiGet, apiPath, apiPost, apiPut } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { AgencyView, CompanyKind, CompanyStatus, CompanyView, ConventionParams, EligibilityMotif, ExpertView, FeedMode, Paginated } from '@/lib/types';
 
@@ -152,7 +152,7 @@ export default function ReferentialPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (body: ReturnType<typeof toFormBody>) => apiPut<CompanyView>(`/referential/companies/${editCompany!.id}`, body),
+    mutationFn: (body: ReturnType<typeof toFormBody>) => apiPut<CompanyView>(apiPath`/referential/companies/${editCompany!.id}`, body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['referential', 'companies'] });
       toast(t('referential.company.toast.updated'), 'ok');

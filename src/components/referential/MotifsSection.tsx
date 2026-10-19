@@ -7,7 +7,7 @@ import { Column, Table } from '@/components/ui/Table';
 import { Tag } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
-import { apiGet, apiPost, apiPut } from '@/lib/api-client';
+import { apiGet, apiPath, apiPost, apiPut } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { ConstatCircumstance, EligibilityMotif, OppositionMotif } from '@/lib/types';
 import { apiErrorMessage, FormStack, Hint, LabeledCheckbox, LabeledInput, PrimaryButton, QueryState, RowAction, RowActions, SubTitle } from './fields';
@@ -62,7 +62,7 @@ export function MotifsSection({ eligibilityQuery }: { eligibilityQuery: ReturnTy
 
   const saveCircumstance = useMutation({
     mutationFn: ({ number, labelFr, labelAr }: { number: number; labelFr: string; labelAr: string }) =>
-      apiPut<ConstatCircumstance>(`/referential/constat-circumstances/${number}`, { labelFr, labelAr }),
+      apiPut<ConstatCircumstance>(apiPath`/referential/constat-circumstances/${number}`, { labelFr, labelAr }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['referential', 'constat-circumstances'] });
       toast(t('referential.toast.saved'), 'ok');
@@ -72,7 +72,7 @@ export function MotifsSection({ eligibilityQuery }: { eligibilityQuery: ReturnTy
   });
 
   const validateCircumstance = useMutation({
-    mutationFn: (number: number) => apiPost<ConstatCircumstance>(`/referential/constat-circumstances/${number}/validate`),
+    mutationFn: (number: number) => apiPost<ConstatCircumstance>(apiPath`/referential/constat-circumstances/${number}/validate`),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['referential', 'constat-circumstances'] });
       toast(t('referential.toast.validated'), 'ok');
@@ -83,7 +83,7 @@ export function MotifsSection({ eligibilityQuery }: { eligibilityQuery: ReturnTy
   const saveMotif = useMutation({
     mutationFn: (form: MotifForm) =>
       motifModal?.mode === 'edit'
-        ? apiPut<OppositionMotif>(`/referential/opposition-motifs/${motifModal.code}`, { label: form.label, forbidden: form.forbidden, sourceRef: form.sourceRef || undefined })
+        ? apiPut<OppositionMotif>(apiPath`/referential/opposition-motifs/${motifModal.code}`, { label: form.label, forbidden: form.forbidden, sourceRef: form.sourceRef || undefined })
         : apiPost<OppositionMotif>('/referential/opposition-motifs', { code: form.code, label: form.label, forbidden: form.forbidden, sourceRef: form.sourceRef || undefined }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['referential', 'opposition-motifs'] });
@@ -94,7 +94,7 @@ export function MotifsSection({ eligibilityQuery }: { eligibilityQuery: ReturnTy
   });
 
   const validateMotif = useMutation({
-    mutationFn: (code: string) => apiPost<OppositionMotif>(`/referential/opposition-motifs/${code}/validate`),
+    mutationFn: (code: string) => apiPost<OppositionMotif>(apiPath`/referential/opposition-motifs/${code}/validate`),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['referential', 'opposition-motifs'] });
       toast(t('referential.toast.validated'), 'ok');

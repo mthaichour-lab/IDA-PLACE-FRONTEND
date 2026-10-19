@@ -10,7 +10,7 @@ import { Table, Column } from '@/components/ui/Table';
 import { Tag } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
-import { apiGet, apiPut } from '@/lib/api-client';
+import { apiGet, apiPath, apiPut } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { isCompanyRole } from '@/lib/auth/roles';
 import { buildRecentPeriods } from '@/lib/period-options';
@@ -64,7 +64,7 @@ export default function MeteringPage() {
 
   const invoiceQuery = useQuery({
     queryKey: ['metering', 'invoice', company, period],
-    queryFn: () => apiGet<MeteringInvoice>(`/metering/${company}/${period}`),
+    queryFn: () => apiGet<MeteringInvoice>(apiPath`/metering/${company}/${period}`),
     enabled: !!company && !!period,
     refetchInterval: POLL_INTERVAL_MS,
   });
@@ -81,7 +81,7 @@ export default function MeteringPage() {
   // l'historique même si la facture du mois en cours est encore en chargement.
   const historyQuery = useQuery({
     queryKey: ['metering', 'history', company, period, historyMetric],
-    queryFn: () => apiGet<MeteringHistory>(`/metering/${company}/${period}/history/${historyMetric}`),
+    queryFn: () => apiGet<MeteringHistory>(apiPath`/metering/${company}/${period}/history/${historyMetric}`),
     enabled: !!company && !!period && !!historyMetric,
   });
 

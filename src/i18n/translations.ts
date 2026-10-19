@@ -274,6 +274,7 @@ const fr = {
   'common.noData': 'Aucune donnée.',
   'common.forbidden': "Vous n'avez pas le privilège requis pour cette action.",
   'common.cancel': 'Annuler',
+  'documents.attachments.unsafeLink': 'Lien du document refusé (adresse non sécurisée).',
   'common.truncated': 'Liste limitée aux premiers éléments : les décomptes et le classement ne portent que sur ceux-ci.',
 
   // ----- Cockpit (écran 1, Module I) -----

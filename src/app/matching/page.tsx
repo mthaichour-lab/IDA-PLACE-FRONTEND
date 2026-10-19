@@ -13,7 +13,7 @@ import { Tag, TagTone } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
-import { apiGet, apiPost } from '@/lib/api-client';
+import { apiGet, apiPath, apiPost } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import {
   FeedMode,
@@ -237,7 +237,7 @@ export default function MatchingPage() {
 
   const decideMutation = useMutation({
     mutationFn: ({ id, action, reason }: { id: string; action: MatchDecisionAction; reason?: string }) =>
-      apiPost<MatchDecisionResult>(`/matching/${id}/decide`, { action, reason }),
+      apiPost<MatchDecisionResult>(apiPath`/matching/${id}/decide`, { action, reason }),
     onSuccess: (_result, variables) => {
       const toneByAction: Record<MatchDecisionAction, 'ok' | 'ko' | 'warn'> = {
         confirm: 'ok',

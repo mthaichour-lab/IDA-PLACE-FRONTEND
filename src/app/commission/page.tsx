@@ -14,7 +14,7 @@ import { Tag, TagTone } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
-import { apiGet, apiPost } from '@/lib/api-client';
+import { apiGet, apiPath, apiPost } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { CommissionCase, CommissionCaseStatus, CommissionPenaltyResult, CommissionPvSignResult, CommissionSummary, Paginated, Sanction } from '@/lib/types';
 
@@ -91,7 +91,7 @@ export default function CommissionPage() {
 
   const penaltyMutation = useMutation({
     mutationFn: ({ id, companyCode, amount, reason }: { id: string; companyCode: string; amount: number; reason: string }) =>
-      apiPost<CommissionPenaltyResult>(`/commission/cases/${id}/penalty`, { companyCode, amount, reason }),
+      apiPost<CommissionPenaltyResult>(apiPath`/commission/cases/${id}/penalty`, { companyCode, amount, reason }),
     onSuccess: (result, variables) => {
       setDecisions((prev) => ({ ...prev, [variables.id]: { ...prev[variables.id], penalty: { amount: result.amount ?? variables.amount, reason: result.reason, orderedAt: result.orderedAt } } }));
       setPenaltyAmount('');
@@ -102,7 +102,7 @@ export default function CommissionPage() {
   });
 
   const pvSignMutation = useMutation({
-    mutationFn: (id: string) => apiPost<CommissionPvSignResult>(`/commission/cases/${id}/pv-sign`, {}),
+    mutationFn: (id: string) => apiPost<CommissionPvSignResult>(apiPath`/commission/cases/${id}/pv-sign`, {}),
     onSuccess: (result) => {
       setSelected(result);
       void queryClient.invalidateQueries({ queryKey: ['commission', 'cases'] });

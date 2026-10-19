@@ -8,7 +8,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Tag } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
-import { apiGet, apiPatch } from '@/lib/api-client';
+import { apiGet, apiPatch, apiPath } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { isCompanyRole } from '@/lib/auth/roles';
 import { publishedCases, publishedCategories, PublishedBaremeCase, useBaremeVersions, useVehicleCategories } from '@/lib/bareme';
@@ -86,7 +86,7 @@ export function Art14Panel({ item }: { item: MatchQueueItem }) {
 
   const detailQuery = useQuery({
     queryKey: ['matching', 'item', item.id],
-    queryFn: () => apiGet<MatchItemDetail>(`/matching/${item.id}`),
+    queryFn: () => apiGet<MatchItemDetail>(apiPath`/matching/${item.id}`),
   });
   const circumstancesQuery = useQuery({
     queryKey: ['referential', 'constat-circumstances'],
@@ -124,7 +124,7 @@ export function Art14Panel({ item }: { item: MatchQueueItem }) {
   }
 
   const save = useMutation({
-    mutationFn: ({ side, patch }: { side: Side; patch: ClaimResponsabilitePatch }) => apiPatch(`/claims/${side.claimId}/responsabilite`, patch),
+    mutationFn: ({ side, patch }: { side: Side; patch: ClaimResponsabilitePatch }) => apiPatch(apiPath`/claims/${side.claimId!}/responsabilite`, patch),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['matching'] });
       toast(t('matching.art14.toast.saved'), 'ok');

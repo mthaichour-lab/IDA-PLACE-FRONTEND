@@ -7,7 +7,7 @@ import { Tag, TagTone } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
-import { apiGet, apiPost } from '@/lib/api-client';
+import { apiGet, apiPath, apiPost } from '@/lib/api-client';
 import { ApiError } from '@/lib/api-error';
 import { useAuth } from '@/lib/auth-context';
 import { MANUAL_PIPELINE_STEPS, PipelineStep, PipelineStepStatus, QuarterlyPipeline } from '@/lib/types';
@@ -38,12 +38,12 @@ export function PipelineSection({ quarter }: { quarter: string }) {
 
   const pipelineQuery = useQuery({
     queryKey: pipelineQueryKey(quarter),
-    queryFn: () => apiGet<QuarterlyPipeline>(`/settlement/quarter/${quarter}/pipeline`),
+    queryFn: () => apiGet<QuarterlyPipeline>(apiPath`/settlement/quarter/${quarter}/pipeline`),
     refetchInterval: POLL_INTERVAL_MS,
   });
 
   const completeMutation = useMutation({
-    mutationFn: (step: PipelineStep) => apiPost<QuarterlyPipeline>(`/settlement/quarter/${quarter}/pipeline/${step}/complete`, { note: note.trim() || undefined }),
+    mutationFn: (step: PipelineStep) => apiPost<QuarterlyPipeline>(apiPath`/settlement/quarter/${quarter}/pipeline/${step}/complete`, { note: note.trim() || undefined }),
     onSuccess: () => {
       setNote('');
       toast(t('quarter.pipeline.toast.ok'), 'ok');
@@ -53,7 +53,7 @@ export function PipelineSection({ quarter }: { quarter: string }) {
   });
 
   const closeMutation = useMutation({
-    mutationFn: () => apiPost(`/settlement/quarter/${quarter}/close`, {}),
+    mutationFn: () => apiPost(apiPath`/settlement/quarter/${quarter}/close`, {}),
     onSuccess: () => {
       setConfirmClose(false);
       toast(t('quarter.pipeline.close.ok'), 'ok');

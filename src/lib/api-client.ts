@@ -32,6 +32,16 @@ function resolveApiBaseUrl(): string {
 
 export type QueryParams = Record<string, string | number | undefined>;
 
+/**
+ * Chemin d'API dont chaque segment interpolé est encodé (SEC-50) :
+ * apiPath`/recours/${id}/transition` — un identifiant renvoyé par l'API
+ * contenant `/`, `?`, `#` ou `..` ne peut pas détourner la requête vers une
+ * autre route.
+ */
+export function apiPath(strings: TemplateStringsArray, ...values: (string | number)[]): string {
+  return strings.reduce((acc, part, i) => acc + part + (i < values.length ? encodeURIComponent(String(values[i])) : ''), '');
+}
+
 function buildUrl(path: string, query?: QueryParams): string {
   if (!API_BASE_URL) throw new Error('NEXT_PUBLIC_API_URL manquant : configuration de production invalide.');
   const url = new URL(`${API_BASE_URL}${API_PREFIX}${path}`);
@@ -80,12 +90,18 @@ interface RequestOptions {
 async function request<T>(method: string, path: string, { query, json, form }: RequestOptions = {}): Promise<T> {
   // multipart : pas de `Content-Type` manuel, le navigateur fixe le boundary lui-même.
   const headers = await authHeaders(json !== undefined ? { 'Content-Type': 'application/json' } : undefined);
-  const res = await fetch(buildUrl(path, query), {
-    method,
-    headers,
-    body: form ?? (json !== undefined ? JSON.stringify(json) : undefined),
-    cache: 'no-store',
-  });
+  let res: Response;
+  try {
+    res = await fetch(buildUrl(path, query), {
+      method,
+      headers,
+      body: form ?? (json !== undefined ? JSON.stringify(json) : undefined),
+      cache: 'no-store',
+    });
+  } catch {
+    // Panne réseau, CORS, DNS… : message générique, jamais le détail technique (SEC-50).
+    throw new ApiError(0, { code: 'NETWORK', message: '' });
+  }
   return handle<T>(res);
 }
 

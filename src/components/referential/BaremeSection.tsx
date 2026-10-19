@@ -6,7 +6,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Column, Table } from '@/components/ui/Table';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
-import { apiDelete, apiPost, apiPut } from '@/lib/api-client';
+import { apiDelete, apiPath, apiPost, apiPut } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { BAREME_VERSIONS_KEY, useBaremeVersions, useVehicleCategories, VEHICLE_CATEGORIES_KEY } from '@/lib/bareme';
 import { BaremeCase, BaremeVersion, VehicleCategory } from '@/lib/types';
@@ -86,7 +86,7 @@ export function BaremeSection() {
     mutationFn: (form: { label: string; sourceRef: string }) => {
       const body = { label: form.label.trim(), sourceRef: form.sourceRef.trim() || undefined };
       return versionModal?.mode === 'rename'
-        ? apiPut<BaremeVersion>(`/referential/bareme-versions/${versionModal.id}`, body)
+        ? apiPut<BaremeVersion>(apiPath`/referential/bareme-versions/${versionModal.id}`, body)
         : apiPost<BaremeVersion>('/referential/bareme-versions', body);
     },
     onSuccess: (version) => {
@@ -99,7 +99,7 @@ export function BaremeSection() {
   });
 
   const versionTransition = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: 'validate' | 'archive' }) => apiPost<BaremeVersion>(`/referential/bareme-versions/${id}/${action}`),
+    mutationFn: ({ id, action }: { id: string; action: 'validate' | 'archive' }) => apiPost<BaremeVersion>(apiPath`/referential/bareme-versions/${id}/${action}`),
     onSuccess: (_v, { action }) => {
       refreshVersions();
       toast(t(action === 'validate' ? 'referential.toast.validated' : 'referential.toast.saved'), 'ok');
@@ -111,8 +111,8 @@ export function BaremeSection() {
     mutationFn: (form: CaseForm) => {
       const body = { label: form.label.trim(), partA: Number(form.partA), partB: Number(form.partB) };
       return caseModal?.mode === 'edit'
-        ? apiPut<BaremeVersion>(`/referential/bareme-versions/${selected!.id}/cases/${caseModal.code}`, body)
-        : apiPost<BaremeVersion>(`/referential/bareme-versions/${selected!.id}/cases`, { code: form.code, ...body });
+        ? apiPut<BaremeVersion>(apiPath`/referential/bareme-versions/${selected!.id}/cases/${caseModal.code}`, body)
+        : apiPost<BaremeVersion>(apiPath`/referential/bareme-versions/${selected!.id}/cases`, { code: form.code, ...body });
     },
     onSuccess: () => {
       refreshVersions();
@@ -123,7 +123,7 @@ export function BaremeSection() {
   });
 
   const removeCase = useMutation({
-    mutationFn: (code: string) => apiDelete<BaremeVersion>(`/referential/bareme-versions/${selected!.id}/cases/${code}`),
+    mutationFn: (code: string) => apiDelete<BaremeVersion>(apiPath`/referential/bareme-versions/${selected!.id}/cases/${code}`),
     onSuccess: () => {
       refreshVersions();
       toast(t('referential.toast.saved'), 'ok');
@@ -134,7 +134,7 @@ export function BaremeSection() {
   const saveCategory = useMutation({
     mutationFn: (form: { code: string; label: string }) =>
       categoryModal?.mode === 'edit'
-        ? apiPut<VehicleCategory>(`/referential/vehicle-categories/${categoryModal.code}`, { label: form.label.trim() })
+        ? apiPut<VehicleCategory>(apiPath`/referential/vehicle-categories/${categoryModal.code}`, { label: form.label.trim() })
         : apiPost<VehicleCategory>('/referential/vehicle-categories', { code: form.code, label: form.label.trim() }),
     onSuccess: () => {
       refreshCategories();
@@ -145,7 +145,7 @@ export function BaremeSection() {
   });
 
   const validateCategory = useMutation({
-    mutationFn: (code: string) => apiPost<VehicleCategory>(`/referential/vehicle-categories/${code}/validate`),
+    mutationFn: (code: string) => apiPost<VehicleCategory>(apiPath`/referential/vehicle-categories/${code}/validate`),
     onSuccess: () => {
       refreshCategories();
       toast(t('referential.toast.validated'), 'ok');

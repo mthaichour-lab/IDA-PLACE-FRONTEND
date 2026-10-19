@@ -8,7 +8,7 @@ import { Tag } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
-import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api-client';
+import { apiDelete, apiGet, apiPath, apiPost, apiPut } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { currentUtcYear, formatIsoDay } from '@/lib/iso-date';
 import { CalendarHoliday, MobileHoliday, MobileHolidayKind, MobileHolidayKindOption, PlaceCalendar } from '@/lib/types';
@@ -82,7 +82,7 @@ export function CalendarSection() {
   const saveHoliday = useMutation({
     mutationFn: (form: HolidayForm) => {
       const body = { date: form.date, kind: form.kind, hijriYear: form.hijriYear ? Number(form.hijriYear) : undefined };
-      return holidayModal?.mode === 'edit' ? apiPut<MobileHoliday>(`/referential/mobile-holidays/${holidayModal.id}`, body) : apiPost<MobileHoliday>('/referential/mobile-holidays', body);
+      return holidayModal?.mode === 'edit' ? apiPut<MobileHoliday>(apiPath`/referential/mobile-holidays/${holidayModal.id}`, body) : apiPost<MobileHoliday>('/referential/mobile-holidays', body);
     },
     onSuccess: () => {
       refresh();
@@ -94,7 +94,7 @@ export function CalendarSection() {
 
   const confirmHoliday = useMutation({
     mutationFn: ({ id, sourceRef, date }: { id: string; sourceRef: string; date: string }) =>
-      apiPost<MobileHoliday>(`/referential/mobile-holidays/${id}/confirm`, { sourceRef: sourceRef.trim(), date: date || undefined }),
+      apiPost<MobileHoliday>(apiPath`/referential/mobile-holidays/${id}/confirm`, { sourceRef: sourceRef.trim(), date: date || undefined }),
     onSuccess: () => {
       refresh();
       toast(t('referential.calendar.mobile.toast.confirmed'), 'ok');
@@ -104,7 +104,7 @@ export function CalendarSection() {
   });
 
   const deleteHoliday = useMutation({
-    mutationFn: (id: string) => apiDelete<{ id: string; deleted: true }>(`/referential/mobile-holidays/${id}`),
+    mutationFn: (id: string) => apiDelete<{ id: string; deleted: true }>(apiPath`/referential/mobile-holidays/${id}`),
     onSuccess: () => {
       refresh();
       toast(t('referential.calendar.mobile.toast.deleted'), 'ok');
