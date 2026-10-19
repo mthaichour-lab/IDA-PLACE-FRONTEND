@@ -413,7 +413,6 @@ const fr = {
   'matching.art14.edit': 'Saisir la responsabilité',
   'matching.art14.toast.saved': 'Responsabilité Art. 14 enregistrée.',
   'matching.art14.toast.error': "L'enregistrement de la responsabilité a échoué.",
-  'matching.art14.toast.claimNotFound': 'Dossier de cette déclaration introuvable.',
 
   // ----- Cartes Véhicule A / B (écran 2, section additive 2026-10-18) -----
   // Volontairement SEULEMENT dossier/identité assuré/immatriculation/canal —

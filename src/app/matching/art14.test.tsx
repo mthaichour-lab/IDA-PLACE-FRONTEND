@@ -90,23 +90,13 @@ function mockApi(state: State) {
       case '/api/v1/matching/queue':
         return { body: { page: 1, total: 1, items: [{ ...state.detail, responsabiliteA: undefined, responsabiliteB: undefined, divergence: false }] } };
       case '/api/v1/matching/m-1':
-        return { body: state.detail };
+        return { body: { ...state.detail, claimAId: 'c-caat', claimBId: 'c-saa' } };
       case '/api/v1/referential/constat-circumstances':
         return { body: CIRCUMSTANCES };
       case '/api/v1/referential/bareme-versions':
         return { body: state.versions ?? [PUBLISHED, DRAFT] };
       case '/api/v1/referential/vehicle-categories':
         return { body: state.categories ?? CATEGORIES };
-      case '/api/v1/claims': {
-        const page = Number(req.url.searchParams.get('page'));
-        const items =
-          req.url.searchParams.get('company') === 'CAAT'
-            ? page === 1
-              ? [{ id: 'c-other', numEconstat: 'ECN-9', company: 'CAAT' }]
-              : [{ id: 'c-caat', numEconstat: 'ECN-1', company: 'CAAT' }]
-            : [];
-        return { body: { page, total: 101, items } };
-      }
       default:
         return undefined;
     }
@@ -215,6 +205,7 @@ describe('Écran 2 — responsabilité Art. 14 (décision PO §5)', () => {
     const patch = requests.find((r) => r.method === 'PATCH')!;
     expect(patch.pathname).toBe('/api/v1/claims/c-caat/responsabilite');
     expect(patch.body).toEqual({ baremeCode: 'X2', baremeVersionId: 'v-pub' });
+    expect(requests.some((r) => r.pathname === '/api/v1/claims')).toBe(false);
     expect(await screen.findByText('Responsabilité Art. 14 enregistrée.')).toBeInTheDocument();
   });
 

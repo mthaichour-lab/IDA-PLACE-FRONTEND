@@ -495,6 +495,12 @@ export interface MatchQueueItem {
   divergence: boolean;
 }
 
+/** `GET /matching/:id` (`MatchItemDetailDto`) : la ligne + les id des dossiers, cible de `PATCH /claims/:id/responsabilite`. */
+export interface MatchItemDetail extends MatchQueueItem {
+  claimAId: string;
+  claimBId?: string;
+}
+
 export interface MatchCounters {
   TOUS: number;
   AUTO: number;

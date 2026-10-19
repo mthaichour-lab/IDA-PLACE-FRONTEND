@@ -11,26 +11,10 @@ import { useI18n } from '@/i18n/provider';
 import { apiGet, apiPatch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { publishedCases, publishedCategories, PublishedBaremeCase, useBaremeVersions, useVehicleCategories } from '@/lib/bareme';
-import { ClaimResponsabilitePatch, ClaimView, ConstatCircumstance, DeclarationResponsabilite, MatchQueueItem, Paginated, VehicleCategory } from '@/lib/types';
+import { ClaimResponsabilitePatch, ConstatCircumstance, DeclarationResponsabilite, MatchItemDetail, MatchQueueItem, VehicleCategory } from '@/lib/types';
 
 const CIRCUMSTANCE_NUMBERS = Array.from({ length: 17 }, (_, i) => i + 1);
-const CLAIM_LOOKUP_PAGE_SIZE = 100;
 const NONE = '';
-
-class ClaimNotFoundError extends Error {}
-
-/**
- * `MatchQueueItemDto` n'expose pas l'id des dossiers A/B : on le retrouve par
- * compagnie et référence (`refA`/`refB` = n° e-constat, ou id à défaut).
- */
-async function findClaimId(company: string, ref: string): Promise<string> {
-  for (let page = 1; ; page += 1) {
-    const res = await apiGet<Paginated<ClaimView>>('/claims', { company, page, pageSize: CLAIM_LOOKUP_PAGE_SIZE });
-    const hit = res.items.find((c) => c.company === company && (c.numEconstat === ref || c.id === ref));
-    if (hit) return hit.id;
-    if (page * CLAIM_LOOKUP_PAGE_SIZE >= res.total) throw new ClaimNotFoundError();
-  }
-}
 
 function caseKey(versionId: string | undefined, code: string | undefined): string {
   return code ? `${versionId ?? ''}|${code}` : NONE;
@@ -42,6 +26,7 @@ function sameNumbers(a: number[], b: number[]): boolean {
 
 interface Side {
   key: 'A' | 'B';
+  claimId?: string;
   company?: string;
   reference?: string;
   block?: DeclarationResponsabilite;
@@ -100,7 +85,7 @@ export function Art14Panel({ item }: { item: MatchQueueItem }) {
 
   const detailQuery = useQuery({
     queryKey: ['matching', 'item', item.id],
-    queryFn: () => apiGet<MatchQueueItem>(`/matching/${item.id}`),
+    queryFn: () => apiGet<MatchItemDetail>(`/matching/${item.id}`),
   });
   const circumstancesQuery = useQuery({
     queryKey: ['referential', 'constat-circumstances'],
@@ -117,29 +102,26 @@ export function Art14Panel({ item }: { item: MatchQueueItem }) {
   const categories = publishedCategories(categoriesQuery.data);
   const circumstanceLabel = new Map((circumstancesQuery.data ?? []).map((c) => [c.number, c.labelFr]));
 
-  const detail = detailQuery.data ?? item;
+  const detail: MatchQueueItem & Partial<Pick<MatchItemDetail, 'claimAId' | 'claimBId'>> = detailQuery.data ?? item;
   const sides: Side[] = [
-    { key: 'A', company: detail.companyA, reference: detail.refA, block: detail.responsabiliteA },
-    ...(detail.refB ? [{ key: 'B' as const, company: detail.companyB, reference: detail.refB, block: detail.responsabiliteB }] : []),
+    { key: 'A', claimId: detail.claimAId, company: detail.companyA, reference: detail.refA, block: detail.responsabiliteA },
+    ...(detail.refB ? [{ key: 'B' as const, claimId: detail.claimBId, company: detail.companyB, reference: detail.refB, block: detail.responsabiliteB }] : []),
   ];
 
   function canEdit(side: Side): boolean {
-    if (!side.company || !side.reference) return false;
+    if (!side.claimId || !side.company) return false;
     if (me?.company) return hasPrivilege('insert') && side.company === me.company;
     return hasPrivilege('matchDecide');
   }
 
   const save = useMutation({
-    mutationFn: async ({ side, patch }: { side: Side; patch: ClaimResponsabilitePatch }) => {
-      const claimId = await findClaimId(side.company!, side.reference!);
-      return apiPatch(`/claims/${claimId}/responsabilite`, patch);
-    },
+    mutationFn: ({ side, patch }: { side: Side; patch: ClaimResponsabilitePatch }) => apiPatch(`/claims/${side.claimId}/responsabilite`, patch),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['matching'] });
       toast(t('matching.art14.toast.saved'), 'ok');
       setEditing(null);
     },
-    onError: (err) => toast(err instanceof ClaimNotFoundError ? t('matching.art14.toast.claimNotFound') : apiErrorMessage(err, t('matching.art14.toast.error')), 'ko'),
+    onError: (err) => toast(apiErrorMessage(err, t('matching.art14.toast.error')), 'ko'),
   });
 
   function openEditor(side: Side) {
