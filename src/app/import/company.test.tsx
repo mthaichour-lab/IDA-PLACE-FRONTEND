@@ -78,7 +78,12 @@ describe('Écran 3 — import au nom d’une compagnie désignée (SEC-02)', () 
     const select = await screen.findByLabelText('Compagnie déclarante');
     await screen.findByRole('option', { name: 'SAA — Compagnie SAA' });
     expect(screen.queryByRole('option', { name: /OLD/ })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Choisir le fichier' })).toBeDisabled();
+    // Bandeau "Compagnies admises" (capture, écran 3) — liste RÉELLE des compagnies ACTIVES
+    // uniquement (SUSPENDU exclu, même filtre que le sélecteur), jamais une liste figée en dur.
+    const notice = await screen.findByRole('note');
+    expect(notice).toHaveTextContent('Compagnies admises : CAAT · SAA');
+    expect(notice).not.toHaveTextContent('OLD');
+    expect(screen.getByRole('button', { name: 'Choisir un fichier' })).toBeDisabled();
     expect(screen.getByText('Choisissez d’abord la compagnie déclarante.')).toBeInTheDocument();
 
     // Fichier déposé sans compagnie : aucun appel.
@@ -86,7 +91,7 @@ describe('Écran 3 — import au nom d’une compagnie désignée (SEC-02)', () 
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/claims/import?') || String(input).endsWith('/claims/import'))).toBe(false);
 
     await user.selectOptions(select, 'SAA');
-    expect(screen.getByRole('button', { name: 'Choisir le fichier' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Choisir un fichier' })).toBeEnabled();
     await user.upload(fileInput(container), new File(['x'], 'lot.csv', { type: 'text/csv' }));
 
     await screen.findByText('Refusée — aucun dossier créé');
@@ -102,7 +107,7 @@ describe('Écran 3 — import au nom d’une compagnie désignée (SEC-02)', () 
     await user.selectOptions(await screen.findByLabelText('Compagnie déclarante'), await screen.findByRole('option', { name: 'SAA — Compagnie SAA' }));
     await user.upload(fileInput(container), new File(['x'], 'lot.csv', { type: 'text/csv' }));
 
-    const report = await screen.findByText("Rapport d'import");
+    const report = await screen.findByText("Aperçu des lignes importées");
     const sheet = report.closest('.sheet') as HTMLElement;
     await waitFor(() => expect(within(sheet).getByText('Refusées')).toBeInTheDocument());
     expect(within(sheet).getByText('Refusées').nextElementSibling).toHaveTextContent('1');
@@ -122,6 +127,9 @@ describe('Écran 3 — import au nom d’une compagnie désignée (SEC-02)', () 
     await screen.findByText('Import au nom de votre compagnie :');
     expect(screen.getByText('CAAT')).toBeInTheDocument();
     expect(screen.queryByLabelText('Compagnie déclarante')).not.toBeInTheDocument();
+    // Pas de bandeau "Compagnies admises" pour un rôle compagnie (même périmètre que le
+    // sélecteur, SEC-07/21 : aucune lecture de `/referential/companies` pour ce rôle).
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/referential/companies'))).toBe(false);
 
     await user.upload(fileInput(container), new File(['x'], 'lot.csv', { type: 'text/csv' }));

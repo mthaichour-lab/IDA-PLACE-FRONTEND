@@ -47,8 +47,8 @@ describe('Écran Import des dossiers (/import) — affichage conditionnel par pr
     renderWithProviders(<ImportPage />);
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
-    expect(screen.queryByRole('button', { name: /choisir le fichier/i })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/déposez votre fichier/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /choisir un fichier/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/déposez un fichier excel ou csv/i)).not.toBeInTheDocument();
   });
 
   it("affiche la zone de dépôt (drag-drop + bouton) avec le privilège 'import'", async () => {
@@ -61,8 +61,8 @@ describe('Écran Import des dossiers (/import) — affichage conditionnel par pr
 
     renderWithProviders(<ImportPage />);
 
-    await waitFor(() => expect(screen.getByRole('button', { name: /choisir le fichier/i })).toBeInTheDocument());
-    expect(screen.getByLabelText(/déposez votre fichier/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: /choisir un fichier/i })).toBeInTheDocument());
+    expect(screen.getByLabelText(/déposez un fichier excel ou csv/i)).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
@@ -75,7 +75,7 @@ describe('Écran Import des dossiers (/import) — affichage conditionnel par pr
     });
 
     renderWithProviders(<ImportPage />);
-    const dropzone = await screen.findByLabelText(/déposez votre fichier/i);
+    const dropzone = await screen.findByLabelText(/déposez un fichier excel ou csv/i);
     // Rôle place : zone inactive (hors tabulation) tant que la compagnie déclarante n'est pas choisie (SEC-02).
     expect(dropzone).toHaveAttribute('tabindex', '-1');
     expect(dropzone).toHaveAttribute('aria-disabled', 'true');
@@ -93,6 +93,6 @@ describe('Écran Import des dossiers (/import) — affichage conditionnel par pr
     });
 
     renderWithProviders(<ImportPage />);
-    await waitFor(() => expect(screen.getByText(/aucun import effectué/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/aucun lot importé/i)).toBeInTheDocument());
   });
 });

@@ -51,12 +51,18 @@ export default function ImportPage() {
   const targetCompany = companyRole ? me?.company ?? '' : declaringCompany;
   const ready = canImport && !!targetCompany;
 
+  // SEC-07/21 : lecture minimisée par rôle — `GET /referential/companies` n'est appelée que pour
+  // un rôle place (qui choisit la compagnie déclarante), jamais pour un rôle compagnie (sa
+  // compagnie est imposée par le jeton, voir `company.test.tsx` : aucun appel à cette route pour
+  // ce rôle). La bannière "Compagnies admises" (capture) n'est donc affichée, elle aussi, que
+  // pour un rôle place — elle réutilise la même liste que le sélecteur, pas un second appel.
   const companiesQuery = useQuery({
     queryKey: ['referential', 'companies', 'import-picker'],
     queryFn: () => apiGet<Paginated<CompanyListItem>>('/referential/companies', { page: 1, pageSize: 100 }),
     enabled: placeImporter,
   });
-  const companyOptions = (companiesQuery.data?.items ?? []).filter((c) => c.status === 'ACTIF');
+  const activeCompanies = (companiesQuery.data?.items ?? []).filter((c) => c.status === 'ACTIF');
+  const companyOptions = activeCompanies;
 
   const columnsQuery = useQuery({
     queryKey: ['claims', 'import', 'columns'],
@@ -146,7 +152,32 @@ export default function ImportPage() {
 
   return (
     <>
-      <FolioHeader badge="Module XII" title={t('import.title')} subtitle={t('import.subtitle')} />
+      <FolioHeader
+        badge="Module A · §6.3 · Art. 14"
+        title={t('import.title')}
+        subtitle={t('import.subtitle')}
+        actions={
+          <>
+            {(
+              [
+                { version: 'v1', label: t('import.template.v1'), data: columnsQuery.data },
+                { version: 'v2', label: t('import.template.v2'), data: columnsV2Query.data },
+              ] as const
+            ).map(({ version, label, data }) => (
+              <button
+                key={version}
+                type="button"
+                onClick={() => onDownloadTemplate(version)}
+                disabled={!data}
+                title={t('import.template.note')}
+                style={{ padding: '8px 16px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--rule-strong)', background: 'var(--paper)', color: 'var(--ink)', font: 'inherit', cursor: data ? 'pointer' : 'not-allowed' }}
+              >
+                {label} ({data?.length ?? '…'} {t('import.template.columns')})
+              </button>
+            ))}
+          </>
+        }
+      />
 
       {!canImport ? (
         <div className="note warn" role="alert" style={{ marginBottom: 'var(--s-5)' }}>
@@ -155,46 +186,54 @@ export default function ImportPage() {
         </div>
       ) : null}
 
-      <div className="grid g-side">
-        <div>
-          {canImport ? (
-            <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
-              <div className="sheet-body">
-                {/* SEC-02 : compagnie déclarante — choisie par un rôle place, imposée par le jeton pour un rôle compagnie. */}
-                <div style={{ marginBottom: 'var(--s-4)' }}>
-                  {placeImporter ? (
-                    companiesQuery.error ? (
-                      <div className="note ko" role="alert">
-                        <span>{t('common.error')}</span>
-                        <button type="button" onClick={() => companiesQuery.refetch()}>
-                          {t('common.retry')}
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <LabeledSelect
-                          label={t('import.company.label')}
-                          value={declaringCompany}
-                          required
-                          disabled={companiesQuery.isLoading || importMutation.isPending}
-                          onChange={setDeclaringCompany}
-                          options={[
-                            { value: '', label: companiesQuery.isLoading ? t('common.loading') : t('import.company.placeholder') },
-                            ...companyOptions.map((c) => ({ value: c.code, label: `${c.code} — ${c.name}` })),
-                          ]}
-                        />
-                        <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', margin: '4px 0 0' }}>{t('import.company.placeHint')}</p>
-                      </>
-                    )
-                  ) : companyRole ? (
-                    <p style={{ fontSize: 'var(--k-fs-s)', margin: 0 }}>
-                      {t('import.company.own')} <strong className="mono">{me?.company ?? '—'}</strong>
-                    </p>
-                  ) : null}
-                </div>
+      {canImport ? (
+        <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
+          <div className="sheet-body">
+            {/* SEC-02 : compagnie déclarante — choisie par un rôle place, imposée par le jeton pour un rôle compagnie. */}
+            <div style={{ marginBottom: 'var(--s-4)' }}>
+              {placeImporter ? (
+                companiesQuery.error ? (
+                  <div className="note ko" role="alert">
+                    <span>{t('common.error')}</span>
+                    <button type="button" onClick={() => companiesQuery.refetch()}>
+                      {t('common.retry')}
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <LabeledSelect
+                      label={t('import.company.label')}
+                      value={declaringCompany}
+                      required
+                      disabled={companiesQuery.isLoading || importMutation.isPending}
+                      onChange={setDeclaringCompany}
+                      options={[
+                        { value: '', label: companiesQuery.isLoading ? t('common.loading') : t('import.company.placeholder') },
+                        ...companyOptions.map((c) => ({ value: c.code, label: `${c.code} — ${c.name}` })),
+                      ]}
+                    />
+                    <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', margin: '4px 0 0' }}>{t('import.company.placeHint')}</p>
+                  </>
+                )
+              ) : companyRole ? (
+                <p style={{ fontSize: 'var(--k-fs-s)', margin: 0 }}>
+                  {t('import.company.own')} <strong className="mono">{me?.company ?? '—'}</strong>
+                </p>
+              ) : null}
+            </div>
 
-                {/* Zone de dépôt drag-drop (A.4, écran 3) — inactive tant que la compagnie déclarante n'est pas choisie. */}
-                <div
+            {/* Bandeau d'information (capture) — liste RÉELLE des compagnies actives
+                (`GET /referential/companies`), jamais une liste figée en dur. Rôle place
+                uniquement (même périmètre que le sélecteur ci-dessus, SEC-07/21). */}
+            {placeImporter ? (
+              <p className="note" role="note" style={{ fontSize: 'var(--k-fs-xs)', marginBottom: 'var(--s-4)' }}>
+                {t('import.notice.companies')}{' '}
+                {companiesQuery.isLoading ? t('import.notice.companiesLoading') : activeCompanies.map((c) => c.code).join(' · ') || '—'}
+              </p>
+            ) : null}
+
+            {/* Zone de dépôt drag-drop (A.4, écran 3) — inactive tant que la compagnie déclarante n'est pas choisie. */}
+            <div
                   role="button"
                   tabIndex={ready ? 0 : -1}
                   aria-disabled={!ready}
@@ -255,119 +294,100 @@ export default function ImportPage() {
                     {importError}
                   </p>
                 ) : null}
-              </div>
-            </div>
-          ) : null}
-
-          <div className="sheet">
-            <div className="sheet-head">
-              <span>{t('import.report.title')}</span>
-            </div>
-            <div className="sheet-body">
-              {!latestReport ? (
-                <p style={{ color: 'var(--ink-3)' }}>{t('import.journal.empty')}</p>
-              ) : (
-                <>
-                  <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--s-3)', marginBottom: 'var(--s-4)' }}>
-                    <Field label={t('import.report.file')}>
-                      <span className="mono">{latestReport.fileName}</span>
-                    </Field>
-                    <Field label={t('import.report.company')}>
-                      <span className="mono">{latestReport.company ?? '—'}</span>
-                    </Field>
-                    <Field label={t('import.report.importedAt')}>{new Date(latestReport.importedAt).toLocaleString(locale)}</Field>
-                    <Field label={t('import.report.total')}>{latestReport.totalRows}</Field>
-                    <Field label={t('import.report.eligible')}>
-                      <Tag tone="ok">{latestReport.eligibleCount}</Tag>
-                    </Field>
-                    <Field label={t('import.report.ineligible')}>
-                      <Tag tone="ko">{latestReport.ineligibleCount}</Tag>
-                    </Field>
-                    <Field label={t('import.report.rejected')}>
-                      <Tag tone={latestReport.rejectedCount > 0 ? 'warn' : 'a'}>{latestReport.rejectedCount ?? 0}</Tag>
-                    </Field>
-                  </dl>
-                  {latestReport.rejectedCount > 0 ? (
-                    <p className="note warn" role="status" style={{ fontSize: 'var(--k-fs-xs)' }}>
-                      {t('import.report.rejectedNote')}
-                    </p>
-                  ) : null}
-
-                  <Table
-                    columns={reportColumns}
-                    rows={reportRows}
-                    page={reportPage}
-                    total={reportRowsTotal}
-                    pageSize={PAGE_SIZE}
-                    onPageChange={setReportPage}
-                    getRowKey={(r) => String(r.rowNumber)}
-                  />
-
-                  {warnings.length > 0 ? (
-                    <section aria-label={t('import.warnings.title')} style={{ marginTop: 'var(--s-5)' }}>
-                      <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>
-                        {t('import.warnings.title')} ({warnings.length})
-                      </strong>
-                      <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginTop: 0 }}>{t('import.warnings.note')}</p>
-                      <Table
-                        columns={warningColumns}
-                        rows={warnings.slice((warningsPage - 1) * PAGE_SIZE, warningsPage * PAGE_SIZE)}
-                        page={warningsPage}
-                        total={warnings.length}
-                        pageSize={PAGE_SIZE}
-                        onPageChange={setWarningsPage}
-                        getRowKey={(w) => `${w.rowNumber}-${w.column}`}
-                      />
-                    </section>
-                  ) : null}
-                </>
-              )}
-            </div>
           </div>
         </div>
+      ) : null}
 
-        <aside className="sheet" aria-label={t('import.template.download')}>
-          <div className="sheet-head">
-            <span>{t('import.template.download')}</span>
-          </div>
-          <div className="sheet-body">
-            <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginTop: 0 }}>{t('import.template.note')}</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-2)' }}>
-              {(
-                [
-                  { version: 'v1', label: t('import.template.v1'), data: columnsQuery.data },
-                  { version: 'v2', label: t('import.template.v2'), data: columnsV2Query.data },
-                ] as const
-              ).map(({ version, label, data }) => (
-                <button
-                  key={version}
-                  type="button"
-                  onClick={() => onDownloadTemplate(version)}
-                  disabled={!data}
-                  style={{ padding: '8px 16px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--rule-strong)', background: 'var(--paper)', color: 'var(--ink)', font: 'inherit', cursor: data ? 'pointer' : 'not-allowed', width: '100%' }}
-                >
-                  {label} ({data?.length ?? '…'} {t('import.template.columns')})
-                </button>
+      {/* "Aperçu des lignes importées" (capture) — verdict d'éligibilité IDA réel par ligne
+          (API, ligne à ligne), pas de donnée recalculée côté front (C.1). */}
+      <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
+        <div className="sheet-head">
+          <span>{t('import.preview.title')}</span>
+        </div>
+        <div className="sheet-body">
+          {!latestReport ? (
+            <p style={{ color: 'var(--ink-3)' }}>{t('import.preview.empty')}</p>
+          ) : (
+            <>
+              <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--s-3)', marginBottom: 'var(--s-4)' }}>
+                <Field label={t('import.report.file')}>
+                  <span className="mono">{latestReport.fileName}</span>
+                </Field>
+                <Field label={t('import.report.company')}>
+                  <span className="mono">{latestReport.company ?? '—'}</span>
+                </Field>
+                <Field label={t('import.report.importedAt')}>{new Date(latestReport.importedAt).toLocaleString(locale)}</Field>
+                <Field label={t('import.report.total')}>{latestReport.totalRows}</Field>
+                <Field label={t('import.report.eligible')}>
+                  <Tag tone="ok">{latestReport.eligibleCount}</Tag>
+                </Field>
+                <Field label={t('import.report.ineligible')}>
+                  <Tag tone="ko">{latestReport.ineligibleCount}</Tag>
+                </Field>
+                <Field label={t('import.report.rejected')}>
+                  <Tag tone={latestReport.rejectedCount > 0 ? 'warn' : 'a'}>{latestReport.rejectedCount ?? 0}</Tag>
+                </Field>
+              </dl>
+              {latestReport.rejectedCount > 0 ? (
+                <p className="note warn" role="status" style={{ fontSize: 'var(--k-fs-xs)' }}>
+                  {t('import.report.rejectedNote')}
+                </p>
+              ) : null}
+
+              <Table
+                columns={reportColumns}
+                rows={reportRows}
+                page={reportPage}
+                total={reportRowsTotal}
+                pageSize={PAGE_SIZE}
+                onPageChange={setReportPage}
+                getRowKey={(r) => String(r.rowNumber)}
+              />
+
+              {warnings.length > 0 ? (
+                <section aria-label={t('import.warnings.title')} style={{ marginTop: 'var(--s-5)' }}>
+                  <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>
+                    {t('import.warnings.title')} ({warnings.length})
+                  </strong>
+                  <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginTop: 0 }}>{t('import.warnings.note')}</p>
+                  <Table
+                    columns={warningColumns}
+                    rows={warnings.slice((warningsPage - 1) * PAGE_SIZE, warningsPage * PAGE_SIZE)}
+                    page={warningsPage}
+                    total={warnings.length}
+                    pageSize={PAGE_SIZE}
+                    onPageChange={setWarningsPage}
+                    getRowKey={(w) => `${w.rowNumber}-${w.column}`}
+                  />
+                </section>
+              ) : null}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* "Historique des lots importés" (capture) — journal de la session courante uniquement
+          (pas de persistance back pour cet écran), un lot par import réussi. */}
+      <div className="sheet">
+        <div className="sheet-head">
+          <span>{t('import.history.title')}</span>
+        </div>
+        <div className="sheet-body">
+          {journal.length === 0 ? (
+            <p style={{ color: 'var(--ink-3)' }}>{t('import.history.empty')}</p>
+          ) : (
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {journal.map((r, i) => (
+                <li key={`${r.fileName}-${r.importedAt}-${i}`} style={{ fontSize: 'var(--k-fs-s)', color: 'var(--ink-2)', display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                  <span className="mono">
+                    {r.fileName} · {r.company}
+                  </span>
+                  <span>{new Date(r.importedAt).toLocaleString(locale)}</span>
+                </li>
               ))}
-            </div>
-
-            {journal.length > 1 ? (
-              <div style={{ marginTop: 'var(--s-5)' }}>
-                <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('import.journal.title')}</strong>
-                <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {journal.map((r, i) => (
-                    <li key={`${r.fileName}-${r.importedAt}-${i}`} style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-                      <span className="mono">
-                        {r.fileName} · {r.company}
-                      </span>
-                      <span>{new Date(r.importedAt).toLocaleTimeString(locale)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-          </div>
-        </aside>
+            </ul>
+          )}
+        </div>
       </div>
     </>
   );

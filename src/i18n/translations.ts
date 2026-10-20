@@ -489,20 +489,34 @@ const fr = {
   'matching.canal.IMPORT': 'Import fichier',
   'matching.canal.API': 'API',
 
-  // ----- Import des dossiers (écran 3, Module XII) -----
+  // ----- Import des dossiers (écran 3, Module A §6.3 · Art. 14) -----
   'import.title': 'Import des dossiers',
-  'import.subtitle': "Téléversement du modèle 47 colonnes (Excel/CSV) — le contrôle d'éligibilité IDA est effectué par l'API, ligne à ligne.",
+  'import.subtitle':
+    "Dépôt direct de dossiers sinistres (Excel/CSV) par les compagnies adhérentes qui n'utilisent ni IDA Sinistre ni le e-Constat. Les dossiers importés rejoignent la file de confrontation et d'appariement (Module A · §6.3).",
   'import.forbidden.title': 'Accès réservé',
   'import.forbidden.body': "Votre profil ne dispose pas du privilège d'import. Contactez un opérateur de place habilité.",
-  'import.dropzone.title': 'Déposez votre fichier ici',
-  'import.dropzone.subtitle': 'Format Excel/CSV, modèle 47 colonnes (B.4) ou modèle v2 étendu.',
-  'import.dropzone.button': 'Choisir le fichier',
+  'import.dropzone.title': 'Déposez un fichier Excel ou CSV',
+  // Volontairement SANS la mention "aucun envoi réseau" de la capture : le fichier est bien
+  // transmis à l'API pour le contrôle d'éligibilité ligne à ligne (`POST /claims/import`,
+  // `claims.service.ts` back) — affirmer l'inverse serait une donnée fabriquée (règle d'or C.1),
+  // pas seulement un écart visuel. Voir HANDOFF.md.
+  'import.dropzone.subtitle':
+    'Glissez-déposez un fichier .xlsx, .xls ou .csv (modèle 47 colonnes ou modèle v2 étendu), ou cliquez pour le sélectionner. Le fichier est transmis à l’API pour contrôle d’éligibilité ligne à ligne.',
+  'import.dropzone.button': 'Choisir un fichier',
   'import.template.download': 'Télécharger le modèle (colonnes)',
   'import.template.note': 'Export CSV des colonnes du contrat : v1 (47 colonnes) ou v2 (les mêmes, suivies des colonnes 48 à 53 du barème Art. 14). Placeholder : liste des en-têtes, pas un classeur Excel mis en forme.',
   'import.template.v1': 'Modèle v1',
   'import.template.v2': 'Modèle v2 — barème Art. 14',
   'import.template.columns': 'colonnes',
+  // "Compagnies admises" (bandeau d'information, capture) — liste RÉELLE des compagnies
+  // actives (`GET /referential/companies`), jamais une liste figée en dur.
+  'import.notice.companies': 'Compagnies admises :',
+  'import.notice.companiesLoading': 'Chargement des compagnies admises…',
   'import.uploading': 'Import en cours…',
+  'import.preview.title': 'Aperçu des lignes importées',
+  'import.preview.empty': 'Aucun fichier chargé. Téléchargez le modèle, remplissez-le, puis déposez-le ci-dessus.',
+  'import.history.title': 'Historique des lots importés',
+  'import.history.empty': "Aucun lot importé pour l'instant.",
   'import.report.title': "Rapport d'import",
   'import.report.file': 'Fichier',
   'import.report.importedAt': 'Importé le',
@@ -533,8 +547,6 @@ const fr = {
   'import.report.company': 'Compagnie déclarante',
   'import.report.rejected': 'Refusées',
   'import.report.rejectedNote': "Des lignes ont été refusées sans création de dossier : leur compagnie A diffère de la compagnie déclarante.",
-  'import.journal.title': "Journal d'import (session courante)",
-  'import.journal.empty': "Aucun import effectué pour l'instant dans cette session.",
   'import.toast.success': 'Import terminé.',
   'import.toast.error': "L'import a échoué.",
 
