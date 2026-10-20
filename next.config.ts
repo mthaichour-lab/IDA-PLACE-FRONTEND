@@ -1,5 +1,4 @@
 import type { NextConfig } from 'next';
-import { PHASE_DEVELOPMENT_SERVER, PHASE_PRODUCTION_BUILD } from 'next/constants';
 import { assertProductionEnv, staticSecurityHeaders } from './config/build-env';
 
 /**
@@ -12,6 +11,15 @@ import { assertProductionEnv, staticSecurityHeaders } from './config/build-env';
  *   `X-Powered-By` ; la CSP (nonce par requête) est posée par `src/proxy.ts`.
  * - `output: 'standalone'` pour l'image Docker (SEC-23).
  */
+// Valeurs de `next/constants` reprises en dur (stables, documentées par
+// Next.js) plutôt qu'importées : sur ce poste, le binaire natif SWC est
+// bloqué par une politique de contrôle applicatif (Application Control),
+// ce qui fait retomber la transformation de ce fichier sur un chemin qui
+// laisse l'import tel quel et échoue à la résolution ESM (`next/constants`
+// sans extension). Aucun impact fonctionnel : ce sont de simples chaînes.
+const PHASE_PRODUCTION_BUILD = 'phase-production-build';
+const PHASE_DEVELOPMENT_SERVER = 'phase-development-server';
+
 export default function nextConfig(phase: string): NextConfig {
   const isProdBuild = phase === PHASE_PRODUCTION_BUILD;
   // `next dev` lancé avec NODE_ENV=production : même exigence qu'un build.
