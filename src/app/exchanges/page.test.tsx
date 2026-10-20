@@ -1,8 +1,22 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { mockFetchRouter, renderWithProviders } from '@/test/render';
 import { MeResponse, RecoursItem, SettlementQuarterClosure } from '@/lib/types';
 import ExchangesPage from './page';
+
+/**
+ * Depuis le passage à un panneau de détail PERSISTANT (plus de `Modal`,
+ * fidélité à la capture écran 4 : registre à gauche + détail à droite,
+ * détail toujours rempli par défaut — voir `openRecours`/l'effet
+ * d'auto-sélection dans `page.tsx`), le n° de dossier et le montant du
+ * recours sélectionné apparaissent à la fois dans le registre ET dans le
+ * panneau de détail : les assertions qui portaient sur le registre seul
+ * sont donc scopées à la table (`within(table())`), sinon `getByText`
+ * échoue en trouvant deux correspondances légitimes.
+ */
+function table(): HTMLElement {
+  return screen.getByRole('table');
+}
 
 const ME_WITH_EXCHANGE: MeResponse = {
   user: { id: 'dev-correspondant', name: 'Correspondant IDA (dev)', email: 'correspondant@compagnie.dz' },
@@ -101,16 +115,16 @@ describe('Écran Échanges (/exchanges)', () => {
     mockExchangesApi(ME_WITH_EXCHANGE, [recoursItem()]);
     renderWithProviders(<ExchangesPage />);
 
-    await waitFor(() => expect(screen.getByText('c-1')).toBeInTheDocument());
-    expect(screen.getByText(/150\s?000/)).toBeInTheDocument();
+    await waitFor(() => expect(within(table()).getByText('c-1')).toBeInTheDocument());
+    expect(within(table()).getByText(/150\s?000/)).toBeInTheDocument();
   });
 
   it('ouvre le détail et propose uniquement les actions autorisées pour EN_ATTENTE (Accepter/Opposer)', async () => {
     mockExchangesApi(ME_WITH_EXCHANGE, [recoursItem({ state: 'EN_ATTENTE' })]);
     renderWithProviders(<ExchangesPage />);
 
-    await waitFor(() => expect(screen.getByText('c-1')).toBeInTheDocument());
-    fireEvent.click(screen.getByText('c-1').closest('tr')!);
+    await waitFor(() => expect(within(table()).getByText('c-1')).toBeInTheDocument());
+    fireEvent.click(within(table()).getByText('c-1').closest('tr')!);
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Accepter' })).toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Formuler une opposition' })).toBeInTheDocument();
@@ -121,8 +135,8 @@ describe('Écran Échanges (/exchanges)', () => {
     mockExchangesApi(ME_WITH_EXCHANGE, [recoursItem({ state: 'REGLE', timer: { timerType: 'AUCUN', remainingDays: 0, expired: false } })]);
     renderWithProviders(<ExchangesPage />);
 
-    await waitFor(() => expect(screen.getByText('c-1')).toBeInTheDocument());
-    fireEvent.click(screen.getByText('c-1').closest('tr')!);
+    await waitFor(() => expect(within(table()).getByText('c-1')).toBeInTheDocument());
+    fireEvent.click(within(table()).getByText('c-1').closest('tr')!);
 
     await waitFor(() => expect(screen.getByText('Aucune action disponible dans cet état pour votre profil.')).toBeInTheDocument());
   });
@@ -132,8 +146,8 @@ describe('Écran Échanges (/exchanges)', () => {
     mockExchangesApi(ME_WITHOUT_EXCHANGE, [recoursItem({ state: 'CONTESTATION' })]);
     renderWithProviders(<ExchangesPage />);
 
-    await waitFor(() => expect(screen.getByText('c-1')).toBeInTheDocument());
-    fireEvent.click(screen.getByText('c-1').closest('tr')!);
+    await waitFor(() => expect(within(table()).getByText('c-1')).toBeInTheDocument());
+    fireEvent.click(within(table()).getByText('c-1').closest('tr')!);
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Transmettre en commission' })).toBeDisabled());
   });
@@ -155,8 +169,8 @@ describe('Écran Échanges (/exchanges)', () => {
     ]);
     renderWithProviders(<ExchangesPage />);
 
-    await waitFor(() => expect(screen.getByText('c-1')).toBeInTheDocument());
-    fireEvent.click(screen.getByText('c-1').closest('tr')!);
+    await waitFor(() => expect(within(table()).getByText('c-1')).toBeInTheDocument());
+    fireEvent.click(within(table()).getByText('c-1').closest('tr')!);
 
     await waitFor(() => expect(screen.getByText('Annexe 2 — Demande d’indemnisation')).toBeInTheDocument());
     expect(screen.getByText('Annexe 3 — Avis d’opposition motivé')).toBeInTheDocument();
@@ -172,8 +186,8 @@ describe('Écran Échanges (/exchanges)', () => {
     mockExchangesApi(ME_WITH_EXCHANGE, [recoursItem()]);
     renderWithProviders(<ExchangesPage />);
 
-    await waitFor(() => expect(screen.getByText('c-1')).toBeInTheDocument());
-    fireEvent.click(screen.getByText('c-1').closest('tr')!);
+    await waitFor(() => expect(within(table()).getByText('c-1')).toBeInTheDocument());
+    fireEvent.click(within(table()).getByText('c-1').closest('tr')!);
 
     await waitFor(() => expect(screen.getByText('Pièces jointes (Annexes 2/3/4)')).toBeInTheDocument());
     await waitFor(() => expect(screen.getByText('Aucune pièce jointe.')).toBeInTheDocument());
@@ -183,13 +197,13 @@ describe('Écran Échanges (/exchanges)', () => {
     mockExchangesApi(ME_WITH_EXCHANGE, [recoursItem({ id: 'r-1', claimId: 'c-1' }), recoursItem({ id: 'r-2', claimId: 'c-2', from: 'CASH', to: 'CAAR' })]);
     renderWithProviders(<ExchangesPage />);
 
-    await waitFor(() => expect(screen.getByText('c-1')).toBeInTheDocument());
-    expect(screen.getByText('c-2')).toBeInTheDocument();
+    await waitFor(() => expect(within(table()).getByText('c-1')).toBeInTheDocument());
+    expect(within(table()).getByText('c-2')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/rechercher/i), { target: { value: 'CAAR' } });
 
-    await waitFor(() => expect(screen.getByText('c-2')).toBeInTheDocument());
-    expect(screen.queryByText('c-1')).not.toBeInTheDocument();
+    await waitFor(() => expect(within(table()).getByText('c-2')).toBeInTheDocument());
+    expect(within(table()).queryByText('c-1')).not.toBeInTheDocument();
   });
 
   /**
@@ -246,9 +260,9 @@ describe('Écran Échanges (/exchanges)', () => {
       await waitFor(() => expect(screen.getByRole('tab', { name: /réglé\/compensé/i })).toBeInTheDocument());
       fireEvent.click(screen.getByRole('tab', { name: /réglé\/compensé/i }));
 
-      await waitFor(() => expect(screen.getByText('c-q1-compense')).toBeInTheDocument());
-      expect(screen.queryByText('c-q2-silence')).not.toBeInTheDocument();
-      expect(screen.queryByText('c-no-date')).not.toBeInTheDocument();
+      await waitFor(() => expect(within(table()).getByText('c-q1-compense')).toBeInTheDocument());
+      expect(within(table()).queryByText('c-q2-silence')).not.toBeInTheDocument();
+      expect(within(table()).queryByText('c-no-date')).not.toBeInTheDocument();
     });
 
     it('le sous-onglet "Accepté/silence" affiche le trimestre non clôturé ET le recours sans `settledAt` (défensif, pas de plantage)', async () => {
@@ -259,9 +273,9 @@ describe('Écran Échanges (/exchanges)', () => {
       fireEvent.click(screen.getByRole('tab', { name: /réglés/i }));
 
       // "Accepté/silence" est le sous-onglet par défaut.
-      await waitFor(() => expect(screen.getByText('c-q2-silence')).toBeInTheDocument());
-      expect(screen.getByText('c-no-date')).toBeInTheDocument();
-      expect(screen.queryByText('c-q1-compense')).not.toBeInTheDocument();
+      await waitFor(() => expect(within(table()).getByText('c-q2-silence')).toBeInTheDocument());
+      expect(within(table()).getByText('c-no-date')).toBeInTheDocument();
+      expect(within(table()).queryByText('c-q1-compense')).not.toBeInTheDocument();
     });
 
     it("n'affiche aucun sous-onglet sur un autre onglet de premier niveau (régression) — pagination serveur existante inchangée", async () => {

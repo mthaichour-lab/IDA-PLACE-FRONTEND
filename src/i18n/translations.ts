@@ -849,7 +849,7 @@ const fr = {
   'params.costs.totalRow': 'Consommation hors forfait',
 
   // ----- Échanges/Cycle mensuel/Compensation/Commission (écrans 4-7) -----
-  'exchanges.col.parties': 'De / Vers',
+  'exchanges.col.parties': 'Créancier → débiteur',
   'exchanges.col.amount': 'Montant',
   'exchanges.col.state': 'État',
   'exchanges.col.deadline': 'Échéance',
@@ -887,8 +887,8 @@ const fr = {
   'exchanges.panel.empty': 'Sélectionnez un recours pour voir le détail.',
   'exchanges.detail.titlePrefix': 'Recours',
   'exchanges.detail.claim': 'Dossier lié',
-  'exchanges.detail.from': 'De',
-  'exchanges.detail.to': 'Vers',
+  'exchanges.detail.from': 'Créancier (assureur direct)',
+  'exchanges.detail.to': 'Débiteur (assureur tiers)',
   'exchanges.detail.amount': 'Montant',
   'exchanges.detail.state': 'État actuel',
   'exchanges.detail.sentAt': 'Envoyé le',
@@ -909,6 +909,10 @@ const fr = {
   'exchanges.detail.transition.toast.ok': 'Transition enregistrée.',
   'exchanges.detail.transition.toast.error': "La transition n'a pas pu être enregistrée.",
   'exchanges.detail.attachments': 'Pièces jointes (Annexes 2/3/4)',
+  'exchanges.detail.thread': 'Fil d’échanges',
+  'exchanges.thread.empty': 'Aucun échange pour le moment.',
+  'exchanges.registerBadge.label': 'Registre filtré',
+  'exchanges.registerBadge.title': 'Registre automatiquement limité à votre compagnie (créancière ou débitrice) — SEC-43.',
 
   // ----- Cycle mensuel (écran 5, Module C §6.5) -----
   'monthly.title': 'Cycle mensuel',

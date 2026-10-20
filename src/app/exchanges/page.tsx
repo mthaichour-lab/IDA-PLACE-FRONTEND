@@ -1,13 +1,13 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { ExchangeThread } from '@/components/shared/ExchangeThread';
 import { TruncationNote } from '@/components/ui/TruncationNote';
 import { FolioHeader } from '@/components/FolioHeader';
 import { AttachmentsPanel } from '@/components/documents/AttachmentsPanel';
 import { CoChip } from '@/components/ui/CoChip';
 import { CountdownBar } from '@/components/ui/CountdownBar';
-import { Modal } from '@/components/ui/Modal';
 import { Table, Column } from '@/components/ui/Table';
 import { Tabs } from '@/components/ui/Tabs';
 import { Tag, TagTone } from '@/components/ui/Tag';
@@ -21,7 +21,9 @@ import { useAuth } from '@/lib/auth-context';
 import { useApiErrorMessage } from '@/lib/error-message';
 import { useRealtime } from '@/lib/realtime';
 import { isCompanyActor, visibleRecoursActions } from '@/lib/recours-actions';
+import { buildRecoursExchangeEvents } from '@/lib/recours-timeline';
 import {
+  CompanyListItem,
   OppositionMotif,
   Paginated,
   RecoursAction,
@@ -34,7 +36,6 @@ import {
 } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
-
 
 /**
  * Sous-onglets du filtre REGLE (écran 4 "Échanges Annexes 2/3/4", guide
@@ -81,47 +82,6 @@ const TABS: { key: RecoursFilter; label: TranslationKey }[] = [
   { key: 'FORCLOS', label: 'exchanges.tab.forclos' },
 ];
 
-/** Libellé d'affichage d'un `resolution.kind` (B.3 RecoursModule) — valeurs exactes, voir recours.rules.ts back. */
-const RESOLUTION_LABELS: Record<string, TranslationKey> = {
-  ACCEPTATION_EXPRESSE: 'exchanges.detail.timeline.resolution.ACCEPTATION_EXPRESSE',
-  ACCEPTATION_TACITE_ART10: 'exchanges.detail.timeline.resolution.ACCEPTATION_TACITE_ART10',
-  OPPOSITION_LEVEE: 'exchanges.detail.timeline.resolution.OPPOSITION_LEVEE',
-  OPPOSITION_FONDEE_ART12: 'exchanges.detail.timeline.resolution.OPPOSITION_FONDEE_ART12',
-  DECISION_COMMISSION_FAVORABLE: 'exchanges.detail.timeline.resolution.DECISION_COMMISSION_FAVORABLE',
-  DECISION_COMMISSION_DEFAVORABLE: 'exchanges.detail.timeline.resolution.DECISION_COMMISSION_DEFAVORABLE',
-  FORCLUSION_ART19: 'exchanges.detail.timeline.resolution.FORCLUSION_ART19',
-};
-
-interface TimelineEntry {
-  key: string;
-  label: TranslationKey;
-  at: string;
-  reason?: string;
-}
-
-/**
- * Fil d'échanges reconstruit à partir des champs RÉELLEMENT persistés
- * (`requestSentAt`/`opposition`/`contestation`/`commissionAt`/`resolution`)
- * — pas un historique de transitions à part entière (`RecoursController`
- * n'expose aucun endpoint dédié, voir HANDOFF.md), mais chaque étape vraiment
- * survenue est reconstituée honnêtement, triée chronologiquement.
- */
-function buildTimeline(r: RecoursItem, motifLabels: Map<string, string>): TimelineEntry[] {
-  const entries: TimelineEntry[] = [{ key: 'annexe2', label: 'exchanges.detail.timeline.annexe2', at: r.requestSentAt }];
-  if (r.opposition) {
-    const code = r.opposition.reasonCode;
-    const reason = [code ? motifLabels.get(code) ?? code : undefined, r.opposition.reason].filter(Boolean).join(' — ');
-    entries.push({ key: 'annexe3', label: 'exchanges.detail.timeline.annexe3', at: r.opposition.raisedAt, reason: reason || undefined });
-  }
-  if (r.contestation) entries.push({ key: 'annexe4', label: 'exchanges.detail.timeline.annexe4', at: r.contestation.raisedAt, reason: r.contestation.reason });
-  if (r.commissionAt) entries.push({ key: 'commission', label: 'exchanges.detail.timeline.commission', at: r.commissionAt });
-  if (r.resolution) {
-    const label = RESOLUTION_LABELS[r.resolution.kind];
-    if (label) entries.push({ key: 'resolution', label, at: r.resolution.at, reason: r.resolution.note });
-  }
-  return entries.sort((a, b) => a.at.localeCompare(b.at));
-}
-
 function stateTone(state: RecoursState): TagTone {
   if (state === 'FORCLOS' || state === 'REJETE') return 'ko';
   if (state === 'OPPOSITION' || state === 'CONTESTATION') return 'warn';
@@ -153,8 +113,9 @@ export default function ExchangesPage() {
   const { toast } = useToast();
   const errorMessage = useApiErrorMessage();
   const queryClient = useQueryClient();
-  // SEC-17 : l'historique d'audit des transitions est réservé aux rôles place (404 sinon).
+  // SEC-17 : l'historique d'audit des transitions est réservé aux rôles place.
   const placeUser = !!me && !isCompanyActor(me);
+  const meCompany = isCompanyActor(me) ? me?.company : undefined;
 
   const [filter, setFilter] = useState<RecoursFilter>('TOUS');
   const [page, setPage] = useState(1);
@@ -174,6 +135,19 @@ export default function ExchangesPage() {
     queryFn: () => apiGet<Record<string, number>>('/recours/counters'),
     refetchInterval: POLL_INTERVAL_MS,
   });
+
+  /**
+   * Noms/couleurs réels des compagnies (`GET /referential/companies`,
+   * projection publique — SEC-26) : alimente les cartes Créancier/Débiteur
+   * du panneau de détail et la couleur réelle (`CompanyView.color`, SEC-50)
+   * des bulles du fil d'échanges. `CoChip` continue d'appliquer son propre
+   * repli si la couleur est absente/invalide.
+   */
+  const companiesQuery = useQuery({
+    queryKey: ['referential', 'companies', 'all'],
+    queryFn: () => apiGet<Paginated<CompanyListItem>>('/referential/companies', { page: 1, pageSize: 100 }),
+  });
+  const companyByCode = useMemo(() => new Map((companiesQuery.data?.items ?? []).map((c) => [c.code, c])), [companiesQuery.data]);
 
   // Pagination serveur normale (A.5) — pour tous les onglets SAUF REGLE,
   // dont le comportement change ci-dessous (voir `regleAllQuery`).
@@ -312,6 +286,15 @@ export default function ExchangesPage() {
     resetOpposition();
   }
 
+  // Sélection par défaut de la première ligne visible (fidélité à la
+  // capture : un recours est toujours présenté en détail) — seulement
+  // quand rien n'est encore sélectionné ; ne vole jamais la sélection d'un
+  // utilisateur qui a déjà cliqué une autre ligne.
+  useEffect(() => {
+    if (!selected && items.length > 0) openRecours(items[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, selected]);
+
   const transitionMutation = useMutation({
     mutationFn: ({ id, action, reason: r, reasonCode: code }: { id: string; action: RecoursAction; reason?: string; reasonCode?: string }) =>
       apiPost<RecoursTransitionResult>(apiPath`/recours/${id}/transition`, { action, reason: r || undefined, reasonCode: code || undefined }),
@@ -338,11 +321,16 @@ export default function ExchangesPage() {
     // même logique de remise à zéro que `page` ci-dessus.
     setRegleSubTab('SILENCE');
     setReglePage(1);
+    // Le recours sélectionné peut ne plus apparaître dans le nouvel onglet :
+    // on repart sans sélection, l'effet d'auto-sélection choisit la première
+    // ligne du nouvel onglet dès qu'elle est connue.
+    openRecours(null);
   }
 
   function changeRegleSubTab(next: string) {
     setRegleSubTab(next as RegleSubTab);
     setReglePage(1);
+    openRecours(null);
   }
 
   const columns: Column<RecoursItem>[] = useMemo(
@@ -353,7 +341,7 @@ export default function ExchangesPage() {
         header: t('exchanges.col.parties'),
         render: (r) => (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <CoChip code={r.from} /> <span aria-hidden="true">→</span> <CoChip code={r.to} />
+            <CoChip code={r.from} color={companyByCode.get(r.from)?.color} /> <span aria-hidden="true">→</span> <CoChip code={r.to} color={companyByCode.get(r.to)?.color} />
           </span>
         ),
       },
@@ -374,240 +362,259 @@ export default function ExchangesPage() {
           ),
       },
     ],
-    [t, locale],
+    [t, locale, companyByCode],
+  );
+
+  const threadEvents = useMemo(
+    () => (current ? buildRecoursExchangeEvents(current, { t, motifLabels, meCompany, amountLabel: formatDzd(current.amount, locale) }) : []),
+    [current, t, motifLabels, meCompany, locale],
   );
 
   return (
     <>
-      <FolioHeader badge="Module B · §6.4" title={t('exchanges.title')} subtitle={t('exchanges.subtitle')} />
+      <FolioHeader
+        badge="Module B · §6.4"
+        title={t('exchanges.title')}
+        subtitle={t('exchanges.subtitle')}
+        actions={
+          <span className="tag a" title={t('exchanges.registerBadge.title')}>
+            {t('exchanges.registerBadge.label')}
+          </span>
+        }
+      />
 
-      <div className="sheet">
-        <div className="sheet-body">
-          <Tabs items={TABS.map((tab) => ({ key: tab.key, label: t(tab.label), count: countersQuery.data?.[tab.key] }))} activeKey={filter} onChange={changeFilter} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(360px, 460px)', gap: 'var(--s-5)', alignItems: 'start' }}>
+        <div className="sheet">
+          <div className="sheet-body">
+            <Tabs items={TABS.map((tab) => ({ key: tab.key, label: t(tab.label), count: countersQuery.data?.[tab.key] }))} activeKey={filter} onChange={changeFilter} />
 
-          {isRegleFilter ? (
-            <Tabs
-              items={[
-                { key: 'SILENCE', label: t('exchanges.subtab.silence'), count: silenceItems.length },
-                { key: 'COMPENSATED', label: t('exchanges.subtab.compensated'), count: compensatedItems.length },
-              ]}
-              activeKey={regleSubTab}
-              onChange={changeRegleSubTab}
-            />
-          ) : null}
-
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-              setReglePage(1);
-            }}
-            aria-label={t('exchanges.search.label')}
-            placeholder={t('exchanges.search.label')}
-            style={{
-              width: '100%',
-              margin: 'var(--s-3) 0',
-              padding: '8px 12px',
-              border: '1px solid var(--rule-strong)',
-              borderRadius: 'var(--k-r-s)',
-              font: 'inherit',
-              background: 'var(--paper)',
-              color: 'var(--ink)',
-            }}
-          />
-
-          {(isRegleFilter ? regleAllQuery.isLoading || closuresQuery.isLoading : listQuery.isLoading) ? (
-            <p>{t('common.loading')}</p>
-          ) : (isRegleFilter ? regleAllQuery.error || closuresQuery.error : listQuery.error) ? (
-            <div className="note ko" role="alert">
-              <span>{t('common.error')}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  if (isRegleFilter) {
-                    void regleAllQuery.refetch();
-                    void closuresQuery.refetch();
-                  } else {
-                    void listQuery.refetch();
-                  }
-                }}
-              >
-                {t('common.retry')}
-              </button>
-            </div>
-          ) : (
-            <>
-              {isRegleFilter ? <TruncationNote truncated={regleAllQuery.data?.truncated} shown={regleAllQuery.data?.items.length ?? 0} total={regleAllQuery.data?.total ?? 0} /> : null}
-              <Table
-                columns={columns}
-                rows={items}
-                page={isRegleFilter ? reglePage : listQuery.data?.page ?? 1}
-                total={isRegleFilter ? regleActiveItems.length : listQuery.data?.total ?? 0}
-                pageSize={PAGE_SIZE}
-                onPageChange={isRegleFilter ? setReglePage : setPage}
-                onRowClick={openRecours}
-                getRowKey={(r) => r.id}
+            {isRegleFilter ? (
+              <Tabs
+                items={[
+                  { key: 'SILENCE', label: t('exchanges.subtab.silence'), count: silenceItems.length },
+                  { key: 'COMPENSATED', label: t('exchanges.subtab.compensated'), count: compensatedItems.length },
+                ]}
+                activeKey={regleSubTab}
+                onChange={changeRegleSubTab}
               />
-            </>
-          )}
-        </div>
-      </div>
-
-      <Modal open={!!current} title={current ? `${t('exchanges.detail.titlePrefix')} ${current.id}` : ''} onClose={() => openRecours(null)}>
-        {current ? (
-          <>
-            <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--s-3)', marginBottom: 'var(--s-4)' }}>
-              <Field label={t('exchanges.detail.claim')}>
-                <span className="mono">{current.claimId}</span>
-              </Field>
-              <Field label={t('exchanges.detail.from')}>
-                <CoChip code={current.from} />
-              </Field>
-              <Field label={t('exchanges.detail.to')}>
-                <CoChip code={current.to} />
-              </Field>
-              <Field label={t('exchanges.detail.amount')}>
-                <span className="mono">{formatDzd(current.amount, locale)}</span>
-              </Field>
-              <Field label={t('exchanges.detail.state')}>
-                <Tag tone={stateTone(current.state)}>{t(`exchanges.state.${current.state}` as TranslationKey)}</Tag>
-              </Field>
-              <Field label={t('exchanges.detail.sentAt')}>{new Date(current.requestSentAt).toLocaleDateString(locale)}</Field>
-            </dl>
-
-            {current.timer.deadlineAt ? (
-              <div style={{ marginBottom: 'var(--s-4)' }}>
-                <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.deadline')}</strong>
-                <CountdownBar
-                  startAt={current.requestSentAt}
-                  deadlineAt={current.timer.deadlineAt}
-                  renderLabel={({ remainingDays, overdue }) => `${remainingDays} ${overdue ? t('exchanges.countdown.overdue') : t('exchanges.countdown.remaining')}`}
-                />
-              </div>
             ) : null}
 
-            {!canTransition ? <p className="note warn">{t('common.forbidden')}</p> : null}
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+                setReglePage(1);
+              }}
+              aria-label={t('exchanges.search.label')}
+              placeholder={t('exchanges.search.label')}
+              style={{
+                width: '100%',
+                margin: 'var(--s-3) 0',
+                padding: '8px 12px',
+                border: '1px solid var(--rule-strong)',
+                borderRadius: 'var(--k-r-s)',
+                font: 'inherit',
+                background: 'var(--paper)',
+                color: 'var(--ink)',
+              }}
+            />
 
-            <div style={{ marginBottom: 'var(--s-4)' }}>
-              <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.transition.title')}</strong>
-              <label htmlFor="transition-reason" style={{ display: 'block', fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', marginBottom: 4 }}>
-                {t('exchanges.action.reason.label')}
-              </label>
-              <input
-                id="transition-reason"
-                type="text"
-                value={reason}
-                disabled={!canTransition}
-                onChange={(e) => setReason(e.target.value)}
-                style={{ width: '100%', marginBottom: 'var(--s-3)', padding: '6px 10px', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', font: 'inherit', background: 'var(--paper)', color: 'var(--ink)' }}
-              />
-              <div style={{ display: 'flex', gap: 'var(--s-2)', flexWrap: 'wrap' }}>
-                {visibleRecoursActions(current, me).map((action) => (
-                  <button
-                    key={action}
-                    type="button"
-                    className="tag a"
-                    style={{ cursor: canTransition ? 'pointer' : 'not-allowed', border: 'none' }}
-                    disabled={!canTransition || transitionMutation.isPending}
-                    aria-expanded={action === 'opposer' ? opposing : undefined}
-                    onClick={() => (action === 'opposer' ? setOpposing(true) : transitionMutation.mutate({ id: current.id, action, reason }))}
-                  >
-                    {t(`exchanges.action.${action}` as TranslationKey)}
-                  </button>
-                ))}
-                {visibleRecoursActions(current, me).length === 0 ? (
-                  <span style={{ color: 'var(--ink-3)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.action.none')}</span>
-                ) : null}
-              </div>
-
-              {opposing && canTransition && visibleRecoursActions(current, me).includes('opposer') ? (
-                <div
-                  role="group"
-                  aria-label={t('exchanges.action.opposer')}
-                  style={{ marginTop: 'var(--s-3)', padding: 'var(--s-3)', border: '1px solid var(--rule)', borderRadius: 'var(--k-r-s)', display: 'flex', flexDirection: 'column', gap: 'var(--s-3)' }}
+            {(isRegleFilter ? regleAllQuery.isLoading || closuresQuery.isLoading : listQuery.isLoading) ? (
+              <p>{t('common.loading')}</p>
+            ) : (isRegleFilter ? regleAllQuery.error || closuresQuery.error : listQuery.error) ? (
+              <div className="note ko" role="alert">
+                <span>{t('common.error')}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isRegleFilter) {
+                      void regleAllQuery.refetch();
+                      void closuresQuery.refetch();
+                    } else {
+                      void listQuery.refetch();
+                    }
+                  }}
                 >
-                  {motifsQuery.isLoading ? (
-                    <p style={{ margin: 0 }}>{t('common.loading')}</p>
-                  ) : hasAdmittedMotifs ? (
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
-                      {t('exchanges.opposition.motif.label')}
-                      <select
-                        required
-                        value={reasonCode}
-                        onChange={(e) => setReasonCode(e.target.value)}
-                        style={{ font: 'inherit', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', padding: '6px 10px', background: 'var(--paper)', color: 'var(--ink)' }}
-                      >
-                        <option value="" disabled>
-                          {t('exchanges.opposition.motif.placeholder')}
-                        </option>
-                        {motifs.map((m) => (
-                          <option key={m.code} value={m.code} disabled={!isAdmitted(m)}>
-                            {m.forbidden
-                              ? `${m.label} — ${t('referential.oppositionMotifs.forbidden')}`
-                              : isAdmitted(m)
-                                ? m.label
-                                : `${m.label} — ${t('exchanges.opposition.motif.pending')}`}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  ) : (
-                    <>
-                      <p style={{ margin: 0, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>{t('exchanges.opposition.noCatalog')}</p>
-                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 'var(--k-fs-s)', color: 'var(--ink)' }}>
-                        <input type="checkbox" required checked={attested} onChange={(e) => setAttested(e.target.checked)} />
-                        <span>{t('exchanges.opposition.attest')}</span>
-                      </label>
-                    </>
-                  )}
-                  <div style={{ display: 'flex', gap: 'var(--s-2)', flexWrap: 'wrap' }}>
-                    <button
-                      type="button"
-                      className="tag a"
-                      style={{ border: 'none', cursor: 'pointer' }}
-                      disabled={transitionMutation.isPending || motifsQuery.isLoading || (hasAdmittedMotifs ? !reasonCode : !attested)}
-                      onClick={() => transitionMutation.mutate({ id: current.id, action: 'opposer', reason, reasonCode: hasAdmittedMotifs ? reasonCode : undefined })}
-                    >
-                      {t('exchanges.opposition.confirm')}
-                    </button>
-                    <button type="button" className="tag a" style={{ border: 'none', cursor: 'pointer' }} onClick={resetOpposition}>
-                      {t('common.cancel')}
-                    </button>
-                  </div>
+                  {t('common.retry')}
+                </button>
+              </div>
+            ) : (
+              <>
+                {isRegleFilter ? <TruncationNote truncated={regleAllQuery.data?.truncated} shown={regleAllQuery.data?.items.length ?? 0} total={regleAllQuery.data?.total ?? 0} /> : null}
+                <Table
+                  columns={columns}
+                  rows={items}
+                  page={isRegleFilter ? reglePage : listQuery.data?.page ?? 1}
+                  total={isRegleFilter ? regleActiveItems.length : listQuery.data?.total ?? 0}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={isRegleFilter ? setReglePage : setPage}
+                  onRowClick={openRecours}
+                  getRowKey={(r) => r.id}
+                />
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="sheet" style={{ position: 'sticky', top: 'var(--s-5)' }}>
+          <div className="sheet-head">
+            <strong>{current ? `${t('exchanges.detail.titlePrefix')} ${current.id}` : t('exchanges.detail.titlePrefix')}</strong>
+            {current ? <Tag tone={stateTone(current.state)}>{t(`exchanges.state.${current.state}` as TranslationKey)}</Tag> : null}
+          </div>
+          <div className="sheet-body">
+            {!current ? (
+              <p style={{ color: 'var(--ink-3)' }}>{t('exchanges.panel.empty')}</p>
+            ) : (
+              <>
+                <div className="mono" style={{ fontSize: 'var(--k-fs-2xl)', fontWeight: 700, marginBottom: 'var(--s-4)' }}>
+                  {formatDzd(current.amount, locale)}
                 </div>
-              ) : null}
-            </div>
 
-            <div>
-              <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.timeline')}</strong>
-              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {buildTimeline(current, motifLabels).map((entry) => (
-                  <li key={entry.key} style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-                      <strong style={{ color: 'var(--ink)' }}>{t(entry.label)}</strong>
-                      <span className="mono">{new Date(entry.at).toLocaleString(locale)}</span>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-3)', marginBottom: 'var(--s-4)' }}>
+                  <Field label={t('exchanges.detail.from')}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <CoChip code={current.from} color={companyByCode.get(current.from)?.color} /> {companyByCode.get(current.from)?.name ?? current.from}
+                    </span>
+                  </Field>
+                  <Field label={t('exchanges.detail.to')}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <CoChip code={current.to} color={companyByCode.get(current.to)?.color} /> {companyByCode.get(current.to)?.name ?? current.to}
+                    </span>
+                  </Field>
+                </div>
+
+                <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--s-3)', marginBottom: 'var(--s-4)' }}>
+                  <Field label={t('exchanges.detail.claim')}>
+                    <span className="mono">{current.claimId}</span>
+                  </Field>
+                  <Field label={t('exchanges.detail.sentAt')}>{new Date(current.requestSentAt).toLocaleDateString(locale)}</Field>
+                </dl>
+
+                {current.timer.deadlineAt ? (
+                  <div style={{ marginBottom: 'var(--s-4)' }}>
+                    <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.deadline')}</strong>
+                    <CountdownBar
+                      startAt={current.requestSentAt}
+                      deadlineAt={current.timer.deadlineAt}
+                      renderLabel={({ remainingDays, overdue }) => `${remainingDays} ${overdue ? t('exchanges.countdown.overdue') : t('exchanges.countdown.remaining')}`}
+                    />
+                  </div>
+                ) : null}
+
+                {!canTransition ? <p className="note warn">{t('common.forbidden')}</p> : null}
+
+                <div style={{ marginBottom: 'var(--s-4)' }}>
+                  <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.transition.title')}</strong>
+                  <label htmlFor="transition-reason" style={{ display: 'block', fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', marginBottom: 4 }}>
+                    {t('exchanges.action.reason.label')}
+                  </label>
+                  <input
+                    id="transition-reason"
+                    type="text"
+                    value={reason}
+                    disabled={!canTransition}
+                    onChange={(e) => setReason(e.target.value)}
+                    style={{ width: '100%', marginBottom: 'var(--s-3)', padding: '6px 10px', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', font: 'inherit', background: 'var(--paper)', color: 'var(--ink)' }}
+                  />
+                  <div style={{ display: 'flex', gap: 'var(--s-2)', flexWrap: 'wrap' }}>
+                    {visibleRecoursActions(current, me).map((action) => (
+                      <button
+                        key={action}
+                        type="button"
+                        className="tag a"
+                        style={{ cursor: canTransition ? 'pointer' : 'not-allowed', border: 'none' }}
+                        disabled={!canTransition || transitionMutation.isPending}
+                        aria-expanded={action === 'opposer' ? opposing : undefined}
+                        onClick={() => (action === 'opposer' ? setOpposing(true) : transitionMutation.mutate({ id: current.id, action, reason }))}
+                      >
+                        {t(`exchanges.action.${action}` as TranslationKey)}
+                      </button>
+                    ))}
+                    {visibleRecoursActions(current, me).length === 0 ? (
+                      <span style={{ color: 'var(--ink-3)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.action.none')}</span>
+                    ) : null}
+                  </div>
+
+                  {opposing && canTransition && visibleRecoursActions(current, me).includes('opposer') ? (
+                    <div
+                      role="group"
+                      aria-label={t('exchanges.action.opposer')}
+                      style={{ marginTop: 'var(--s-3)', padding: 'var(--s-3)', border: '1px solid var(--rule)', borderRadius: 'var(--k-r-s)', display: 'flex', flexDirection: 'column', gap: 'var(--s-3)' }}
+                    >
+                      {motifsQuery.isLoading ? (
+                        <p style={{ margin: 0 }}>{t('common.loading')}</p>
+                      ) : hasAdmittedMotifs ? (
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
+                          {t('exchanges.opposition.motif.label')}
+                          <select
+                            required
+                            value={reasonCode}
+                            onChange={(e) => setReasonCode(e.target.value)}
+                            style={{ font: 'inherit', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', padding: '6px 10px', background: 'var(--paper)', color: 'var(--ink)' }}
+                          >
+                            <option value="" disabled>
+                              {t('exchanges.opposition.motif.placeholder')}
+                            </option>
+                            {motifs.map((m) => (
+                              <option key={m.code} value={m.code} disabled={!isAdmitted(m)}>
+                                {m.forbidden
+                                  ? `${m.label} — ${t('referential.oppositionMotifs.forbidden')}`
+                                  : isAdmitted(m)
+                                    ? m.label
+                                    : `${m.label} — ${t('exchanges.opposition.motif.pending')}`}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : (
+                        <>
+                          <p style={{ margin: 0, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>{t('exchanges.opposition.noCatalog')}</p>
+                          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 'var(--k-fs-s)', color: 'var(--ink)' }}>
+                            <input type="checkbox" required checked={attested} onChange={(e) => setAttested(e.target.checked)} />
+                            <span>{t('exchanges.opposition.attest')}</span>
+                          </label>
+                        </>
+                      )}
+                      <div style={{ display: 'flex', gap: 'var(--s-2)', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="tag a"
+                          style={{ border: 'none', cursor: 'pointer' }}
+                          disabled={transitionMutation.isPending || motifsQuery.isLoading || (hasAdmittedMotifs ? !reasonCode : !attested)}
+                          onClick={() => transitionMutation.mutate({ id: current.id, action: 'opposer', reason, reasonCode: hasAdmittedMotifs ? reasonCode : undefined })}
+                        >
+                          {t('exchanges.opposition.confirm')}
+                        </button>
+                        <button type="button" className="tag a" style={{ border: 'none', cursor: 'pointer' }} onClick={resetOpposition}>
+                          {t('common.cancel')}
+                        </button>
+                      </div>
                     </div>
-                    {entry.reason ? <p style={{ margin: '2px 0 0', fontSize: 'var(--k-fs-s)' }}>{entry.reason}</p> : null}
-                  </li>
-                ))}
-              </ul>
-              {placeUser ? <RecoursAuditHistory query={historyQuery} locale={locale} t={t} /> : null}
-            </div>
+                  ) : null}
+                </div>
 
-            {/*
-              QUESTIONS_UAR.md §9, décision Product Owner 2026-10-18 : pièces
-              manuelles (Annexe 2/3/4) attachées à CE recours — jamais à un
-              CommissionCase depuis cet écran (voir `AttachmentsPanel`).
-            */}
-            <div style={{ marginTop: 'var(--s-4)', paddingTop: 'var(--s-4)', borderTop: '1px solid var(--rule)' }}>
-              <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.attachments')}</strong>
-              <AttachmentsPanel recoursId={current.id} />
-            </div>
-          </>
-        ) : null}
-      </Modal>
+                <div style={{ marginBottom: 'var(--s-4)' }}>
+                  <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.timeline')}</strong>
+                  <ExchangeThread events={threadEvents} locale={locale} emptyLabel={t('exchanges.thread.empty')} />
+                  {placeUser ? <RecoursAuditHistory query={historyQuery} locale={locale} t={t} /> : null}
+                </div>
+
+                {/*
+                  QUESTIONS_UAR.md §9, décision Product Owner 2026-10-18 : pièces
+                  manuelles (Annexe 2/3/4) attachées à CE recours — jamais à un
+                  CommissionCase depuis cet écran (voir `AttachmentsPanel`).
+                */}
+                <div style={{ paddingTop: 'var(--s-4)', borderTop: '1px solid var(--rule)' }}>
+                  <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.attachments')}</strong>
+                  <AttachmentsPanel recoursId={current.id} />
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
     </>
   );
 }
