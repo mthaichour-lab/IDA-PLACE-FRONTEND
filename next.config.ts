@@ -1,5 +1,5 @@
 import type { NextConfig } from 'next';
-import { assertProductionEnv, staticSecurityHeaders } from './config/build-env';
+import { assertProductionEnv, staticSecurityHeaders } from './config/build-env.ts';
 
 /**
  * Configuration Next.js — durcissement SEC-01 / SEC-22 / SEC-40.
