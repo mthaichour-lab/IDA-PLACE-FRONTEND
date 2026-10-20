@@ -36,9 +36,16 @@ const FEED_MAX_ENTRIES = 12;
 
 const WEEKDAY_NAMES = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'] as const;
 
+/**
+ * Montant DZD en notation compacte ("5,65 M DA" / "269 k DA") — fidélité à
+ * la capture de référence écran 1, qui abrège systématiquement les
+ * montants (KPI de tête, indicateurs, positions nettes) plutôt que
+ * d'afficher le groupement complet des chiffres. Valeur affichée seule
+ * (jamais arrondie côté back — seul l'arrondi d'AFFICHAGE change ici).
+ */
 function formatDzd(amount: number, locale: string): string {
   try {
-    return new Intl.NumberFormat(locale, { style: 'currency', currency: 'DZD', maximumFractionDigits: 0 }).format(amount);
+    return `${new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 2 }).format(amount)} DA`;
   } catch {
     return `${amount.toLocaleString()} DA`;
   }
@@ -65,6 +72,19 @@ function monthLabel(period: string, locale: string): string {
 function quarterSuffix(quarter: string): string {
   const m = /Q(\d)/.exec(quarter);
   return m ? `T${m[1]}` : quarter;
+}
+
+/**
+ * Plage d'articles couverte par le cycle — dérivée des SEULES étapes
+ * réelles (`cycle.steps[].article`), jamais une plage fixe recopiée de la
+ * capture (qui inclut Art. 18, non suivi côté back — voir `CyclePanel`).
+ * "Art. 16" si une seule valeur, "Art. 16-17" si plusieurs.
+ */
+function articleRange(steps: CockpitCycleConventionnel['steps']): string {
+  const numbers = Array.from(new Set(steps.map((s) => s.article.match(/\d+/)?.[0]).filter((n): n is string => !!n))).sort((a, b) => Number(a) - Number(b));
+  if (numbers.length === 0) return '';
+  if (numbers.length === 1) return `Art. ${numbers[0]}`;
+  return `Art. ${numbers[0]}-${numbers[numbers.length - 1]}`;
 }
 
 /** Date calendaire `AAAA-MM-JJ` à partir de composants LOCAUX — jamais via `Date#toISOString` (décalage UTC possible selon le fuseau du navigateur), pour comparer calendrier ouvré et "aujourd'hui" sans ambiguïté de fuseau. */
@@ -239,6 +259,10 @@ function CyclePanel({
         <span>
           {t('cockpit.cycle.title')} — {monthLabel(cycle.period, locale)}
         </span>
+        {/* Dérivée des articles RÉELLEMENT portés par `cycle.steps` (Art. 16-17
+            aujourd'hui) — jamais "Art. 16-18" comme la capture, qui inclut
+            l'Art. 18 (non suivi, voir note ci-dessous et HANDOFF.md). */}
+        <span style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', fontWeight: 400 }}>{articleRange(cycle.steps)}</span>
       </div>
       <div className="sheet-body">
         {/* ⚠️ `cycle.steps` ne porte QUE les 3 étapes réellement suivies par ce

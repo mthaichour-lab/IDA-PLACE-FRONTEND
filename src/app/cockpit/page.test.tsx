@@ -120,7 +120,8 @@ describe('Écran Cockpit de place (/cockpit)', () => {
     expect(screen.getByText('Délais dépassés').closest('.kpi')).toHaveTextContent('6');
     expect(screen.getByText('Déclarations reçues (24 h)').closest('.kpi')).toHaveTextContent('19');
     expect(screen.getByText('Appariement automatique').closest('.kpi')).toHaveTextContent('62 %');
-    expect(screen.getByText('Volume brut trimestriel').closest('.kpi')).toHaveTextContent(/5\s?650\s?000/);
+    // Notation compacte (fidélité capture écran 1) : "5,65 M DA", jamais le groupement complet "5 650 000".
+    expect(screen.getByText('Volume brut trimestriel').closest('.kpi')).toHaveTextContent(/5,65\s?M\s?DA/);
     expect(screen.getByText('Réduction par netting').closest('.kpi')).toHaveTextContent('78 %');
   });
 
@@ -144,8 +145,9 @@ describe('Écran Cockpit de place (/cockpit)', () => {
     expect(screen.getByText('Taux hors-IDA').closest('.kpi')).toHaveTextContent('4 %');
     expect(screen.getByText("Délai moyen d'appariement").closest('.kpi')).toHaveTextContent('1.3 j');
     expect(screen.getByText('Recours forclos').closest('.kpi')).toHaveTextContent('4');
-    expect(screen.getByText('Compensation nette trimestrielle').closest('.kpi')).toHaveTextContent(/1\s?270\s?000/);
-    expect(screen.getByText('Pénalités de retard').closest('.kpi')).toHaveTextContent(/1\s?230\s?000/);
+    // Notation compacte (fidélité capture écran 1) : "1,27 M DA" / "1,23 M DA", jamais le groupement complet.
+    expect(screen.getByText('Compensation nette trimestrielle').closest('.kpi')).toHaveTextContent(/1,27\s?M\s?DA/);
+    expect(screen.getByText('Pénalités de retard').closest('.kpi')).toHaveTextContent(/1,23\s?M\s?DA/);
     expect(screen.getByText('Experts actifs / suspendus').closest('.kpi')).toHaveTextContent('17 / 2');
     expect(screen.getByText('Adhérents actifs / suspendus').closest('.kpi')).toHaveTextContent('5 / 0');
   });
@@ -165,6 +167,10 @@ describe('Écran Cockpit de place (/cockpit)', () => {
     expect(fills).toHaveLength(2);
     expect((fills[0] as HTMLElement).style.background).toContain('var(--k-pri-2)'); // CASH, +1 070 000 — positif
     expect((fills[1] as HTMLElement).style.background).toContain('var(--ko)'); // SAA, -650 000 — négatif
+
+    // Notation compacte (fidélité capture écran 1) : "+1,07 M DA" / "−650 k DA", jamais le groupement complet.
+    expect(rows[0]).toHaveTextContent('+1,07 M DA');
+    expect(rows[1]).toHaveTextContent('−650 k DA');
   });
 
   it('le suivi du cycle conventionnel affiche exactement 3 étapes réelles (jamais 5)', async () => {
@@ -185,6 +191,15 @@ describe('Écran Cockpit de place (/cockpit)', () => {
       expect(step.textContent).not.toMatch(/Règlements sous 8/);
     }
     expect(screen.getByText(/suivis étape par étape dans « Avancement du lot »/)).toBeInTheDocument();
+  });
+
+  it('le badge d\'articles du cycle est dérivé des étapes réelles ("Art. 16-17", jamais "Art. 16-18")', async () => {
+    mockApis(SUMMARY);
+    renderWithProviders(<CockpitPage />);
+
+    await waitFor(() => expect(screen.getByText(/Cycle conventionnel en cours/)).toBeInTheDocument());
+    expect(screen.getByText('Art. 16-17')).toBeInTheDocument();
+    expect(screen.queryByText('Art. 16-18')).not.toBeInTheDocument();
   });
 
   it('la liste des alertes conventionnelles affiche les chips compagnies et le badge article', async () => {

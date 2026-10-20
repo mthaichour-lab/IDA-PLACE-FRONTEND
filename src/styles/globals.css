@@ -768,6 +768,14 @@ a {
   gap: var(--s-4);
 }
 
+/* Poids typographique volontairement plus léger que `.kpi-row` (bandeau de
+   tête) — fidélité à la capture de référence écran 1, qui distingue les 2
+   blocs de tuiles par la taille/le poids, pas seulement la position. */
+.ind-grid .kpi-value {
+  font-size: var(--k-fs-xl);
+  font-weight: 600;
+}
+
 @media (max-width: 900px) {
   .ind-grid {
     grid-template-columns: repeat(2, 1fr);
