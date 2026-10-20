@@ -8,6 +8,13 @@ import '@fontsource/ibm-plex-mono/400.css';
 import '@fontsource/ibm-plex-mono/500.css';
 import '@fontsource/ibm-plex-mono/600.css';
 import '@/styles/globals.css';
+import '@/styles/screens/matching.css';
+import '@/styles/screens/import.css';
+import '@/styles/screens/exchanges.css';
+import '@/styles/screens/monthly.css';
+import '@/styles/screens/quarter.css';
+import '@/styles/screens/commission.css';
+import '@/styles/screens/monitoring.css';
 
 export const metadata: Metadata = {
   title: 'IDA Place',
