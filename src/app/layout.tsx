@@ -15,6 +15,12 @@ import '@/styles/screens/monthly.css';
 import '@/styles/screens/quarter.css';
 import '@/styles/screens/commission.css';
 import '@/styles/screens/monitoring.css';
+import '@/styles/screens/fraude.css';
+import '@/styles/screens/ledger.css';
+import '@/styles/screens/metering.css';
+import '@/styles/screens/stats.css';
+import '@/styles/screens/referential.css';
+import '@/styles/screens/params.css';
 
 export const metadata: Metadata = {
   title: 'IDA Place',
