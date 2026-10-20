@@ -55,7 +55,8 @@ describe('Écran Statistiques de la place (/stats)', () => {
     await waitFor(() => expect(screen.getByText('200')).toBeInTheDocument());
     expect(screen.getByText('16%')).toBeInTheDocument();
     expect(screen.getByText(/8\s?220\s?000/)).toBeInTheDocument();
-    expect(screen.getByText('24.5 j')).toBeInTheDocument();
+    // Unité affichée en petit (`.kpi-unit`) : valeur et unité dans deux nœuds.
+    expect(screen.getByText('24.5').closest('.kpi')).toHaveTextContent('24.5 j');
   });
 
   it('affiche "n/d" pour le délai moyen de règlement si aucun recours n’est encore réglé', async () => {

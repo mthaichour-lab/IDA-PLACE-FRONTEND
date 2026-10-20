@@ -102,7 +102,7 @@ const SUMMARY: CockpitSummary = {
  * antérieur de cet écran croyait à tort sans donnée source.
  */
 const PIPELINE: QuarterlyPipeline = {
-  quarter: '2026-Q4',
+  quarter: '2026-Q3',
   steps: [
     { step: 'SAISIE', label: 'Saisie et validation des recours sur la plateforme', article: 'Art. 16', status: 'DONE', dueDate: '2027-01-07', overdue: false },
     { step: 'SYNTHESE_ANNEXE_7', label: 'Synthèse mensuelle automatisée (Annexe n°7)', article: 'Art. 16', status: 'DONE', dueDate: '2027-01-10', overdue: false },
@@ -124,7 +124,8 @@ function mockApis(summary: CockpitSummary, pipeline: QuarterlyPipeline = PIPELIN
     if (pathname === '/api/v1/me') return ME;
     if (pathname === '/api/v1/cockpit/summary') return summary;
     if (pathname === '/api/v1/referential/calendar') return CALENDAR;
-    if (pathname === `/api/v1/settlement/quarter/${summary.cycleConventionnel.quarter}/pipeline`) return pipeline;
+    // Lot en cours de règlement = trimestre précédant `cycleConventionnel.quarter` (2026-Q4 → 2026-Q3).
+    if (pathname === '/api/v1/settlement/quarter/2026-Q3/pipeline') return pipeline;
     return undefined;
   });
 }
@@ -168,7 +169,7 @@ describe('Écran Cockpit de place (/cockpit)', () => {
     expect(screen.getByText("Taux d'appariement").closest('.kpi')).toHaveTextContent('62 %');
     expect(screen.getByText("En attente d'appariement").closest('.kpi')).toHaveTextContent('32');
     expect(screen.getByText('Taux hors-IDA').closest('.kpi')).toHaveTextContent('4 %');
-    expect(screen.getByText("Délai moyen d'appariement").closest('.kpi')).toHaveTextContent('1.3 j');
+    expect(screen.getByText("Délai moyen d'appariement").closest('.kpi')).toHaveTextContent('1,3 j');
     expect(screen.getByText('Recours forclos').closest('.kpi')).toHaveTextContent('4');
     // Notation compacte (fidélité capture écran 1) : "1,27 M DA" / "1,23 M DA", jamais le groupement complet.
     expect(screen.getByText('Compensation nette trimestrielle').closest('.kpi')).toHaveTextContent(/1,27\s?M\s?DA/);
@@ -190,12 +191,12 @@ describe('Écran Cockpit de place (/cockpit)', () => {
 
     const fills = container.querySelectorAll('.net-bar-fill');
     expect(fills).toHaveLength(2);
-    expect((fills[0] as HTMLElement).style.background).toContain('var(--k-pri-2)'); // CASH, +1 070 000 — positif
+    expect((fills[0] as HTMLElement).style.background).toContain('var(--k-pri)'); // CASH, +1 070 000 — positif
     expect((fills[1] as HTMLElement).style.background).toContain('var(--ko)'); // SAA, -650 000 — négatif
 
-    // Notation compacte (fidélité capture écran 1) : "+1,07 M DA" / "−650 k DA", jamais le groupement complet.
-    expect(rows[0]).toHaveTextContent('+1,07 M DA');
-    expect(rows[1]).toHaveTextContent('−650 k DA');
+    // Notation compacte (fidélité capture écran 1) : "+1,07 M" / "−650 k", jamais le groupement complet.
+    expect(rows[0]).toHaveTextContent('+1,07 M');
+    expect(rows[1]).toHaveTextContent('−650 k');
   });
 
   it("le suivi du cycle conventionnel affiche les 5 étapes RÉELLES du lot trimestriel (`/settlement/quarter/:q/pipeline`, même donnée que « Avancement du lot » sur /quarter)", async () => {
@@ -206,10 +207,13 @@ describe('Écran Cockpit de place (/cockpit)', () => {
     // Les 2 étapes qu'un repli antérieur de cet écran croyait sans donnée
     // source existent réellement (SettlementModule) : elles apparaissent une
     // fois le lot trimestriel chargé, avec sa propre échéance réelle.
-    await waitFor(() => expect(screen.getByText(/Synthèse globale trimestrielle et réunion au siège de l.UAR/)).toBeInTheDocument());
+    // Libellé court affiché (capture), libellé conventionnel complet en infobulle.
+    await waitFor(() => expect(screen.getByText('Réunion UAR · synthèse globale')).toBeInTheDocument());
+    expect(screen.getByTitle(/Synthèse globale trimestrielle et réunion au siège de l.UAR/)).toBeInTheDocument();
+    expect(screen.getByText('Saisie septembre 2026')).toBeInTheDocument();
     const steps = container.querySelectorAll('.cycle-step');
     expect(steps).toHaveLength(5);
-    expect(screen.getByText(/Signature du PV trimestriel/)).toBeInTheDocument();
+    expect(screen.getByTitle(/Signature du PV trimestriel/)).toBeInTheDocument();
     expect(screen.getByText('Art. 16-18')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Voir le détail de l.avancement du lot/ })).toHaveAttribute('href', '/quarter');
   });
@@ -229,7 +233,7 @@ describe('Écran Cockpit de place (/cockpit)', () => {
     renderWithProviders(<CockpitPage />);
 
     await waitFor(() => expect(screen.getByText(/Alertes conventionnelles/)).toBeInTheDocument());
-    expect(screen.getByText('Alertes conventionnelles (2)')).toBeInTheDocument();
+    expect(screen.getByText('Alertes conventionnelles').closest('.head-with-count')?.querySelector('.count-badge')).toHaveTextContent('2');
     expect(screen.getByText('Délai de réponse Art.10 dépassé', { exact: false })).toBeInTheDocument();
     expect(screen.getByText('Art. 10')).toBeInTheDocument();
     expect(screen.getByText('Art. 24')).toBeInTheDocument();
@@ -248,8 +252,9 @@ describe('Écran Cockpit de place (/cockpit)', () => {
       triggerRealtimeEvent('match.updated', { id: 'MATCH-0042', state: 'CONFIRME' });
     });
 
-    expect(screen.getByText('Matching')).toBeInTheDocument();
-    expect(screen.getByText('MATCH-0042 · CONFIRME')).toBeInTheDocument();
+    expect(screen.getByText(/^Matching/)).toBeInTheDocument();
+    expect(screen.getByText('MATCH-0042')).toBeInTheDocument();
+    expect(screen.getByText('CONFIRME')).toBeInTheDocument();
 
     const pauseButton = screen.getByRole('button', { name: 'Pause' });
     act(() => {
@@ -278,7 +283,8 @@ describe('Écran Cockpit de place (/cockpit)', () => {
       triggerRealtimeEvent('claim.ingested', { id: 'IMP-7', state: 'TERMINE', fileName: 'assures-saa.csv', policyNumber: 'POL-123', decidedBy: 'agent.x' });
     });
 
-    expect(screen.getByText('IMP-7 · TERMINE')).toBeInTheDocument();
+    expect(screen.getByText('IMP-7')).toBeInTheDocument();
+    expect(screen.getByText('TERMINE')).toBeInTheDocument();
     expect(screen.queryByText(/assures-saa|POL-123|agent\.x/)).not.toBeInTheDocument();
     await waitFor(() => expect(summaryCalls()).toBeGreaterThan(before));
   });

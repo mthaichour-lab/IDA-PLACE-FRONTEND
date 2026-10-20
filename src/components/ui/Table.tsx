@@ -1,5 +1,6 @@
 'use client';
 
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useI18n } from '@/i18n/provider';
 
 export interface Column<T> {
@@ -23,6 +24,7 @@ export function Table<T>({
   onPageChange,
   onRowClick,
   getRowKey,
+  selectedKey,
 }: {
   columns: Column<T>[];
   rows: T[];
@@ -32,6 +34,8 @@ export function Table<T>({
   onPageChange: (page: number) => void;
   onRowClick?: (row: T) => void;
   getRowKey: (row: T) => string;
+  /** Ligne mise en évidence (sélection courante d'un écran maître-détail). */
+  selectedKey?: string;
 }) {
   const { t } = useI18n();
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
@@ -56,7 +60,11 @@ export function Table<T>({
               </tr>
             ) : (
               rows.map((row) => (
-                <tr key={getRowKey(row)} className={onRowClick ? 'click' : undefined} onClick={() => onRowClick?.(row)}>
+                <tr
+                  key={getRowKey(row)}
+                  className={[onRowClick ? 'click' : '', selectedKey !== undefined && selectedKey === getRowKey(row) ? 'selected' : ''].filter(Boolean).join(' ') || undefined}
+                  onClick={() => onRowClick?.(row)}
+                >
                   {columns.map((c) => (
                     <td key={c.key}>{c.render(row)}</td>
                   ))}
@@ -68,14 +76,14 @@ export function Table<T>({
       </div>
       <div className="pager">
         <span>
-          {t('common.page')} {page} {t('common.of')} {pageCount} · {total}
+          {total === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} {t('common.of')} {total} · {t('common.page')} {page} / {pageCount}
         </span>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button type="button" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
-            {t('common.previous')}
+          <button type="button" aria-label={t('common.previous')} disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
+            <ChevronLeft size={16} strokeWidth={2} aria-hidden="true" />
           </button>
-          <button type="button" disabled={page >= pageCount} onClick={() => onPageChange(page + 1)}>
-            {t('common.next')}
+          <button type="button" aria-label={t('common.next')} disabled={page >= pageCount} onClick={() => onPageChange(page + 1)}>
+            <ChevronRight size={16} strokeWidth={2} aria-hidden="true" />
           </button>
         </div>
       </div>

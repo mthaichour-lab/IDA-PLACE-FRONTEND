@@ -50,8 +50,8 @@
   --party-b-soft: #fdf4cf;
 
   /* --- Typographie --- */
-  --f-display: 'Urbanist', 'IBM Plex Sans Arabic', 'Readex Pro', system-ui, sans-serif;
-  --f-text: 'DM Sans', 'IBM Plex Sans Arabic', 'Readex Pro', system-ui, sans-serif;
+  --f-display: 'Urbanist Variable', 'Urbanist', 'IBM Plex Sans Arabic', 'Readex Pro', system-ui, sans-serif;
+  --f-text: 'DM Sans Variable', 'DM Sans', 'IBM Plex Sans Arabic', 'Readex Pro', system-ui, sans-serif;
   --f-mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
 
   --k-fs-xs: 0.74rem;

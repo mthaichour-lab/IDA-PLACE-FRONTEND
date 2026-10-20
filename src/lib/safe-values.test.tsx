@@ -34,10 +34,12 @@ describe('safeColor / CoChip (SEC-50)', () => {
 
   it('CoChip n’injecte jamais une couleur non conforme dans le style', () => {
     const { container, rerender } = render(<CoChip code="SAA" color="#0A7A3B" />);
-    expect((container.firstChild as HTMLElement).getAttribute('style') ?? '').toMatch(/rgb\(10, 122, 59\)|#0a7a3b/i);
+    const chip = () => container.querySelector('.co-chip') as HTMLElement;
+    expect(chip().getAttribute('style') ?? '').toMatch(/rgb\(10, 122, 59\)|#0a7a3b/i);
     rerender(<CoChip code="SAA" color="red;background-image:url(https://evil.example/x)" />);
-    const style = (container.firstChild as HTMLElement).getAttribute('style') ?? '';
+    const style = chip().getAttribute('style') ?? '';
     expect(style).not.toContain('evil.example');
-    expect(style).toMatch(/rgb\(106, 110, 109\)|#6a6e6d/i);
+    // Repli neutre (encre secondaire du thème), jamais la valeur injectée.
+    expect(style).toContain('var(--ink-2)');
   });
 });

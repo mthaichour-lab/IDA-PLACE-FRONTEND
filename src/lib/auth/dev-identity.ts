@@ -8,9 +8,15 @@
  * le code et ses chaînes (`x-dev-user`, rôle par défaut) disparaissent du
  * bundle (vérifié par la CI : grep sur `.next/`).
  */
+import { chosenDevRole } from './dev-role';
+
 export const DEV_USER_HEADER = 'x-dev-user';
 
-/** Rôle simulé : `NEXT_PUBLIC_DEV_USER` (nom de rôle ou JSON DevUserPayload), sinon opérateur de place. */
+/**
+ * Rôle simulé : celui choisi dans l'en-tête (session du navigateur), sinon
+ * `NEXT_PUBLIC_DEV_USER` (nom de rôle ou JSON DevUserPayload), sinon
+ * opérateur de place.
+ */
 export function devUser(): string {
-  return process.env.NEXT_PUBLIC_DEV_USER || 'OPERATEUR_PLACE';
+  return chosenDevRole() || process.env.NEXT_PUBLIC_DEV_USER || 'OPERATEUR_PLACE';
 }

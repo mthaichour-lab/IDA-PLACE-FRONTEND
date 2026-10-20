@@ -4,6 +4,7 @@ import { AppShell } from '@/components/shell/AppShell';
 import { ThemeProvider } from '@/components/theme-provider';
 import { ToastProvider } from '@/components/ui/Toast';
 import { AuthProvider } from '@/lib/auth-context';
+import { CompanyDirectoryProvider } from '@/lib/company-directory';
 import { QueryProvider } from '@/lib/query-provider';
 import { I18nProvider } from '@/i18n/provider';
 
@@ -15,7 +16,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <ThemeProvider>
           <ToastProvider>
             <AuthProvider>
-              <AppShell>{children}</AppShell>
+              <CompanyDirectoryProvider>
+                <AppShell>{children}</AppShell>
+              </CompanyDirectoryProvider>
             </AuthProvider>
           </ToastProvider>
         </ThemeProvider>

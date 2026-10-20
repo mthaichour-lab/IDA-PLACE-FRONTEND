@@ -1,7 +1,7 @@
 'use client';
 
 import { QueryKey, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { API_BASE_URL } from './api-client';
 import { devUser } from './auth/dev-identity';
@@ -46,6 +46,32 @@ export function toRealtimeSignal(event: RealtimeEventName, payload: unknown): Re
   const id = shortString(record.id);
   const state = shortString(record.state) ?? shortString(record.status) ?? shortString(record.etat);
   return { event, ...(id ? { id } : {}), ...(state ? { state } : {}) };
+}
+
+/*
+ * État de connexion du flux temps réel, partagé par toute l'application
+ * (indicateur « Flux temps réel actif » du pied de barre latérale) : nombre
+ * de sockets `useRealtime` actuellement connectés. Mis à jour uniquement
+ * par les événements réels `connect`/`disconnect` de Socket.IO.
+ */
+let connectedSockets = 0;
+const statusListeners = new Set<() => void>();
+
+function setSocketConnected(delta: 1 | -1): void {
+  connectedSockets = Math.max(0, connectedSockets + delta);
+  for (const listener of statusListeners) listener();
+}
+
+/** Vrai si au moins un abonnement temps réel est actuellement connecté au back-end. */
+export function useRealtimeConnected(): boolean {
+  return useSyncExternalStore(
+    (listener) => {
+      statusListeners.add(listener);
+      return () => statusListeners.delete(listener);
+    },
+    () => connectedSockets > 0,
+    () => false,
+  );
 }
 
 /** Code d'erreur applicatif émis par la passerelle (`TOKEN_EXPIRED`, `UNAUTHORIZED`, `FORBIDDEN`). */
@@ -104,6 +130,19 @@ export function useRealtime(events: RealtimeEventName[], onSignal?: (signal: Rea
           handlerRef.current?.(toRealtimeSignal(ev, payload));
         });
       }
+      let counted = false;
+      socket.on('connect', () => {
+        if (!counted) {
+          counted = true;
+          setSocketConnected(1);
+        }
+      });
+      socket.on('disconnect', () => {
+        if (counted) {
+          counted = false;
+          setSocketConnected(-1);
+        }
+      });
       socket.on('connect_error', () => {
         // Flux temps réel indisponible (back arrêté, jeton refusé) — l'écran
         // reste utilisable via le polling de repli prévu par l'appelant.

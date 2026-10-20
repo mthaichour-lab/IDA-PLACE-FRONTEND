@@ -1,6 +1,12 @@
 import type { Metadata } from 'next';
 import { connection } from 'next/server';
 import { Providers } from '@/components/Providers';
+// Polices de la charte (Partie A.2) auto-hébergées — servies par 'self', compatibles CSP (SEC-22).
+import '@fontsource-variable/urbanist';
+import '@fontsource-variable/dm-sans';
+import '@fontsource/ibm-plex-mono/400.css';
+import '@fontsource/ibm-plex-mono/500.css';
+import '@fontsource/ibm-plex-mono/600.css';
 import '@/styles/globals.css';
 
 export const metadata: Metadata = {

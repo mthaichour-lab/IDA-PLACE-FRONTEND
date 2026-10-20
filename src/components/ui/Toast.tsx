@@ -1,5 +1,6 @@
 'use client';
 
+import { AlertTriangle, Check, X } from 'lucide-react';
 import { createContext, useCallback, useContext, useState } from 'react';
 
 type Tone = 'ok' | 'ko' | 'warn';
@@ -32,7 +33,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       <div className="toast-stack" aria-live="polite">
         {items.map((i) => (
           <div key={i.id} className={`toast ${i.tone}`}>
-            {i.msg}
+            <span className="toast-dot" aria-hidden="true" />
+            {i.tone === 'ok' ? <Check size={14} strokeWidth={2.4} aria-hidden="true" /> : i.tone === 'ko' ? <X size={14} strokeWidth={2.4} aria-hidden="true" /> : <AlertTriangle size={14} strokeWidth={2.2} aria-hidden="true" />}
+            <span>{i.msg}</span>
           </div>
         ))}
       </div>
