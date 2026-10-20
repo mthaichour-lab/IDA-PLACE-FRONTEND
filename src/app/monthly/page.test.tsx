@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { mockFetchRouter, renderWithProviders } from '@/test/render';
-import { MeResponse, SettlementMonthly, SettlementMonthlyAnnexe7, SettlementMonthlyCompany, SettlementMonthlySummary } from '@/lib/types';
+import { MeResponse, RecoursItem, SettlementMonthly, SettlementMonthlyAnnexe7, SettlementMonthlyCompany, SettlementMonthlySummary } from '@/lib/types';
 import MonthlyPage from './page';
 
 const ME_WITH_SYNTH: MeResponse = {
@@ -43,6 +43,41 @@ function mockMonthlyApi(me: MeResponse, companies: SettlementMonthlyCompany[], o
     if (/^\/api\/v1\/settlement\/monthly\/[\d-]+\/summary$/.test(pathname)) return SUMMARY;
     if (/^\/api\/v1\/settlement\/monthly\/[\d-]+\/annexe7$/.test(pathname)) return ANNEXE7;
     if (/^\/api\/v1\/settlement\/monthly\/[\d-]+$/.test(pathname)) return { period: '2026-10', companies } as SettlementMonthly;
+    return undefined;
+  });
+}
+
+function recours(overrides: Partial<RecoursItem> = {}): RecoursItem {
+  return {
+    id: 'rec-0000-aaaa-bbbb',
+    claimId: 'claim-1',
+    from: 'CASH',
+    to: 'SAA',
+    state: 'REGLE',
+    requestSentAt: '2026-10-01T08:00:00.000Z',
+    createdAt: '2026-10-01T08:00:00.000Z',
+    amount: 67_950,
+    timer: { timerType: 'AUCUN', remainingDays: 0, expired: false },
+    ...overrides,
+  };
+}
+
+/**
+ * Variante de `mockMonthlyApi` qui mocke aussi `GET /recours` (filtres
+ * REGLE/OPPOSITION) — section additive "Recours du lot" (réutilise
+ * RecoursModule plutôt qu'un nouvel endpoint, voir `monthly/page.tsx`).
+ */
+function mockMonthlyApiWithLot(me: MeResponse, companies: SettlementMonthlyCompany[], regle: RecoursItem[], opposition: RecoursItem[]) {
+  mockFetchRouter((pathname, url) => {
+    if (pathname === '/api/v1/me') return me;
+    if (/^\/api\/v1\/settlement\/monthly\/[\d-]+\/summary$/.test(pathname)) return SUMMARY;
+    if (/^\/api\/v1\/settlement\/monthly\/[\d-]+\/annexe7$/.test(pathname)) return ANNEXE7;
+    if (/^\/api\/v1\/settlement\/monthly\/[\d-]+$/.test(pathname)) return { period: '2026-10', companies } as SettlementMonthly;
+    if (pathname === '/api/v1/recours') {
+      const filter = url.searchParams.get('filter');
+      const items = filter === 'OPPOSITION' ? opposition : filter === 'REGLE' ? regle : [];
+      return { page: 1, total: items.length, items };
+    }
     return undefined;
   });
 }
@@ -112,5 +147,40 @@ describe('Écran Cycle mensuel (/monthly)', () => {
     await waitFor(() => expect(screen.getAllByText('CASH').length).toBeGreaterThan(0));
     expect(screen.getAllByText('SAA').length).toBeGreaterThan(0);
     expect(screen.getByText(/311\s?550/)).toBeInTheDocument();
+  });
+
+  /**
+   * Section additive "Recours du lot" (fidélité à la capture écran 5) —
+   * réutilise `GET /recours` (filtres REGLE/OPPOSITION) : un recours réglé
+   * CE mois est « Intégré », un recours en opposition est « Exclu »,
+   * jamais un ordre du jour ou une ratio fabriqués.
+   */
+  it('affiche « Recours du lot » : recours réglés du mois (intégrés) et recours en opposition (exclus)', async () => {
+    const settled = [recours({ id: 'rec-regle-1', settledAt: '2026-10-05T10:00:00.000Z', amount: 67_950 })];
+    const opposed = [recours({ id: 'rec-opp-1', from: 'CAAR', to: 'CASH', state: 'OPPOSITION', amount: 125_000 })];
+    mockMonthlyApiWithLot(ME_WITH_SYNTH, [company()], settled, opposed);
+    renderWithProviders(<MonthlyPage />);
+
+    await waitFor(() => expect(screen.getByText('Intégré')).toBeInTheDocument());
+    expect(screen.getByText('Exclu — opposition')).toBeInTheDocument();
+    expect(screen.getByText(/67\s?950/)).toBeInTheDocument();
+    expect(screen.getByText(/125\s?000/)).toBeInTheDocument();
+  });
+
+  it("n'intègre pas au lot un recours réglé hors de la période sélectionnée", async () => {
+    const settledOtherMonth = [recours({ id: 'rec-aout', settledAt: '2026-08-05T10:00:00.000Z' })];
+    mockMonthlyApiWithLot(ME_WITH_SYNTH, [company()], settledOtherMonth, []);
+    renderWithProviders(<MonthlyPage />);
+
+    await waitFor(() => expect(screen.getByText('Recours du lot — intégrés et en opposition (RG-06)')).toBeInTheDocument());
+    expect(screen.queryByText('Intégré')).not.toBeInTheDocument();
+  });
+
+  it('affiche l’avancement du cycle : échéance de saisie et clôture par compagnie (données réelles uniquement)', async () => {
+    mockMonthlyApiWithLot(ME_WITH_SYNTH, [company({ code: 'CAAT', status: 'CLOTURE' }), company({ code: 'CAAR', status: 'EN_COURS' })], [], []);
+    renderWithProviders(<MonthlyPage />);
+
+    await waitFor(() => expect(screen.getByText('1/2 compagnie(s) clôturée(s)')).toBeInTheDocument());
+    expect(screen.getByText('Saisie des recours réglés du mois (Art. 16)')).toBeInTheDocument();
   });
 });

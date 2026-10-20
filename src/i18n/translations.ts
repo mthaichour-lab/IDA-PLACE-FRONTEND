@@ -302,6 +302,8 @@ const fr = {
   'common.cancel': 'Annuler',
   'documents.attachments.unsafeLink': 'Lien du document refusé (adresse non sécurisée).',
   'common.truncated': 'Liste limitée aux premiers éléments : les décomptes et le classement ne portent que sur ceux-ci.',
+  'common.exportExcel': 'Excel',
+  'common.exportExcel.note': 'Export CSV (BOM UTF-8, séparateur ;, ouverture Excel) généré côté front depuis les lignes affichées — aucun endpoint d’export dédié côté API.',
 
   // ----- Cockpit (écran 1, Module I) -----
   'cockpit.title': 'Cockpit de place',
@@ -940,6 +942,27 @@ const fr = {
   'monthly.annexe7.col.count': 'Nombre',
   'monthly.annexe7.col.amount': 'Montant',
   'monthly.completeness.title': 'Complétude de la saisie par compagnie',
+  'monthly.col.closedAt': 'Clôturé le',
+  'monthly.progress.title': 'Avancement du cycle',
+  'monthly.progress.step1.label': 'Saisie des recours réglés du mois (Art. 16)',
+  'monthly.progress.step2.label': 'Clôture par compagnie (Art. 16)',
+  'monthly.progress.step2.deadlineLabel': 'Clôture possible à partir du',
+  'monthly.progress.step2.closedSuffix': 'compagnie(s) clôturée(s)',
+  'monthly.progress.gap.note':
+    "La capture de référence montre 5 étapes (Annexe 8, transmission tiers + Commission, scellement définitif) : ce sont en réalité celles du lot TRIMESTRIEL (Art. 16-18, voir « Compensation trimestrielle »). Le cycle mensuel n'a pas de pipeline dédié côté API — seules l'échéance de saisie et la clôture par compagnie ci-dessus sont des données réelles.",
+  'monthly.lot.title': 'Recours du lot — intégrés et en opposition (RG-06)',
+  'monthly.lot.col.ref': 'Recours',
+  'monthly.lot.col.pair': 'Créancier → débiteur',
+  'monthly.lot.col.settledAt': 'Réglé le',
+  'monthly.lot.col.insertedAt': 'Inséré le',
+  'monthly.lot.col.amount': 'Montant',
+  'monthly.lot.col.state': 'État',
+  'monthly.lot.state.included': 'Intégré',
+  'monthly.lot.state.excluded': 'Exclu — opposition',
+  'monthly.lot.total': 'Total intégré à la synthèse',
+  'monthly.lot.insertedAt.note': "« Inséré le » reprend la date de création du recours (`createdAt`) : il n'existe pas de date d'insertion dans le lot distincte côté API.",
+  'monthly.annexe8.unavailable':
+    "« Insérer l'Annexe 8 » n'a pas de route API dédiée pour le cycle mensuel (voir rapport de livraison) : ce bouton n'a pas été ajouté plutôt que de déclencher une action fictive.",
 
   // ----- Compensation trimestrielle (écran 6, Module D §6.6) -----
   'quarter.title': 'Compensation trimestrielle',
