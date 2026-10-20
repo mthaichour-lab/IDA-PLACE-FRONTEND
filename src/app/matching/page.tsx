@@ -16,6 +16,7 @@ import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { apiGet, apiPath, apiPost } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
+import { buildCsv, downloadCsv } from '@/lib/csv';
 import {
   FeedMode,
   MATCH_TERMINAL_STATUSES,
@@ -135,6 +136,7 @@ function ConfrontationCard({
   concordant,
   okLabel,
   koLabel,
+  activeParty,
 }: {
   label: string;
   valueA: string;
@@ -142,6 +144,9 @@ function ConfrontationCard({
   concordant: boolean;
   okLabel: string;
   koLabel: string;
+  /** Bascule "Partie A / Partie B" (section additive) — met en évidence la ligne de la partie
+      active ; purement visuel, les deux valeurs réelles restent affichées dans tous les cas. */
+  activeParty: 'A' | 'B';
 }) {
   return (
     <div style={{ border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', padding: 'var(--s-3)' }}>
@@ -150,11 +155,11 @@ function ConfrontationCard({
         <Tag tone={concordant ? 'ok' : 'ko'}>{concordant ? okLabel : koLabel}</Tag>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 'var(--k-fs-s)' }}>
-        <span>
+        <span style={{ fontWeight: activeParty === 'A' ? 600 : 400 }}>
           <span style={{ color: 'var(--ink-3)' }}>A </span>
           <span className="mono">{valueA}</span>
         </span>
-        <span>
+        <span style={{ fontWeight: activeParty === 'B' ? 600 : 400 }}>
           <span style={{ color: 'var(--ink-3)' }}>B </span>
           <span className="mono">{valueB}</span>
         </span>
@@ -181,6 +186,7 @@ function VehicleCard({
   plate,
   canalLabel,
   t,
+  active,
 }: {
   title: string;
   company: string;
@@ -189,9 +195,18 @@ function VehicleCard({
   plate?: string;
   canalLabel: string;
   t: (key: TranslationKey) => string;
+  /** Bascule "Partie A / Partie B" (section additive) — purement visuel (cadre renforcé). */
+  active?: boolean;
 }) {
   return (
-    <div style={{ border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', padding: 'var(--s-3)', flex: '1 1 260px' }}>
+    <div
+      style={{
+        border: active ? '2px solid var(--k-pri)' : '1px solid var(--rule-strong)',
+        borderRadius: 'var(--k-r-s)',
+        padding: 'var(--s-3)',
+        flex: '1 1 260px',
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 'var(--s-3)' }}>
         <strong style={{ fontSize: 'var(--k-fs-s)' }}>{title}</strong>
         <CoChip code={company} />
@@ -226,6 +241,9 @@ export default function MatchingPage() {
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  // Bascule "Partie A / Partie B" de la "Vue de confrontation" (section additive) — purement
+  // visuelle (met en évidence une partie), aucune donnée supplémentaire n'existe à afficher.
+  const [activeParty, setActiveParty] = useState<'A' | 'B'>('A');
 
   const canDecide = hasPrivilege('matchDecide');
 
@@ -291,6 +309,32 @@ export default function MatchingPage() {
     },
     onError: (err) => {
       toast(apiErrorMessage(err, t('matching.toast.error'), t), 'ko');
+    },
+  });
+
+  // Export CSV (A.3 : "⤓ Excel" de la capture) — généré depuis la file RÉELLEMENT chargée pour
+  // le filtre courant (une page de 100, maximum autorisé par l'API — SEC-13), pas un classeur
+  // Excel mis en forme (aucun endpoint d'export côté back pour cet écran, même limite
+  // documentée que `/quarter` et `ledger.export.*` — voir HANDOFF.md).
+  const exportMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiGet<Paginated<MatchQueueItem>>('/matching/queue', { filter, page: 1, pageSize: 100 });
+      if (res.items.length === 0) throw new Error('EMPTY');
+      const csv = buildCsv(
+        [
+          t('matching.col.ref'),
+          t('matching.col.partyA'),
+          t('matching.col.partyB'),
+          t('matching.col.score'),
+          t('matching.col.status'),
+        ],
+        res.items.map((r) => [r.refA, `${r.companyA} ${r.plateA}`, r.companyB ? `${r.companyB} ${r.plateB ?? ''}` : t('matching.noPartyB'), r.score, r.status]),
+      );
+      downloadCsv(`file-confrontation-${filter}.csv`, csv);
+      return res.items.length;
+    },
+    onError: (err) => {
+      toast(err instanceof Error && err.message === 'EMPTY' ? t('matching.export.empty') : apiErrorMessage(err, t('matching.toast.error'), t), 'ko');
     },
   });
 
@@ -378,7 +422,28 @@ export default function MatchingPage() {
 
       <div className="grid g-side">
         <div className="sheet">
+          <div className="sheet-head">
+            <span>{t('matching.queue.title')}</span>
+            <button
+              type="button"
+              onClick={() => exportMutation.mutate()}
+              disabled={exportMutation.isPending}
+              style={{
+                padding: '6px 14px',
+                borderRadius: 'var(--k-r-s)',
+                border: '1px solid var(--k-pri)',
+                background: 'var(--k-pri)',
+                color: '#fff',
+                font: 'inherit',
+                fontWeight: 400,
+                cursor: exportMutation.isPending ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {t('matching.export.button')}
+            </button>
+          </div>
           <div className="sheet-body">
+            <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginTop: 0 }}>{t('matching.export.note')}</p>
             <Tabs
               items={[
                 { key: 'TOUS', label: t('matching.tab.tous'), count: countersQuery.data?.TOUS },
@@ -583,6 +648,16 @@ export default function MatchingPage() {
               </>
             ) : null}
           </span>
+          {selected?.refB ? (
+            <div className="tabs" role="tablist" aria-label={t('matching.confrontation.title')}>
+              <button type="button" role="tab" aria-selected={activeParty === 'A'} className="tab" onClick={() => setActiveParty('A')}>
+                {t('matching.col.partyA')}
+              </button>
+              <button type="button" role="tab" aria-selected={activeParty === 'B'} className="tab" onClick={() => setActiveParty('B')}>
+                {t('matching.col.partyB')}
+              </button>
+            </div>
+          ) : null}
         </div>
         <div className="sheet-body">
           {!selected || !selected.refB ? (
@@ -604,6 +679,7 @@ export default function MatchingPage() {
                   concordant={selected.refA === selected.refB}
                   okLabel={t('matching.confrontation.badge.concordant')}
                   koLabel={t('matching.confrontation.badge.discordant')}
+                  activeParty={activeParty}
                 />
                 <ConfrontationCard
                   label={t('matching.confrontation.field.accidentDate')}
@@ -612,6 +688,7 @@ export default function MatchingPage() {
                   concordant={!!selected.accidentDateA && selected.accidentDateA === selected.accidentDateB}
                   okLabel={t('matching.confrontation.badge.concordant')}
                   koLabel={t('matching.confrontation.badge.discordant')}
+                  activeParty={activeParty}
                 />
                 <ConfrontationCard
                   label={t('matching.confrontation.field.wilaya')}
@@ -620,6 +697,7 @@ export default function MatchingPage() {
                   concordant={!!selected.wilayaA && selected.wilayaA === selected.wilayaB}
                   okLabel={t('matching.confrontation.badge.concordant')}
                   koLabel={t('matching.confrontation.badge.discordant')}
+                  activeParty={activeParty}
                 />
                 {/* Immatriculations/polices croisées : le badge réutilise le booléen RÉEL déjà
                     calculé par l'algorithme (`criteria.*`, matching.scoring.ts back) plutôt qu'une
@@ -634,6 +712,7 @@ export default function MatchingPage() {
                   concordant={selected.criteria.plaquesCroisees}
                   okLabel={t('matching.confrontation.badge.concordant')}
                   koLabel={t('matching.confrontation.badge.discordant')}
+                  activeParty={activeParty}
                 />
                 <ConfrontationCard
                   label={t('matching.confrontation.field.police')}
@@ -642,6 +721,7 @@ export default function MatchingPage() {
                   concordant={selected.criteria.policeCroisee}
                   okLabel={t('matching.confrontation.badge.concordant')}
                   koLabel={t('matching.confrontation.badge.discordant')}
+                  activeParty={activeParty}
                 />
               </div>
 
@@ -654,6 +734,7 @@ export default function MatchingPage() {
                   plate={selected.plateA}
                   canalLabel={canalLabel(selected.canalDeclarationA, t)}
                   t={t}
+                  active={activeParty === 'A'}
                 />
                 <VehicleCard
                   title={t('matching.vehicle.titleB')}
@@ -663,6 +744,7 @@ export default function MatchingPage() {
                   plate={selected.plateB}
                   canalLabel={canalLabel(selected.canalDeclarationB, t)}
                   t={t}
+                  active={activeParty === 'B'}
                 />
               </div>
             </>

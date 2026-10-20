@@ -383,6 +383,14 @@ const fr = {
   'matching.col.partyB': 'Partie B',
   'matching.col.score': 'Score',
   'matching.col.status': 'État',
+  'matching.queue.title': 'File des déclarations reçues',
+  // Export CSV (pas un classeur Excel mis en forme, même convention que `ledger.export.*` /
+  // `import.template.note`) généré depuis la file actuellement chargée pour le filtre courant
+  // (jusqu'à 100 lignes — SEC-13 : `pageSize` borné). Aucun endpoint d'export côté back pour
+  // cet écran (même limite documentée que `/quarter`, voir HANDOFF.md).
+  'matching.export.button': 'Export CSV',
+  'matching.export.note': "Export CSV généré depuis la file actuellement affichée (filtre courant, jusqu'à 100 lignes — SEC-13) : pas un classeur Excel mis en forme, l'API n'expose pas d'endpoint d'export pour cet écran.",
+  'matching.export.empty': 'Aucune ligne à exporter pour ce filtre.',
   'matching.panel.title': 'Appariement',
   'matching.panel.empty': 'Sélectionnez une ligne pour voir le détail.',
   'matching.panel.criteria': 'Critères pondérés',

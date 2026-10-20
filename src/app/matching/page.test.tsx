@@ -1,8 +1,17 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi, afterEach } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import { mockFetchRequests, mockFetchRouter, renderWithProviders } from '@/test/render';
 import { MatchQueueItem, MeResponse } from '@/lib/types';
 import MatchingPage from './page';
+
+function readBlob(blob: Blob): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.readAsText(blob);
+  });
+}
 
 function queueItem(i: number, overrides: Partial<MatchQueueItem> = {}): MatchQueueItem {
   return {
@@ -210,5 +219,64 @@ describe('Écran Confrontation & matching (/matching)', () => {
     expect(screen.queryByText(/conducteur/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/chery|tiggo|seat leon|modèle de véhicule/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/choc/i)).not.toBeInTheDocument();
+  });
+
+  /**
+   * Export CSV (section additive, "⤓ Excel" de la capture) — doit demander
+   * à l'API la file RÉELLEMENT chargée (filtre courant, jusqu'à 100 lignes,
+   * le maximum autorisé — SEC-13), jamais des valeurs fabriquées.
+   */
+  it('exporte un CSV depuis la file réellement chargée pour le filtre courant (pageSize=100)', async () => {
+    const items = Array.from({ length: 3 }, (_, i) => queueItem(i + 1));
+    mockQueueApi(ME_WITH_MATCH_DECIDE, items);
+
+    let pending: Blob | null = null;
+    URL.createObjectURL = (b: Blob) => ((pending = b), 'blob:x');
+    URL.revokeObjectURL = () => undefined;
+    const clicks: { name: string }[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      clicks.push({ name: this.download });
+    });
+
+    renderWithProviders(<MatchingPage />);
+    const user = userEvent.setup();
+
+    const exportButton = await screen.findByRole('button', { name: 'Export CSV' });
+    await user.click(exportButton);
+
+    await waitFor(() => expect(clicks).toHaveLength(1));
+    expect(clicks[0].name).toBe('file-confrontation-TOUS.csv');
+    const csv = await readBlob(pending!);
+    expect(csv).toContain('ECN-1');
+    expect(csv).toContain('Réf.');
+
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * Bascule "Partie A / Partie B" de la "Vue de confrontation" (section
+   * additive) — purement visuelle (met en évidence une partie) : les deux
+   * valeurs réelles A et B restent affichées quel que soit l'onglet actif,
+   * aucune donnée n'est masquée ni ajoutée.
+   */
+  it('la bascule Partie A/Partie B met en évidence une partie sans masquer ni inventer de données', async () => {
+    const item = queueItem(1);
+    mockQueueApi(ME_WITH_MATCH_DECIDE, [item]);
+    renderWithProviders(<MatchingPage />);
+    const user = userEvent.setup();
+
+    await waitFor(() => expect(screen.getByText('Véhicule A')).toBeInTheDocument());
+    const tabA = screen.getByRole('tab', { name: 'Partie A' });
+    const tabB = screen.getByRole('tab', { name: 'Partie B' });
+    expect(tabA).toHaveAttribute('aria-selected', 'true');
+    expect(tabB).toHaveAttribute('aria-selected', 'false');
+
+    await user.click(tabB);
+    expect(tabB).toHaveAttribute('aria-selected', 'true');
+    expect(tabA).toHaveAttribute('aria-selected', 'false');
+    // Les deux cartes et toutes les valeurs A/B réelles restent visibles après la bascule.
+    expect(screen.getByText('Véhicule A')).toBeInTheDocument();
+    expect(screen.getByText('Véhicule B')).toBeInTheDocument();
+    expect(screen.getAllByText(item.refA).length).toBeGreaterThan(0);
   });
 });
