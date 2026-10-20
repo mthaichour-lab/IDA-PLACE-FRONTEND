@@ -11,13 +11,15 @@ import { Kpi, KpiRow } from '@/components/ui/Kpi';
 import { Tag } from '@/components/ui/Tag';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
-import { apiGet } from '@/lib/api-client';
+import { apiGet, apiPath } from '@/lib/api-client';
 import {
   CockpitAlerteConventionnelle,
   CockpitCycleConventionnel,
   CockpitIndicateursDePlace,
   CockpitSummary,
   PlaceCalendar,
+  PipelineStepView,
+  QuarterlyPipeline,
   SettlementNet,
 } from '@/lib/types';
 import { RealtimeSignal, useRealtime } from '@/lib/realtime';
@@ -76,12 +78,12 @@ function quarterSuffix(quarter: string): string {
 
 /**
  * Plage d'articles couverte par le cycle — dérivée des SEULES étapes
- * réelles (`cycle.steps[].article`), jamais une plage fixe recopiée de la
- * capture (qui inclut Art. 18, non suivi côté back — voir `CyclePanel`).
- * "Art. 16" si une seule valeur, "Art. 16-17" si plusieurs.
+ * RÉELLEMENT affichées (`article` de chaque étape), jamais une plage fixe
+ * recopiée de la capture. "Art. 16" si une seule valeur, "Art. 16-18" une
+ * fois les 5 étapes réelles du lot trimestriel chargées (voir `CyclePanel`).
  */
-function articleRange(steps: CockpitCycleConventionnel['steps']): string {
-  const numbers = Array.from(new Set(steps.map((s) => s.article.match(/\d+/)?.[0]).filter((n): n is string => !!n))).sort((a, b) => Number(a) - Number(b));
+function articleRange(steps: Array<{ article: string }>): string {
+  const numbers = Array.from(new Set(steps.map((s) => s.article.match(/\d+/g) ?? []).flat())).sort((a, b) => Number(a) - Number(b));
   if (numbers.length === 0) return '';
   if (numbers.length === 1) return `Art. ${numbers[0]}`;
   return `Art. ${numbers[0]}-${numbers[numbers.length - 1]}`;
@@ -137,6 +139,20 @@ function CockpitContent() {
     queryFn: () => apiGet<PlaceCalendar>('/referential/calendar'),
   });
 
+  // Avancement RÉEL du lot trimestriel (`GET /settlement/quarter/:q/pipeline`,
+  // même requête que `/quarter`, même clé de cache — pas un second appel
+  // dupliqué dans le cache React Query). Couvre les 5 étapes réelles de
+  // l'Art. 16-18 (`SAISIE`…`PV_REGLEMENT`), dont les 2 qu'un repli antérieur
+  // de cet écran croyait à tort sans donnée source : elles existent bien,
+  // juste exposées par SettlementModule plutôt que par CockpitModule.
+  // `enabled` une fois le trimestre connu (fourni par `cockpit/summary`).
+  const quarterPeriod = query.data?.cycleConventionnel.quarter;
+  const pipelineQuery = useQuery({
+    queryKey: ['settlement', 'quarter', quarterPeriod, 'pipeline'],
+    queryFn: () => apiGet<QuarterlyPipeline>(apiPath`/settlement/quarter/${quarterPeriod as string}/pipeline`),
+    enabled: !!quarterPeriod,
+  });
+
   // SEC-07 : `useRealtime` invalide lui-même `['cockpit', …]` ; ce
   // callback ne reçoit que le signal réduit (type, identifiant, état).
   const onRealtimeSignal = useCallback((signal: RealtimeSignal) => {
@@ -177,7 +193,7 @@ function CockpitContent() {
         </div>
       ) : (
         <>
-          <CyclePanel cycle={data.cycleConventionnel} calendar={calendarQuery.data} t={t} locale={locale} />
+          <CyclePanel cycle={data.cycleConventionnel} pipeline={pipelineQuery.data} calendar={calendarQuery.data} t={t} locale={locale} />
 
           <KpiRow>
             <Kpi value={data.kpis.recoursEnCours} label={t('cockpit.kpi.recoursEnCours')} />
@@ -242,35 +258,72 @@ function CockpitContent() {
 
 /* ===================== Cycle conventionnel + calendrier ouvré ===================== */
 
+/** Vue normalisée d'une étape, qu'elle vienne du résumé cockpit (3 étapes) ou du lot trimestriel réel (5 étapes). */
+interface CycleStepView {
+  key: string;
+  label: string;
+  article: string;
+  done: boolean;
+  current: boolean;
+  detail?: string;
+}
+
+function fromCockpitSummary(cycle: CockpitCycleConventionnel): CycleStepView[] {
+  return cycle.steps.map((s) => ({ key: s.key, label: s.label, article: s.article, done: s.done, current: false, detail: s.detail }));
+}
+
+/**
+ * Les 5 étapes RÉELLES du lot trimestriel (Art. 16-18, `SAISIE`…
+ * `PV_REGLEMENT`) — mêmes données que « Avancement du lot » sur
+ * `/quarter` (`GET /settlement/quarter/:q/pipeline`), pas une 2ᵉ source.
+ * `detail` reprend l'échéance ou la réalisation réelle, jamais recalculée.
+ */
+function fromPipeline(pipeline: QuarterlyPipeline, t: (k: TranslationKey) => string, locale: string): CycleStepView[] {
+  return pipeline.steps.map((s: PipelineStepView) => ({
+    key: s.step,
+    label: s.label,
+    article: s.article,
+    done: s.status === 'DONE',
+    current: s.status === 'EN_COURS',
+    detail:
+      s.status === 'DONE' && s.completedAt
+        ? `${t('quarter.pipeline.completedAt')} ${new Date(s.completedAt).toLocaleDateString(locale)}`
+        : `${t('quarter.pipeline.dueDate')} ${new Date(s.dueDate).toLocaleDateString(locale, { timeZone: 'UTC' })}${s.overdue ? ` · ${t('quarter.pipeline.overdue')}` : ''}`,
+  }));
+}
+
 function CyclePanel({
   cycle,
+  pipeline,
   calendar,
   t,
   locale,
 }: {
   cycle: CockpitCycleConventionnel;
+  pipeline: QuarterlyPipeline | undefined;
   calendar: PlaceCalendar | undefined;
   t: (k: TranslationKey) => string;
   locale: string;
 }) {
+  // Le résumé cockpit (3 étapes) sert de repli pendant le chargement du lot
+  // trimestriel (5 étapes réelles) — jamais un écran vide, jamais 2 appels
+  // concurrents affichés en même temps une fois le second arrivé.
+  const steps = pipeline ? fromPipeline(pipeline, t, locale) : fromCockpitSummary(cycle);
   return (
     <div className="sheet">
       <div className="sheet-head">
         <span>
           {t('cockpit.cycle.title')} — {monthLabel(cycle.period, locale)}
         </span>
-        {/* Dérivée des articles RÉELLEMENT portés par `cycle.steps` (Art. 16-17
-            aujourd'hui) — jamais "Art. 16-18" comme la capture, qui inclut
-            l'Art. 18 (non suivi, voir note ci-dessous et HANDOFF.md). */}
-        <span style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', fontWeight: 400 }}>{articleRange(cycle.steps)}</span>
+        {/* Dérivée des articles RÉELLEMENT portés par les étapes affichées —
+            "Art. 16-17" tant que le lot trimestriel n'est pas chargé,
+            "Art. 16-18" une fois les 5 étapes réelles disponibles. */}
+        <span style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', fontWeight: 400 }}>{articleRange(steps)}</span>
       </div>
       <div className="sheet-body">
-        {/* ⚠️ `cycle.steps` ne porte QUE les 3 étapes réellement suivies par ce
-            backend (voir doc de classe `CockpitController`/HANDOFF.md) — ne
-            jamais compléter à 5 étapes pour coller au guide illustré. */}
         <div className="cycle-steps">
-          {cycle.steps.map((step, i) => (
-            <div className={`cycle-step${step.done ? ' done' : ''}`} key={step.key}>
+          {steps.map((step, i) => (
+            <div className={`cycle-step${step.done ? ' done' : ''}${step.current ? ' current' : ''}`} key={step.key}>
               <span className="cycle-step-badge" aria-hidden="true">
                 {step.done ? '✓' : i + 1}
               </span>
@@ -284,7 +337,9 @@ function CyclePanel({
             </div>
           ))}
         </div>
-        <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginTop: 'var(--s-3)', marginBottom: 0 }}>{t('cockpit.cycle.unavailableNote')}</p>
+        <Link href="/quarter" style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--k-pri)', fontWeight: 600, display: 'inline-block', marginTop: 'var(--s-3)' }}>
+          {t('cockpit.cycle.seeQuarterDetail')}
+        </Link>
 
         <div style={{ marginTop: 'var(--s-5)' }}>
           <CalendarStrip calendar={calendar} t={t} />

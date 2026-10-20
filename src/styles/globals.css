@@ -818,6 +818,20 @@ a {
   color: #fff;
 }
 
+/* Étape en cours (lot trimestriel réel, `status === 'EN_COURS'`) — même
+   mise en avant que la capture de référence (étape "Réunion UAR · PV A9"
+   encadrée en couleur primaire), jamais une 2ᵉ couleur hors tokens. */
+.cycle-step.current {
+  border-color: var(--k-pri);
+  background: var(--k-mint);
+}
+
+.cycle-step.current .cycle-step-badge {
+  background: var(--k-pri);
+  border-color: var(--k-pri);
+  color: #fff;
+}
+
 .cycle-step-title {
   font-weight: 600;
   font-size: var(--k-fs-s);

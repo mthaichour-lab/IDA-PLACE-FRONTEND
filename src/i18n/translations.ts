@@ -344,8 +344,7 @@ const fr = {
   'cockpit.indicateurs.adherentsActifsSuspendus': 'Adhérents actifs / suspendus',
 
   'cockpit.cycle.title': 'Cycle conventionnel en cours',
-  'cockpit.cycle.unavailableNote':
-    'Réunion UAR, PV trimestriel et règlement sous 8 j : suivis étape par étape dans « Avancement du lot » (Compensation trimestrielle).',
+  'cockpit.cycle.seeQuarterDetail': 'Voir le détail de l’avancement du lot (Compensation trimestrielle) →',
 
   'cockpit.calendar.legend.weekendPrefix': 'Week-end',
   'cockpit.calendar.legend.holiday': 'Jour férié',

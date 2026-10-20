@@ -2,7 +2,7 @@ import { act, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { mockFetchRouter, renderWithProviders } from '@/test/render';
 import { triggerRealtimeEvent } from '../../../vitest.setup';
-import { CockpitSummary, MeResponse, PlaceCalendar } from '@/lib/types';
+import { CockpitSummary, MeResponse, PlaceCalendar, QuarterlyPipeline } from '@/lib/types';
 import CockpitPage from './page';
 
 const ME: MeResponse = {
@@ -95,11 +95,36 @@ const SUMMARY: CockpitSummary = {
   updatedAt: new Date('2026-10-18T09:00:00.000Z').toISOString(),
 };
 
-function mockApis(summary: CockpitSummary): void {
+/**
+ * Les 5 étapes réelles du lot trimestriel, même forme que
+ * `GET /settlement/quarter/:q/pipeline` consommée par `/quarter` — ce sont
+ * les 2 étapes (`SYNTHESE_GLOBALE_REUNION`/`PV_REGLEMENT`) qu'un repli
+ * antérieur de cet écran croyait à tort sans donnée source.
+ */
+const PIPELINE: QuarterlyPipeline = {
+  quarter: '2026-Q4',
+  steps: [
+    { step: 'SAISIE', label: 'Saisie et validation des recours sur la plateforme', article: 'Art. 16', status: 'DONE', dueDate: '2027-01-07', overdue: false },
+    { step: 'SYNTHESE_ANNEXE_7', label: 'Synthèse mensuelle automatisée (Annexe n°7)', article: 'Art. 16', status: 'DONE', dueDate: '2027-01-10', overdue: false },
+    {
+      step: 'TRANSMISSION_ANNEXE_8',
+      label: 'Insertion des informations de règlement (Annexe n°8) et transmission aux parties tierces, copie à la Commission',
+      article: 'Art. 16-17',
+      status: 'EN_COURS',
+      dueDate: '2027-01-31',
+      overdue: false,
+    },
+    { step: 'SYNTHESE_GLOBALE_REUNION', label: "Synthèse globale trimestrielle et réunion au siège de l'UAR", article: 'Art. 17-18', status: 'A_VENIR', dueDate: '2027-01-31', overdue: false },
+    { step: 'PV_REGLEMENT', label: 'Signature du PV trimestriel (Annexe n°9) et règlement sous 8 jours', article: 'Art. 18', status: 'A_VENIR', dueDate: '2027-02-08', overdue: false },
+  ],
+};
+
+function mockApis(summary: CockpitSummary, pipeline: QuarterlyPipeline = PIPELINE): void {
   mockFetchRouter((pathname) => {
     if (pathname === '/api/v1/me') return ME;
     if (pathname === '/api/v1/cockpit/summary') return summary;
     if (pathname === '/api/v1/referential/calendar') return CALENDAR;
+    if (pathname === `/api/v1/settlement/quarter/${summary.cycleConventionnel.quarter}/pipeline`) return pipeline;
     return undefined;
   });
 }
@@ -173,33 +198,30 @@ describe('Écran Cockpit de place (/cockpit)', () => {
     expect(rows[1]).toHaveTextContent('−650 k DA');
   });
 
-  it('le suivi du cycle conventionnel affiche exactement 3 étapes réelles (jamais 5)', async () => {
+  it("le suivi du cycle conventionnel affiche les 5 étapes RÉELLES du lot trimestriel (`/settlement/quarter/:q/pipeline`, même donnée que « Avancement du lot » sur /quarter)", async () => {
     mockApis(SUMMARY);
     const { container } = renderWithProviders(<CockpitPage />);
 
     await waitFor(() => expect(screen.getByText(/Cycle conventionnel en cours/)).toBeInTheDocument());
+    // Les 2 étapes qu'un repli antérieur de cet écran croyait sans donnée
+    // source existent réellement (SettlementModule) : elles apparaissent une
+    // fois le lot trimestriel chargé, avec sa propre échéance réelle.
+    await waitFor(() => expect(screen.getByText(/Synthèse globale trimestrielle et réunion au siège de l.UAR/)).toBeInTheDocument());
     const steps = container.querySelectorAll('.cycle-step');
-    expect(steps).toHaveLength(3);
-    expect(screen.getByText('Saisie mensuelle')).toBeInTheDocument();
-    expect(screen.getByText('Synthèse Annexe 7')).toBeInTheDocument();
-    expect(screen.getByText('Compensation trimestrielle')).toBeInTheDocument();
-    // Jamais les 2 étapes non suivies (pas de donnée source) comme VRAIES étapes du tracker — seule la note
-    // muette en dessous a le droit de les mentionner (le texte explicatif les nomme justement pour dire
-    // qu'elles sont absentes), donc on vérifie l'absence à l'intérieur des `.cycle-step` seulement.
-    for (const step of steps) {
-      expect(step.textContent).not.toMatch(/Réunion UAR/);
-      expect(step.textContent).not.toMatch(/Règlements sous 8/);
-    }
-    expect(screen.getByText(/suivis étape par étape dans « Avancement du lot »/)).toBeInTheDocument();
+    expect(steps).toHaveLength(5);
+    expect(screen.getByText(/Signature du PV trimestriel/)).toBeInTheDocument();
+    expect(screen.getByText('Art. 16-18')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Voir le détail de l.avancement du lot/ })).toHaveAttribute('href', '/quarter');
   });
 
-  it('le badge d\'articles du cycle est dérivé des étapes réelles ("Art. 16-17", jamais "Art. 16-18")', async () => {
+  it('le badge d\'articles du cycle est dérivé des étapes réellement affichées ("Art. 16-17" pendant le chargement, "Art. 16-18" une fois le lot trimestriel chargé)', async () => {
     mockApis(SUMMARY);
     renderWithProviders(<CockpitPage />);
 
     await waitFor(() => expect(screen.getByText(/Cycle conventionnel en cours/)).toBeInTheDocument());
     expect(screen.getByText('Art. 16-17')).toBeInTheDocument();
-    expect(screen.queryByText('Art. 16-18')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Art. 16-18')).toBeInTheDocument());
+    expect(screen.queryByText('Art. 16-17')).not.toBeInTheDocument();
   });
 
   it('la liste des alertes conventionnelles affiche les chips compagnies et le badge article', async () => {
