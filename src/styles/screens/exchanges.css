@@ -1,1 +1,640 @@
-/* Écran exchanges — styles propres à l'écran (maquette de référence). */
+/* Écran Échanges Annexes 2/3/4 (écran 4, Module B §6.4) — styles propres à l'écran (maquette de référence). */
+
+/* --- En-tête : « Registre filtré » (indication SEC-43, non cliquable) --- */
+.ex-register {
+  cursor: default;
+}
+
+.ex-register:hover {
+  background: var(--paper);
+}
+
+/* --- Sous-onglets REGLE, sous les onglets principaux --- */
+.ex-subtabs .tabs {
+  margin-top: -4px;
+}
+
+.ex-subtabs .tab {
+  height: 32px;
+  font-size: 13px;
+}
+
+/* --- Recherche pleine largeur (pilule grise + loupe) --- */
+.ex-search {
+  position: relative;
+  margin-bottom: 14px;
+  color: var(--ink-3);
+}
+
+.ex-search svg {
+  position: absolute;
+  inset-inline-start: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.ex-search input {
+  width: 100%;
+  height: 40px;
+  padding: 0 16px;
+  padding-inline-start: 42px;
+  border: 1px solid transparent;
+  border-radius: var(--k-r-pill);
+  background: var(--paper-2);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13.5px;
+}
+
+.ex-search input::placeholder {
+  color: var(--ink-3);
+}
+
+.ex-search input:focus {
+  outline: none;
+  border-color: var(--k-pri);
+  background: var(--paper);
+}
+
+/* --- Grille registre (gauche) + détail (droite) --- */
+.ex-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.ex-grid > .sheet + .sheet {
+  margin-top: 0;
+}
+
+@media (max-width: 1020px) {
+  .ex-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Registre des recours --- */
+.ex-table .t thead th:first-child,
+.ex-table .t tbody td:first-child {
+  padding-inline-start: 20px;
+}
+
+.ex-table .t thead th,
+.ex-table .t tbody td {
+  padding-inline: 10px;
+}
+
+.ex-table .t tbody td {
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+.ex-table .t thead th:nth-child(3),
+.ex-table .t tbody td:nth-child(3) {
+  text-align: end;
+}
+
+.ex-ref {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ex-ref-id,
+.ex-ref-sub {
+  display: block;
+  max-width: 104px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ex-ref-id {
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.ex-ref-sub {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.ex-pair {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.ex-arrow {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.ex-pair .co-chip {
+  min-width: 46px;
+  height: 24px;
+  font-size: 11.5px;
+}
+
+.ex-amount-cell {
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.ex-none {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+/* Pastille d'état « • EN COMMISSION » : majuscules + point. */
+.ex-state {
+  text-transform: uppercase;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  gap: 6px;
+  padding: 2px 10px;
+}
+
+.ex-state::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.ex-state.a {
+  color: var(--ink);
+}
+
+/* --- Jauge d'échéance --- */
+.ex-meter {
+  --meter: var(--ok);
+  margin: 14px 0 4px;
+}
+
+.ex-meter.warn {
+  --meter: var(--warn);
+}
+
+.ex-meter.ko {
+  --meter: var(--ko);
+}
+
+.ex-meter-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.ex-meter-label {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.ex-meter-left {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--meter);
+  white-space: nowrap;
+}
+
+.ex-meter-track {
+  height: 5px;
+  margin-top: 5px;
+  border-radius: var(--k-r-pill);
+  background: var(--rule);
+  overflow: hidden;
+}
+
+.ex-meter-fill {
+  height: 100%;
+  border-radius: var(--k-r-pill);
+  background: var(--meter);
+}
+
+.ex-meter-dates {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+/* Variante cellule de tableau : libellé, barre, temps restant empilés. */
+.ex-meter.compact {
+  margin: 0;
+  min-width: 120px;
+  max-width: 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ex-meter.compact .ex-meter-label {
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--ink-3);
+}
+
+.ex-meter.compact .ex-meter-track {
+  margin-top: 0;
+}
+
+.ex-meter.compact .ex-meter-left {
+  font-size: 10.5px;
+  font-weight: 500;
+}
+
+/* --- Panneau de détail --- */
+.ex-detail {
+  position: sticky;
+  top: var(--s-5);
+}
+
+.ex-detail-title {
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+
+.ex-detail-title .mono {
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.ex-detail-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.ex-detail-amount {
+  font-family: var(--f-display);
+  font-size: 25px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  font-feature-settings: 'tnum';
+}
+
+.ex-dl {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.ex-dl > div {
+  display: grid;
+  grid-template-columns: 158px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+}
+
+.ex-dl dt {
+  font-size: 12.5px;
+  white-space: nowrap;
+  color: var(--ink-3);
+}
+
+.ex-dl dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.45;
+  min-width: 0;
+}
+
+.ex-dl dd .co-chip-wrap {
+  vertical-align: -7px;
+}
+
+.ex-dl dd.mono {
+  font-size: 12.5px;
+}
+
+.ex-break {
+  overflow-wrap: anywhere;
+}
+
+.ex-dd-strong {
+  display: block;
+  font-weight: 700;
+}
+
+.ex-dd-note {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+
+.ex-gap {
+  margin: 12px 0 0;
+}
+
+.ex-block {
+  margin-top: 18px;
+}
+
+.ex-block-title {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ex-section-title {
+  margin: 0;
+  font-family: var(--f-display);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.ex-section-sub {
+  margin: 3px 0 14px;
+  font-size: 12px;
+  color: var(--ink-3);
+  line-height: 1.45;
+}
+
+.ex-label {
+  display: block;
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.ex-label-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ex-input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.ex-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  align-items: center;
+}
+
+.btn-outline.ex-action,
+.btn-primary.ex-action {
+  height: 34px;
+  font-size: 13px;
+  padding: 0 14px;
+}
+
+.btn-outline.ex-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ex-oppose {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ex-attest {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.ex-attachments {
+  padding-top: 16px;
+  border-top: 1px solid var(--rule);
+  font-size: 12.5px;
+}
+
+.ex-attachments p {
+  margin: 0 0 10px;
+}
+
+.ex-attachments input[type='file']::file-selector-button {
+  height: 30px;
+  margin-inline-end: 10px;
+  padding: 0 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--k-r-pill);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Historique d'audit (rôles place, SEC-17). */
+.ex-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ex-history li {
+  font-size: 12px;
+  color: var(--ink-2);
+  border-inline-start: 2px solid var(--rule-strong);
+  padding-inline-start: 10px;
+  line-height: 1.5;
+}
+
+.ex-history-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ex-history-head strong {
+  color: var(--ink);
+}
+
+/* --- Fil d'échanges (bulles) --- */
+.ex-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ex-thread-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.ex-day {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ex-day-pill {
+  align-self: center;
+  padding: 4px 14px;
+  border-radius: var(--k-r-pill);
+  background: var(--paper-2);
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.ex-msg {
+  display: flex;
+  flex-direction: column;
+  max-width: 84%;
+  gap: 4px;
+}
+
+.ex-msg.left {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+
+.ex-msg.right {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.ex-msg-author {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  padding: 0 4px;
+}
+
+.ex-bubble {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: var(--k-soft);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ex-msg.self .ex-bubble {
+  background: var(--k-pri);
+  color: #fff;
+}
+
+.ex-msg.party .ex-bubble {
+  background: var(--ko-soft);
+}
+
+.ex-bubble-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ex-bubble-body {
+  margin: 0;
+}
+
+.ex-bubble-meta {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink-2);
+}
+
+.ex-msg.self .ex-bubble-meta {
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--k-pri);
+}
+
+.ex-bubble-files {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.ex-bubble-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  color: var(--ink-2);
+}
+
+.ex-msg-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.ex-msg.right .ex-msg-foot {
+  flex-direction: row-reverse;
+}
+
+.ex-msg-foot .co-chip {
+  min-width: 44px;
+  height: 22px;
+  font-size: 11px;
+}
+
+/* Évènement de place/système (transmission en commission, délai) : ligne centrée discrète. */
+.ex-sys {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 92%;
+  font-size: 12px;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+.ex-sys strong {
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.ex-sys .mono {
+  color: var(--ink-2);
+}

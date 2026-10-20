@@ -1,16 +1,15 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Search, Table2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { ExchangeThread } from '@/components/shared/ExchangeThread';
 import { TruncationNote } from '@/components/ui/TruncationNote';
 import { FolioHeader } from '@/components/FolioHeader';
 import { AttachmentsPanel } from '@/components/documents/AttachmentsPanel';
 import { CoChip } from '@/components/ui/CoChip';
-import { CountdownBar } from '@/components/ui/CountdownBar';
 import { Table, Column } from '@/components/ui/Table';
 import { Tabs } from '@/components/ui/Tabs';
-import { Tag, TagTone } from '@/components/ui/Tag';
+import { TagTone } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
@@ -22,6 +21,8 @@ import { useApiErrorMessage } from '@/lib/error-message';
 import { useRealtime } from '@/lib/realtime';
 import { isCompanyActor, visibleRecoursActions } from '@/lib/recours-actions';
 import { buildRecoursExchangeEvents } from '@/lib/recours-timeline';
+import { DeadlineMeter } from './DeadlineMeter';
+import { RecoursThread } from './RecoursThread';
 import {
   CompanyListItem,
   OppositionMotif,
@@ -95,12 +96,29 @@ function centimes(amount: number): { minimumFractionDigits: number; maximumFract
   return { minimumFractionDigits: digits, maximumFractionDigits: digits };
 }
 
+/** Montant + unité « DA » (maquette) — le nombre reste formaté par `Intl` (séparateurs de la langue). */
 function formatDzd(amount: number, locale: string): string {
   try {
-    return new Intl.NumberFormat(locale, { style: 'currency', currency: 'DZD', ...centimes(amount) }).format(amount);
+    return `${new Intl.NumberFormat(locale, centimes(amount)).format(amount)} DA`;
   } catch {
     return `${amount.toLocaleString()} DA`;
   }
+}
+
+/** Date courte « 7 sept. 2026 » (maquette). */
+function shortDate(iso: string, locale: string): string {
+  return new Date(iso).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/**
+ * Sous-ensemble NON nominatif de `GET /claims/:id` affiché dans le détail
+ * (n° e-constat, date et commune de l'accident) — le masquage des champs
+ * nominatifs reste fait par l'API (SEC-26) ; rien d'autre n'est lu.
+ */
+interface RecoursClaimSummary {
+  numEconstat?: string;
+  accidentDate?: string;
+  commune?: string;
 }
 
 function recoursQuery(filter: RecoursFilter, page: number, q: string) {
@@ -262,6 +280,15 @@ export default function ExchangesPage() {
     enabled: !!selected && placeUser,
   });
 
+  // Dossier lié (lecture seule, facultatif) : en cas d'erreur/refus, les lignes correspondantes sont simplement omises.
+  const claimQuery = useQuery({
+    queryKey: ['claims', 'detail', current?.claimId],
+    queryFn: () => apiGet<RecoursClaimSummary>(apiPath`/claims/${current!.claimId}`),
+    enabled: !!current?.claimId,
+    retry: false,
+  });
+  const claim = claimQuery.data;
+
   const motifsQuery = useQuery({
     queryKey: ['referential', 'opposition-motifs'],
     queryFn: () => apiGet<OppositionMotif[]>('/referential/opposition-motifs'),
@@ -333,35 +360,62 @@ export default function ExchangesPage() {
     openRecours(null);
   }
 
+  const remainingLabel = ({ remainingDays, overdue }: { remainingDays: number; overdue: boolean }) =>
+    `${remainingDays} ${overdue ? t('exchanges.countdown.overdue') : t('exchanges.countdown.remaining')}`;
+  const timerLabel = (r: RecoursItem) => (r.timer.timerType === 'AUCUN' ? '' : t(`exchanges.timer.${r.timer.timerType}` as TranslationKey));
+
   const columns: Column<RecoursItem>[] = useMemo(
     () => [
-      { key: 'claimId', header: t('exchanges.col.dossier'), render: (r) => <span className="mono">{r.claimId}</span> },
+      {
+        key: 'recours',
+        header: t('exchanges.col.recours'),
+        // Identifiants complets dans le DOM (recherche, lecteurs d'écran) ; tronqués visuellement en CSS.
+        render: (r) => (
+          <span className="ex-ref">
+            <span className="mono ex-ref-id" title={r.id}>
+              {r.id}
+            </span>
+            <span className="mono ex-ref-sub" title={r.claimId}>
+              {r.claimId}
+            </span>
+          </span>
+        ),
+      },
       {
         key: 'parties',
         header: t('exchanges.col.parties'),
         render: (r) => (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <CoChip code={r.from} color={companyByCode.get(r.from)?.color} /> <span aria-hidden="true">→</span> <CoChip code={r.to} color={companyByCode.get(r.to)?.color} />
+          <span className="ex-pair">
+            <CoChip code={r.from} color={companyByCode.get(r.from)?.color} />
+            <span aria-hidden="true" className="ex-arrow">
+              →
+            </span>
+            <CoChip code={r.to} color={companyByCode.get(r.to)?.color} />
           </span>
         ),
       },
-      { key: 'amount', header: t('exchanges.col.amount'), render: (r) => <span className="mono">{formatDzd(r.amount, locale)}</span> },
-      { key: 'state', header: t('exchanges.col.state'), render: (r) => <Tag tone={stateTone(r.state)}>{t(`exchanges.state.${r.state}` as TranslationKey)}</Tag> },
+      { key: 'amount', header: t('exchanges.col.amount'), render: (r) => <span className="mono ex-amount-cell">{formatDzd(r.amount, locale)}</span> },
+      { key: 'state', header: t('exchanges.col.state'), render: (r) => <StatePill state={r.state} label={t(`exchanges.state.${r.state}` as TranslationKey)} /> },
       {
         key: 'deadline',
         header: t('exchanges.col.deadline'),
         render: (r) =>
           r.timer.deadlineAt ? (
-            <CountdownBar
+            <DeadlineMeter
+              compact
+              label={timerLabel(r)}
               startAt={r.requestSentAt}
               deadlineAt={r.timer.deadlineAt}
-              renderLabel={({ remainingDays, overdue }) => `${remainingDays} ${overdue ? t('exchanges.countdown.overdue') : t('exchanges.countdown.remaining')}`}
+              locale={locale}
+              remainingLabel={remainingLabel}
+              dueOnLabel={t('exchanges.deadline.dueOn')}
             />
           ) : (
-            <span style={{ color: 'var(--ink-3)', fontSize: 'var(--k-fs-xs)' }}>{t('exchanges.countdown.none')}</span>
+            <span className="ex-none">{t('exchanges.countdown.none')}</span>
           ),
       },
     ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [t, locale, companyByCode],
   );
 
@@ -370,6 +424,9 @@ export default function ExchangesPage() {
     [current, t, motifLabels, meCompany, locale],
   );
 
+  const registryTotal = isRegleFilter ? regleActiveItems.length : listQuery.data?.total;
+  const actions = current ? visibleRecoursActions(current, me) : [];
+
   return (
     <>
       <FolioHeader
@@ -377,154 +434,197 @@ export default function ExchangesPage() {
         title={t('exchanges.title')}
         subtitle={t('exchanges.subtitle')}
         actions={
-          <span className="tag a" title={t('exchanges.registerBadge.title')}>
+          <span className="btn-outline ex-register" title={t('exchanges.registerBadge.title')}>
+            <Table2 size={16} strokeWidth={2} aria-hidden="true" />
             {t('exchanges.registerBadge.label')}
           </span>
         }
       />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(360px, 460px)', gap: 'var(--s-5)', alignItems: 'start' }}>
+      <Tabs items={TABS.map((tab) => ({ key: tab.key, label: t(tab.label), count: countersQuery.data?.[tab.key] }))} activeKey={filter} onChange={changeFilter} />
+
+      {isRegleFilter ? (
+        <div className="ex-subtabs">
+          <Tabs
+            items={[
+              { key: 'SILENCE', label: t('exchanges.subtab.silence'), count: silenceItems.length },
+              { key: 'COMPENSATED', label: t('exchanges.subtab.compensated'), count: compensatedItems.length },
+            ]}
+            activeKey={regleSubTab}
+            onChange={changeRegleSubTab}
+          />
+        </div>
+      ) : null}
+
+      <div className="ex-search">
+        <Search size={16} strokeWidth={2} aria-hidden="true" />
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+            setReglePage(1);
+          }}
+          aria-label={t('exchanges.search.label')}
+          placeholder={t('exchanges.search.label')}
+        />
+      </div>
+
+      <div className="ex-grid">
         <div className="sheet">
-          <div className="sheet-body">
-            <Tabs items={TABS.map((tab) => ({ key: tab.key, label: t(tab.label), count: countersQuery.data?.[tab.key] }))} activeKey={filter} onChange={changeFilter} />
-
-            {isRegleFilter ? (
-              <Tabs
-                items={[
-                  { key: 'SILENCE', label: t('exchanges.subtab.silence'), count: silenceItems.length },
-                  { key: 'COMPENSATED', label: t('exchanges.subtab.compensated'), count: compensatedItems.length },
-                ]}
-                activeKey={regleSubTab}
-                onChange={changeRegleSubTab}
-              />
-            ) : null}
-
-            <input
-              type="search"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-                setReglePage(1);
-              }}
-              aria-label={t('exchanges.search.label')}
-              placeholder={t('exchanges.search.label')}
-              style={{
-                width: '100%',
-                margin: 'var(--s-3) 0',
-                padding: '8px 12px',
-                border: '1px solid var(--rule-strong)',
-                borderRadius: 'var(--k-r-s)',
-                font: 'inherit',
-                background: 'var(--paper)',
-                color: 'var(--ink)',
-              }}
-            />
-
+          <div className="sheet-head">
+            <span>
+              {t('exchanges.registry.title')}
+              {registryTotal !== undefined ? ` (${registryTotal})` : ''}
+            </span>
+          </div>
+          <div className="sheet-body flush">
             {(isRegleFilter ? regleAllQuery.isLoading || closuresQuery.isLoading : listQuery.isLoading) ? (
-              <p>{t('common.loading')}</p>
+              <p className="pad muted">{t('common.loading')}</p>
             ) : (isRegleFilter ? regleAllQuery.error || closuresQuery.error : listQuery.error) ? (
-              <div className="note ko" role="alert">
-                <span>{t('common.error')}</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isRegleFilter) {
-                      void regleAllQuery.refetch();
-                      void closuresQuery.refetch();
-                    } else {
-                      void listQuery.refetch();
-                    }
-                  }}
-                >
-                  {t('common.retry')}
-                </button>
+              <div className="pad">
+                <div className="note ko" role="alert">
+                  <span>{t('common.error')}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isRegleFilter) {
+                        void regleAllQuery.refetch();
+                        void closuresQuery.refetch();
+                      } else {
+                        void listQuery.refetch();
+                      }
+                    }}
+                  >
+                    {t('common.retry')}
+                  </button>
+                </div>
               </div>
             ) : (
               <>
-                {isRegleFilter ? <TruncationNote truncated={regleAllQuery.data?.truncated} shown={regleAllQuery.data?.items.length ?? 0} total={regleAllQuery.data?.total ?? 0} /> : null}
-                <Table
-                  columns={columns}
-                  rows={items}
-                  page={isRegleFilter ? reglePage : listQuery.data?.page ?? 1}
-                  total={isRegleFilter ? regleActiveItems.length : listQuery.data?.total ?? 0}
-                  pageSize={PAGE_SIZE}
-                  onPageChange={isRegleFilter ? setReglePage : setPage}
-                  onRowClick={openRecours}
-                  getRowKey={(r) => r.id}
-                />
+                {isRegleFilter ? (
+                  <div className="pad">
+                    <TruncationNote truncated={regleAllQuery.data?.truncated} shown={regleAllQuery.data?.items.length ?? 0} total={regleAllQuery.data?.total ?? 0} />
+                  </div>
+                ) : null}
+                <div className="ex-table">
+                  <Table
+                    columns={columns}
+                    rows={items}
+                    page={isRegleFilter ? reglePage : listQuery.data?.page ?? 1}
+                    total={isRegleFilter ? regleActiveItems.length : listQuery.data?.total ?? 0}
+                    pageSize={PAGE_SIZE}
+                    onPageChange={isRegleFilter ? setReglePage : setPage}
+                    onRowClick={openRecours}
+                    getRowKey={(r) => r.id}
+                    selectedKey={current?.id}
+                  />
+                </div>
               </>
             )}
           </div>
         </div>
 
-        <div className="sheet" style={{ position: 'sticky', top: 'var(--s-5)' }}>
+        <div className="sheet ex-detail">
           <div className="sheet-head">
-            <strong>{current ? `${t('exchanges.detail.titlePrefix')} ${current.id}` : t('exchanges.detail.titlePrefix')}</strong>
-            {current ? <Tag tone={stateTone(current.state)}>{t(`exchanges.state.${current.state}` as TranslationKey)}</Tag> : null}
+            <span className="ex-detail-title">
+              {t('exchanges.detail.titlePrefix')}
+              {current ? (
+                <>
+                  {' '}
+                  <span className="mono">{current.id}</span>
+                </>
+              ) : null}
+            </span>
           </div>
           <div className="sheet-body">
             {!current ? (
-              <p style={{ color: 'var(--ink-3)' }}>{t('exchanges.panel.empty')}</p>
+              <p className="muted">{t('exchanges.panel.empty')}</p>
             ) : (
               <>
-                <div className="mono" style={{ fontSize: 'var(--k-fs-2xl)', fontWeight: 700, marginBottom: 'var(--s-4)' }}>
-                  {formatDzd(current.amount, locale)}
+                <div className="ex-detail-top">
+                  <StatePill state={current.state} label={t(`exchanges.state.${current.state}` as TranslationKey)} />
+                  <span className="ex-detail-amount">{formatDzd(current.amount, locale)}</span>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-3)', marginBottom: 'var(--s-4)' }}>
-                  <Field label={t('exchanges.detail.from')}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                      <CoChip code={current.from} color={companyByCode.get(current.from)?.color} /> {companyByCode.get(current.from)?.name ?? current.from}
-                    </span>
-                  </Field>
-                  <Field label={t('exchanges.detail.to')}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                      <CoChip code={current.to} color={companyByCode.get(current.to)?.color} /> {companyByCode.get(current.to)?.name ?? current.to}
-                    </span>
-                  </Field>
-                </div>
-
-                <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--s-3)', marginBottom: 'var(--s-4)' }}>
-                  <Field label={t('exchanges.detail.claim')}>
-                    <span className="mono">{current.claimId}</span>
-                  </Field>
-                  <Field label={t('exchanges.detail.sentAt')}>{new Date(current.requestSentAt).toLocaleDateString(locale)}</Field>
+                <dl className="ex-dl">
+                  <div>
+                    <dt>{t('exchanges.detail.from')}</dt>
+                    <dd>
+                      <CoChip code={current.from} color={companyByCode.get(current.from)?.color} withName name={companyByCode.get(current.from)?.name ?? current.from} />
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{t('exchanges.detail.to')}</dt>
+                    <dd>
+                      <CoChip code={current.to} color={companyByCode.get(current.to)?.color} withName name={companyByCode.get(current.to)?.name ?? current.to} />
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{t('exchanges.detail.claim')}</dt>
+                    <dd className="mono ex-break">{current.claimId}</dd>
+                  </div>
+                  {claim?.numEconstat ? (
+                    <div>
+                      <dt>{t('exchanges.detail.constat')}</dt>
+                      <dd className="mono">{claim.numEconstat}</dd>
+                    </div>
+                  ) : null}
+                  {claim?.accidentDate ? (
+                    <div>
+                      <dt>{t('exchanges.detail.accident')}</dt>
+                      <dd>{[shortDate(claim.accidentDate, locale), claim.commune].filter(Boolean).join(' · ')}</dd>
+                    </div>
+                  ) : null}
+                  <div>
+                    <dt>{t('exchanges.detail.sentAt')}</dt>
+                    <dd>{shortDate(current.requestSentAt, locale)}</dd>
+                  </div>
+                  {current.opposition ? (
+                    <div>
+                      <dt>{t('exchanges.detail.opposition')}</dt>
+                      <dd>
+                        {current.opposition.reasonCode ? <strong className="ex-dd-strong">{motifLabels.get(current.opposition.reasonCode) ?? current.opposition.reasonCode}</strong> : null}
+                        {current.opposition.reason ? <span className="ex-dd-note">{current.opposition.reason}</span> : null}
+                      </dd>
+                    </div>
+                  ) : null}
+                  {current.contestation?.reason ? (
+                    <div>
+                      <dt>{t('exchanges.detail.contestation')}</dt>
+                      <dd>
+                        <span className="ex-dd-note">{current.contestation.reason}</span>
+                      </dd>
+                    </div>
+                  ) : null}
                 </dl>
 
                 {current.timer.deadlineAt ? (
-                  <div style={{ marginBottom: 'var(--s-4)' }}>
-                    <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.deadline')}</strong>
-                    <CountdownBar
-                      startAt={current.requestSentAt}
-                      deadlineAt={current.timer.deadlineAt}
-                      renderLabel={({ remainingDays, overdue }) => `${remainingDays} ${overdue ? t('exchanges.countdown.overdue') : t('exchanges.countdown.remaining')}`}
-                    />
-                  </div>
+                  <DeadlineMeter
+                    label={timerLabel(current) || t('exchanges.detail.deadline')}
+                    startAt={current.requestSentAt}
+                    deadlineAt={current.timer.deadlineAt}
+                    locale={locale}
+                    remainingLabel={remainingLabel}
+                    dueOnLabel={t('exchanges.deadline.dueOn')}
+                  />
                 ) : null}
 
-                {!canTransition ? <p className="note warn">{t('common.forbidden')}</p> : null}
+                {!canTransition ? <p className="note warn ex-gap">{t('common.forbidden')}</p> : null}
 
-                <div style={{ marginBottom: 'var(--s-4)' }}>
-                  <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.transition.title')}</strong>
-                  <label htmlFor="transition-reason" style={{ display: 'block', fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', marginBottom: 4 }}>
+                <div className="ex-block">
+                  <strong className="ex-block-title">{t('exchanges.detail.transition.title')}</strong>
+                  <label htmlFor="transition-reason" className="ex-label">
                     {t('exchanges.action.reason.label')}
                   </label>
-                  <input
-                    id="transition-reason"
-                    type="text"
-                    value={reason}
-                    disabled={!canTransition}
-                    onChange={(e) => setReason(e.target.value)}
-                    style={{ width: '100%', marginBottom: 'var(--s-3)', padding: '6px 10px', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', font: 'inherit', background: 'var(--paper)', color: 'var(--ink)' }}
-                  />
-                  <div style={{ display: 'flex', gap: 'var(--s-2)', flexWrap: 'wrap' }}>
-                    {visibleRecoursActions(current, me).map((action) => (
+                  <input id="transition-reason" className="ex-input" type="text" value={reason} disabled={!canTransition} onChange={(e) => setReason(e.target.value)} />
+                  <div className="ex-actions">
+                    {actions.map((action) => (
                       <button
                         key={action}
                         type="button"
-                        className="tag a"
-                        style={{ cursor: canTransition ? 'pointer' : 'not-allowed', border: 'none' }}
+                        className="btn-outline ex-action"
                         disabled={!canTransition || transitionMutation.isPending}
                         aria-expanded={action === 'opposer' ? opposing : undefined}
                         onClick={() => (action === 'opposer' ? setOpposing(true) : transitionMutation.mutate({ id: current.id, action, reason }))}
@@ -532,28 +632,17 @@ export default function ExchangesPage() {
                         {t(`exchanges.action.${action}` as TranslationKey)}
                       </button>
                     ))}
-                    {visibleRecoursActions(current, me).length === 0 ? (
-                      <span style={{ color: 'var(--ink-3)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.action.none')}</span>
-                    ) : null}
+                    {actions.length === 0 ? <span className="ex-none">{t('exchanges.action.none')}</span> : null}
                   </div>
 
-                  {opposing && canTransition && visibleRecoursActions(current, me).includes('opposer') ? (
-                    <div
-                      role="group"
-                      aria-label={t('exchanges.action.opposer')}
-                      style={{ marginTop: 'var(--s-3)', padding: 'var(--s-3)', border: '1px solid var(--rule)', borderRadius: 'var(--k-r-s)', display: 'flex', flexDirection: 'column', gap: 'var(--s-3)' }}
-                    >
+                  {opposing && canTransition && actions.includes('opposer') ? (
+                    <div role="group" aria-label={t('exchanges.action.opposer')} className="ex-oppose">
                       {motifsQuery.isLoading ? (
-                        <p style={{ margin: 0 }}>{t('common.loading')}</p>
+                        <p className="muted">{t('common.loading')}</p>
                       ) : hasAdmittedMotifs ? (
-                        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
+                        <label className="ex-label ex-label-col">
                           {t('exchanges.opposition.motif.label')}
-                          <select
-                            required
-                            value={reasonCode}
-                            onChange={(e) => setReasonCode(e.target.value)}
-                            style={{ font: 'inherit', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', padding: '6px 10px', background: 'var(--paper)', color: 'var(--ink)' }}
-                          >
+                          <select className="ex-input" required value={reasonCode} onChange={(e) => setReasonCode(e.target.value)}>
                             <option value="" disabled>
                               {t('exchanges.opposition.motif.placeholder')}
                             </option>
@@ -570,24 +659,23 @@ export default function ExchangesPage() {
                         </label>
                       ) : (
                         <>
-                          <p style={{ margin: 0, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>{t('exchanges.opposition.noCatalog')}</p>
-                          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 'var(--k-fs-s)', color: 'var(--ink)' }}>
+                          <p className="ex-label">{t('exchanges.opposition.noCatalog')}</p>
+                          <label className="ex-attest">
                             <input type="checkbox" required checked={attested} onChange={(e) => setAttested(e.target.checked)} />
                             <span>{t('exchanges.opposition.attest')}</span>
                           </label>
                         </>
                       )}
-                      <div style={{ display: 'flex', gap: 'var(--s-2)', flexWrap: 'wrap' }}>
+                      <div className="ex-actions">
                         <button
                           type="button"
-                          className="tag a"
-                          style={{ border: 'none', cursor: 'pointer' }}
+                          className="btn-primary ex-action"
                           disabled={transitionMutation.isPending || motifsQuery.isLoading || (hasAdmittedMotifs ? !reasonCode : !attested)}
                           onClick={() => transitionMutation.mutate({ id: current.id, action: 'opposer', reason, reasonCode: hasAdmittedMotifs ? reasonCode : undefined })}
                         >
                           {t('exchanges.opposition.confirm')}
                         </button>
-                        <button type="button" className="tag a" style={{ border: 'none', cursor: 'pointer' }} onClick={resetOpposition}>
+                        <button type="button" className="btn-soft" onClick={resetOpposition}>
                           {t('common.cancel')}
                         </button>
                       </div>
@@ -595,19 +683,21 @@ export default function ExchangesPage() {
                   ) : null}
                 </div>
 
-                <div style={{ marginBottom: 'var(--s-4)' }}>
-                  <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.timeline')}</strong>
-                  <ExchangeThread events={threadEvents} locale={locale} emptyLabel={t('exchanges.thread.empty')} />
-                  {placeUser ? <RecoursAuditHistory query={historyQuery} locale={locale} t={t} /> : null}
-                </div>
+                <section className="ex-block" aria-label={t('exchanges.detail.timeline')}>
+                  <h2 className="ex-section-title">{t('exchanges.detail.timeline')}</h2>
+                  <p className="ex-section-sub">{t('exchanges.detail.timeline.sub')}</p>
+                  <RecoursThread events={threadEvents} locale={locale} emptyLabel={t('exchanges.thread.empty')} companyName={(code) => companyByCode.get(code)?.name} />
+                </section>
+
+                {placeUser ? <RecoursAuditHistory query={historyQuery} locale={locale} t={t} /> : null}
 
                 {/*
                   QUESTIONS_UAR.md §9, décision Product Owner 2026-10-18 : pièces
                   manuelles (Annexe 2/3/4) attachées à CE recours — jamais à un
                   CommissionCase depuis cet écran (voir `AttachmentsPanel`).
                 */}
-                <div style={{ paddingTop: 'var(--s-4)', borderTop: '1px solid var(--rule)' }}>
-                  <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.detail.attachments')}</strong>
+                <div className="ex-block ex-attachments">
+                  <strong className="ex-block-title">{t('exchanges.detail.attachments')}</strong>
                   <AttachmentsPanel recoursId={current.id} />
                 </div>
               </>
@@ -619,13 +709,9 @@ export default function ExchangesPage() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <dt style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>{label}</dt>
-      <dd style={{ margin: 0 }}>{children}</dd>
-    </div>
-  );
+/** Pastille d'état « • EN COMMISSION » (maquette) — teintes `.tag` existantes (ok/warn/ko/a). */
+function StatePill({ state, label }: { state: RecoursState; label: string }) {
+  return <span className={`tag ${stateTone(state)} ex-state`}>{label}</span>;
 }
 
 /** Libellés des actions de l'historique : actions manuelles, création et transitions automatiques (timers Art. 10/12/19). */
@@ -653,10 +739,10 @@ function RecoursAuditHistory({
 }) {
   const entries = query.data ?? [];
   return (
-    <section aria-label={t('exchanges.history.title')} style={{ marginTop: 'var(--s-4)' }}>
-      <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('exchanges.history.title')}</strong>
+    <section aria-label={t('exchanges.history.title')} className="ex-block">
+      <strong className="ex-block-title">{t('exchanges.history.title')}</strong>
       {query.isLoading ? (
-        <p style={{ fontSize: 'var(--k-fs-xs)' }}>{t('common.loading')}</p>
+        <p className="muted">{t('common.loading')}</p>
       ) : query.error ? (
         <div className="note ko" role="alert">
           <span>{t('common.error')}</span>
@@ -665,13 +751,13 @@ function RecoursAuditHistory({
           </button>
         </div>
       ) : entries.length === 0 ? (
-        <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', margin: 0 }}>{t('exchanges.history.empty')}</p>
+        <p className="ex-none">{t('exchanges.history.empty')}</p>
       ) : (
-        <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <ol className="ex-history">
           {entries.map((h, i) => (
-            <li key={`${h.at}-${i}`} style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', borderInlineStart: '2px solid var(--rule-strong)', paddingInlineStart: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
-                <strong style={{ color: 'var(--ink)' }}>{HISTORY_ACTION_LABEL[h.action] ? t(HISTORY_ACTION_LABEL[h.action]) : h.action}</strong>
+            <li key={`${h.at}-${i}`}>
+              <div className="ex-history-head">
+                <strong>{HISTORY_ACTION_LABEL[h.action] ? t(HISTORY_ACTION_LABEL[h.action]) : h.action}</strong>
                 <span className="mono">{new Date(h.at).toLocaleString(locale)}</span>
               </div>
               <div className="mono">

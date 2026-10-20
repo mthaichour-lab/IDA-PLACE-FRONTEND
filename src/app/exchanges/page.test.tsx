@@ -172,9 +172,11 @@ describe('Écran Échanges (/exchanges)', () => {
     await waitFor(() => expect(within(table()).getByText('c-1')).toBeInTheDocument());
     fireEvent.click(within(table()).getByText('c-1').closest('tr')!);
 
-    await waitFor(() => expect(screen.getByText('Annexe 2 — Demande d’indemnisation')).toBeInTheDocument());
-    expect(screen.getByText('Annexe 3 — Avis d’opposition motivé')).toBeInTheDocument();
-    expect(screen.getByText('Montant contesté')).toBeInTheDocument();
+    // Le motif apparaît aussi dans la ligne « Opposition » du détail (maquette) : assertions scopées au fil.
+    const thread = await screen.findByRole('region', { name: 'Fil d’échanges inter-compagnies' });
+    await waitFor(() => expect(within(thread).getByText('Annexe 2 — Demande d’indemnisation')).toBeInTheDocument());
+    expect(within(thread).getByText('Annexe 3 — Avis d’opposition motivé')).toBeInTheDocument();
+    expect(within(thread).getByText('Montant contesté')).toBeInTheDocument();
   });
 
   /**
@@ -191,6 +193,32 @@ describe('Écran Échanges (/exchanges)', () => {
 
     await waitFor(() => expect(screen.getByText('Pièces jointes (Annexes 2/3/4)')).toBeInTheDocument());
     await waitFor(() => expect(screen.getByText('Aucune pièce jointe.')).toBeInTheDocument());
+  });
+
+  it('complète le détail avec le dossier lié réel (n° e-constat, date et commune de l’accident) et l’omet si l’API le refuse', async () => {
+    const item = recoursItem();
+    mockFetchRouter((pathname, url) => {
+      if (pathname === '/api/v1/me') return ME_WITH_EXCHANGE;
+      if (pathname === '/api/v1/recours/counters') return { TOUS: 1, EN_ATTENTE: 1, OPPOSITION: 0, CONTESTATION: 0, COMMISSION: 0, REGLE: 0, REJETE: 0, FORCLOS: 0 };
+      if (pathname === '/api/v1/recours/r-1') return item;
+      if (pathname === '/api/v1/recours') return { page: Number(url.searchParams.get('page') ?? '1'), total: 1, items: [item] };
+      if (pathname === '/api/v1/claims/c-1') return { id: 'c-1', numEconstat: 'EC-2026-000123', accidentDate: '2026-08-28', commune: 'Alger-Centre' };
+      if (pathname === '/api/v1/documents') return [];
+      return undefined;
+    });
+    renderWithProviders(<ExchangesPage />);
+
+    await waitFor(() => expect(screen.getByText('EC-2026-000123')).toBeInTheDocument());
+    expect(screen.getByText(/Alger-Centre/)).toBeInTheDocument();
+  });
+
+  it('omet les lignes du dossier lié quand `GET /claims/:id` échoue (pas de valeur inventée)', async () => {
+    mockExchangesApi(ME_WITH_EXCHANGE, [recoursItem()]);
+    renderWithProviders(<ExchangesPage />);
+
+    await waitFor(() => expect(screen.getByText('Dossier lié')).toBeInTheDocument());
+    expect(screen.queryByText('N° e-constat')).not.toBeInTheDocument();
+    expect(screen.queryByText('Accident')).not.toBeInTheDocument();
   });
 
   it('filtre la liste par recherche libre (n° recours, dossier, compagnie)', async () => {

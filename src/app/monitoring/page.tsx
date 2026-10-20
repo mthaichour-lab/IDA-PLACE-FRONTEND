@@ -1,24 +1,27 @@
 'use client';
 
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
+import { Download, Search, Table2, TriangleAlert } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { TruncationNote } from '@/components/ui/TruncationNote';
 import { FolioHeader } from '@/components/FolioHeader';
 import { CoChip } from '@/components/ui/CoChip';
 import { Kpi } from '@/components/ui/Kpi';
 import { RadarChart, RadarAxis } from '@/components/ui/RadarChart';
-import { ScoreBar } from '@/components/ui/ScoreBar';
 import { Table, Column } from '@/components/ui/Table';
-import { Tag, TagTone } from '@/components/ui/Tag';
 import { useI18n } from '@/i18n/provider';
 import { useAuth } from '@/lib/auth-context';
 import { isCompanyRole } from '@/lib/auth/roles';
 import { TranslationKey } from '@/i18n/translations';
 import { fetchAllPages } from '@/lib/paginate';
 import { apiGet, apiPath } from '@/lib/api-client';
-import { MonitoringCompanyScore, MonitoringJourney, MonitoringScores, MonitoringWeights } from '@/lib/types';
+import { buildCsv, downloadCsv } from '@/lib/csv';
+import { MonitoringCompanyScore, MonitoringJourney, MonitoringJourneyStep, MonitoringScores, MonitoringWeights } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
+
+type T = (k: TranslationKey) => string;
 
 /**
  * Libellés des 7 critères du scoring composite (B.2 écran 8). Même ordre
@@ -44,41 +47,87 @@ const WEIGHT_LABELS: { key: keyof MonitoringWeights; label: TranslationKey }[] =
  * tardives"), le radar affichant un score déjà dans le sens "plus haut =
  * meilleur" (voir guide illustré, écran 8).
  */
-function radarLabel(key: keyof MonitoringWeights, t: (k: TranslationKey) => string): string {
+function radarLabel(key: keyof MonitoringWeights, t: T): string {
   if (key === 'qualiteDonnees') return t('monitoring.radar.donnees');
   if (key === 'demandesTardives') return t('monitoring.radar.demandesATemps');
   return t(WEIGHT_LABELS.find((w) => w.key === key)!.label);
 }
 
-/** Rend un `ScoreBar` si la valeur est disponible, sinon un repère "non disponible" — jamais de crash sur une composante `NON_DISPONIBLE` (null). */
-function renderScore(score: number | null, t: (k: TranslationKey) => string) {
-  if (score === null) return <span style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}>{t('common.noData')}</span>;
-  return <ScoreBar score={score} />;
-}
-
-/** Formatte un pourcentage RÉEL (`profile.*RatePct`/`details.qualiteDonnees.value`) — `null` → repère "non disponible", jamais une valeur inventée. */
-function formatPct(value: number | null, t: (k: TranslationKey) => string): string {
-  return value === null ? t('common.noData') : `${value} %`;
-}
-
-/** Formatte un délai en jours (`profile.avgResponseDays`) — même convention que `/stats` (`${value} j`, pas de libellé traduit pour l'unité). */
-function formatDays(value: number | null, t: (k: TranslationKey) => string): string {
-  return value === null ? t('common.noData') : `${value} j`;
-}
-
-function gradeTone(grade: 'A' | 'B' | 'C' | 'D' | null): TagTone {
+/** Tonalité d'une note lettrée (A/B = conforme, C = vigilance, D = alerte) — couleur du score, de sa barre et de la pastille « Note », comme la maquette. */
+function gradeTone(grade: 'A' | 'B' | 'C' | 'D' | null): 'ok' | 'warn' | 'ko' | 'na' {
   if (grade === 'A' || grade === 'B') return 'ok';
   if (grade === 'C') return 'warn';
   if (grade === 'D') return 'ko';
-  return 'a';
+  return 'na';
+}
+
+/**
+ * Score composite : grand chiffre coloré + barre (maquette). Valeur RÉELLE
+ * renvoyée par le back (jamais arrondie ni recalculée) ; `null` (aucune
+ * composante disponible) → repère "non disponible", jamais un crash.
+ */
+function ScoreCell({ score, grade, t }: { score: number | null; grade: 'A' | 'B' | 'C' | 'D' | null; t: T }) {
+  if (score === null) return <span className="mon-na">{t('common.noData')}</span>;
+  return (
+    <span className={`mon-score ${gradeTone(grade)}`}>
+      <span className="mon-score-value">{score}</span>
+      <span className="mon-score-track" aria-hidden="true">
+        <span className="mon-score-fill" style={{ width: `${Math.max(0, Math.min(100, score))}%` }} />
+      </span>
+    </span>
+  );
+}
+
+/** Valeur absente (`null`, composante `NON_DISPONIBLE`) : tiret discret, libellé "non disponible" lu par les lecteurs d'écran et en infobulle — jamais une valeur inventée. */
+function NotAvailable({ t }: { t: T }) {
+  return (
+    <span className="mon-na" title={t('common.noData')} aria-label={t('common.noData')}>
+      —
+    </span>
+  );
+}
+
+/** Formatte un pourcentage RÉEL (`profile.*RatePct`/`details.qualiteDonnees.value`) — `null` → `null` (rendu "non disponible" par l'appelant). */
+function pctText(value: number | null): string | null {
+  return value === null ? null : `${value} %`;
+}
+
+/** Formatte un délai en jours (`profile.avgResponseDays`) — même convention que `/stats` (`${value} j`, pas de libellé traduit pour l'unité). */
+function daysText(value: number | null): string | null {
+  return value === null ? null : `${value} j`;
+}
+
+/** Cellule numérique du classement : valeur réelle ou repère "non disponible" ; « — » simple quand la ligne n'a pas de détail (SEC-26). */
+function numCell(value: string | number | null | undefined, t: T) {
+  if (value === undefined) return <span className="mono mon-na">—</span>;
+  if (value === null) return <NotAvailable t={t} />;
+  return <span className="mono">{value}</span>;
 }
 
 /** Même mapping état→tonalité que `/exchanges` (`stateTone`, `exchanges/page.tsx`) — un recours garde la même sémantique de couleur partout dans l'app. */
-function stateTone(state: string): TagTone {
+function stateTone(state: string): 'ok' | 'warn' | 'ko' | 'a' {
   if (state === 'FORCLOS' || state === 'REJETE') return 'ko';
   if (state === 'OPPOSITION' || state === 'CONTESTATION') return 'warn';
   if (state === 'COMMISSION') return 'a';
   return 'ok';
+}
+
+/**
+ * Teinte d'une pastille de parcours (une pastille = une étape RÉELLEMENT
+ * franchie, `journey.steps`) : demande et règlement en teal, opposition et
+ * contestation en rouge, saisine de la Commission en gris (acte de place).
+ */
+function stepTone(key: MonitoringJourneyStep['key']): 'ok' | 'ko' | 'na' {
+  if (key === 'annexe3' || key === 'annexe4') return 'ko';
+  if (key === 'commission') return 'na';
+  return 'ok';
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Identifiant technique (UUID) abrégé à ses 8 premiers caractères pour l'affichage (même convention que `/monthly`) ; l'identifiant complet reste en infobulle et dans la recherche. */
+function shortId(id: string): string {
+  return UUID.test(id) ? id.slice(0, 8).toUpperCase() : id;
 }
 
 export default function MonitoringPage() {
@@ -125,16 +174,20 @@ export default function MonitoringPage() {
 
   const columns: Column<MonitoringCompanyScore>[] = useMemo(
     () => [
-      { key: 'rank', header: t('monitoring.col.rank'), render: (r) => <span className="mono">#{r.rank}</span> },
-      { key: 'company', header: t('monitoring.col.company'), render: (r) => <CoChip code={r.code} /> },
-      { key: 'score', header: t('monitoring.col.score'), render: (r) => renderScore(r.score, t) },
-      { key: 'grade', header: t('monitoring.col.grade'), render: (r) => <Tag tone={gradeTone(r.grade)}>• {r.grade ?? '—'}</Tag> },
-      { key: 'delaisPct', header: t('monitoring.col.delaisPct'), render: (r) => <span className="mono">{r.profile ? formatPct(r.profile.onTimeResponsePct, t) : '—'}</span> },
-      { key: 'silencesPct', header: t('monitoring.col.silencesPct'), render: (r) => <span className="mono">{r.profile ? formatPct(r.profile.silencesRatePct, t) : '—'}</span> },
-      { key: 'oppEmisesPct', header: t('monitoring.col.oppEmisesPct'), render: (r) => <span className="mono">{r.profile ? formatPct(r.profile.oppositionsRatePct, t) : '—'}</span> },
-      { key: 'avgDelay', header: t('monitoring.col.avgDelay'), render: (r) => <span className="mono">{r.profile ? formatDays(r.profile.avgResponseDays, t) : '—'}</span> },
-      { key: 'forclos', header: t('monitoring.col.forclos'), render: (r) => <span className="mono">{r.profile ? r.profile.forclosCount : '—'}</span> },
-      { key: 'donnees', header: t('monitoring.col.donnees'), render: (r) => <span className="mono">{r.details ? formatPct(r.details.qualiteDonnees.value, t) : '—'}</span> },
+      { key: 'rank', header: t('monitoring.col.rank'), render: (r) => <span className="mon-rank-n">{r.rank}</span> },
+      { key: 'company', header: t('monitoring.col.company'), render: (r) => <CoChip code={r.code} withName /> },
+      { key: 'score', header: t('monitoring.col.score'), render: (r) => <ScoreCell score={r.score} grade={r.grade} t={t} /> },
+      {
+        key: 'grade',
+        header: t('monitoring.col.grade'),
+        render: (r) => <span className={`mon-grade ${gradeTone(r.grade)}`}>• {r.grade ?? '—'}</span>,
+      },
+      { key: 'delaisPct', header: t('monitoring.col.delaisPct'), render: (r) => numCell(r.profile ? pctText(r.profile.onTimeResponsePct) : undefined, t) },
+      { key: 'silencesPct', header: t('monitoring.col.silencesPct'), render: (r) => numCell(r.profile ? pctText(r.profile.silencesRatePct) : undefined, t) },
+      { key: 'oppEmisesPct', header: t('monitoring.col.oppEmisesPct'), render: (r) => numCell(r.profile ? pctText(r.profile.oppositionsRatePct) : undefined, t) },
+      { key: 'avgDelay', header: t('monitoring.col.avgDelay'), render: (r) => numCell(r.profile ? daysText(r.profile.avgResponseDays) : undefined, t) },
+      { key: 'forclos', header: t('monitoring.col.forclos'), render: (r) => numCell(r.profile ? r.profile.forclosCount : undefined, t) },
+      { key: 'donnees', header: t('monitoring.col.donnees'), render: (r) => numCell(r.details ? pctText(r.details.qualiteDonnees.value) : undefined, t) },
     ],
     [t],
   );
@@ -145,9 +198,13 @@ export default function MonitoringPage() {
         key: 'recours',
         header: t('monitoring.journeys.col.recours'),
         render: (j) => (
-          <div>
-            <span className="mono">{j.id}</span>
-            <div style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}>{j.claimId}</div>
+          <div className="mon-ref">
+            <span className="mono" title={j.id}>
+              {shortId(j.id)}
+            </span>
+            <span className="mono mon-ref-sub" title={j.claimId}>
+              {shortId(j.claimId)}
+            </span>
           </div>
         ),
       },
@@ -155,28 +212,32 @@ export default function MonitoringPage() {
         key: 'sens',
         header: t('monitoring.journeys.col.sens'),
         render: (j) => (
-          <Tag tone={j.direction === 'EMIS' ? 'ok' : 'a'}>
+          <span className={`mon-dir ${j.direction === 'EMIS' ? 'emis' : 'recu'}`}>
             {t(j.direction === 'EMIS' ? 'monitoring.journeys.direction.emisPrefix' : 'monitoring.journeys.direction.recuPrefix')} {j.counterparty}
-          </Tag>
+          </span>
         ),
       },
       {
         key: 'parcours',
         header: t('monitoring.journeys.col.parcours'),
         render: (j) => (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <span aria-hidden="true" style={{ display: 'inline-flex', gap: 3 }}>
+          <span className="mon-steps">
+            <span aria-hidden="true" className="mon-dots">
               {j.steps.map((s, i) => (
-                <span key={`${j.id}-${s.key}-${i}`} style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--k-pri-2)', display: 'inline-block' }} />
+                <span key={`${j.id}-${s.key}-${i}`} className={`mon-dot ${stepTone(s.key)}`} />
               ))}
             </span>
-            <span style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
+            <span className="mon-steps-n">
               {j.steps.length} {t('monitoring.journeys.steps.suffix')}
             </span>
           </span>
         ),
       },
-      { key: 'etat', header: t('monitoring.journeys.col.etat'), render: (j) => <Tag tone={stateTone(j.state)}>{t(`exchanges.state.${j.state}` as TranslationKey)}</Tag> },
+      {
+        key: 'etat',
+        header: t('monitoring.journeys.col.etat'),
+        render: (j) => <span className={`tag ${stateTone(j.state)} mon-state`}>• {t(`exchanges.state.${j.state}` as TranslationKey)}</span>,
+      },
     ],
     [t],
   );
@@ -192,22 +253,72 @@ export default function MonitoringPage() {
     query.data !== undefined &&
     selected.profile.oppositionsRatePct > query.data.oppositionAlertThresholdPct;
 
+  const na = t('common.noData');
   const tiles = selected
     ? [
-        { key: 'onTime', value: formatPct(selected.profile.onTimeResponsePct, t), label: `${t('monitoring.tile.onTimePrefix')} ${silenceDays} j` },
-        { key: 'avgDelay', value: formatDays(selected.profile.avgResponseDays, t), label: t('monitoring.tile.avgDelay') },
+        { key: 'onTime', value: pctText(selected.profile.onTimeResponsePct), label: `${t('monitoring.tile.onTimePrefix')} ${silenceDays} j` },
+        { key: 'avgDelay', value: daysText(selected.profile.avgResponseDays), label: t('monitoring.tile.avgDelay') },
         { key: 'oppEmises', value: selected.profile.oppositionsEmisesCount, label: t('monitoring.tile.oppEmises') },
         { key: 'oppSubies', value: selected.profile.oppositionsSubiesCount, label: t('monitoring.tile.oppSubies') },
         { key: 'silences', value: selected.profile.silencesCount, label: t('monitoring.tile.silences') },
         { key: 'contestations', value: selected.profile.contestationsCount, label: t('monitoring.tile.contestations') },
         { key: 'forclos', value: selected.profile.forclosCount, label: t('monitoring.tile.forclos') },
-        { key: 'donnees', value: formatPct(selected.details.qualiteDonnees.value, t), label: t('monitoring.tile.donnees') },
+        { key: 'donnees', value: pctText(selected.details.qualiteDonnees.value), label: t('monitoring.tile.donnees') },
       ]
     : [];
 
+  // Export CSV (« ⤓ Excel » de la maquette) — généré côté front depuis les données RÉELLEMENT
+  // chargées (aucun endpoint d'export côté API, même convention que `/matching`/`/quarter`) :
+  // pas un classeur Excel mis en forme. Les lignes sans détail (SEC-26) restent vides.
+  function exportRanking() {
+    const header = columns.map((c) => c.header);
+    const rows = companies.map((r) => [
+      r.rank,
+      r.code,
+      r.score ?? '',
+      r.grade ?? '',
+      r.profile?.onTimeResponsePct ?? '',
+      r.profile?.silencesRatePct ?? '',
+      r.profile?.oppositionsRatePct ?? '',
+      r.profile?.avgResponseDays ?? '',
+      r.profile?.forclosCount ?? '',
+      r.details?.qualiteDonnees.value ?? '',
+    ]);
+    downloadCsv('classement-conformite.csv', buildCsv(header, rows));
+  }
+
+  function exportJourneys() {
+    if (!selected) return;
+    const header = [
+      t('monitoring.journeys.col.recours'),
+      t('monitoring.journeys.col.sens'),
+      t('monitoring.journeys.amount'),
+      t('monitoring.journeys.col.parcours'),
+      t('monitoring.journeys.col.etat'),
+    ];
+    const rows = filteredJourneys.map((j) => [
+      j.id,
+      `${t(j.direction === 'EMIS' ? 'monitoring.journeys.direction.emisPrefix' : 'monitoring.journeys.direction.recuPrefix')} ${j.counterparty}`,
+      j.amount,
+      j.steps.map((s) => s.key).join(' > '),
+      j.state,
+    ]);
+    downloadCsv(`parcours-${selected.code}.csv`, buildCsv(header, rows));
+  }
+
   return (
     <>
-      <FolioHeader badge="Module F · §6.8" title={t('monitoring.title')} subtitle={t('monitoring.subtitle')} />
+      <FolioHeader
+        badge="Module F · §6.8"
+        title={t('monitoring.title')}
+        subtitle={t('monitoring.subtitle')}
+        actions={
+          <Link href="/stats" className="btn-outline mon-kpi-link" title={t('monitoring.action.kpi.title')}>
+            <Table2 size={16} aria-hidden="true" />
+            {t('monitoring.action.kpi')}
+          </Link>
+        }
+      />
 
       {query.isLoading ? (
         <p>{t('common.loading')}</p>
@@ -220,14 +331,16 @@ export default function MonitoringPage() {
         </div>
       ) : (
         <>
-          <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
+          <div className={`sheet mon-rank${companies.length <= PAGE_SIZE ? ' single' : ''}`}>
             <div className="sheet-head">
               <span>{t('monitoring.section.ranking')}</span>
+              <button type="button" className="mon-xl" onClick={exportRanking} disabled={companies.length === 0} title={t('monitoring.export.ranking.title')}>
+                <Download size={14} aria-hidden="true" />
+                {t('common.exportExcel')}
+              </button>
             </div>
-            <div className="sheet-body">
-              {companyRole ? (
-                <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginTop: 0 }}>{t('monitoring.restricted.note')}</p>
-              ) : null}
+            <div className="sheet-body flush">
+              {companyRole ? <p className="mon-restricted">{t('monitoring.restricted.note')}</p> : null}
               <Table
                 columns={columns}
                 rows={pageRows}
@@ -239,24 +352,28 @@ export default function MonitoringPage() {
                   if (r.details && r.profile) setSelectedCode(r.code);
                 }}
                 getRowKey={(r) => r.code}
+                selectedKey={selected?.code}
               />
             </div>
           </div>
 
           {!selected ? (
-            <p style={{ color: 'var(--ink-3)' }}>{t('monitoring.panel.empty')}</p>
+            <p className="mon-empty">{t('monitoring.panel.empty')}</p>
           ) : (
-            <div className="grid g-mon">
-              <div className="sheet">
+            <div className="grid g-mon mon-grid">
+              <div className="sheet mon-profile">
                 <div className="sheet-head">
                   <span>
                     {t('monitoring.section.profile')} — {selected.code}
                   </span>
                 </div>
-                <div className="sheet-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--s-4)' }}>
-                  <RadarChart axes={radarAxes} centerValue={selected.score} />
+                <div className="sheet-body">
+                  <div className="mon-radar">
+                    <RadarChart axes={radarAxes} centerValue={selected.score} size={400} />
+                  </div>
                   {showOppositionAlert ? (
-                    <div className="note warn" role="alert" style={{ width: '100%' }}>
+                    <div className="mon-alert" role="alert">
+                      <TriangleAlert size={15} aria-hidden="true" />
                       <span>
                         {t('monitoring.alert.oppositions.prefix')} ({selected.profile.oppositionsRatePct} %) — {t('monitoring.alert.oppositions.suffix')}
                       </span>
@@ -265,38 +382,41 @@ export default function MonitoringPage() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-5)' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--s-3)' }}>
+              <div className="mon-side">
+                <div className="mon-tiles">
                   {tiles.map((tile) => (
-                    <Kpi key={tile.key} value={tile.value} label={tile.label} />
+                    <Kpi key={tile.key} value={tile.value ?? '—'} label={tile.label} title={tile.value === null ? na : undefined} />
                   ))}
                 </div>
 
-                <div className="sheet">
+                <div className="sheet mon-journeys">
                   <div className="sheet-head">
                     <span>{t('monitoring.section.journeys')}</span>
+                    <button
+                      type="button"
+                      className="mon-xl"
+                      onClick={exportJourneys}
+                      disabled={filteredJourneys.length === 0}
+                      title={t('monitoring.export.journeys.title')}
+                    >
+                      <Download size={14} aria-hidden="true" />
+                      {t('common.exportExcel')}
+                    </button>
                   </div>
                   <div className="sheet-body">
-                    <input
-                      type="search"
-                      value={journeySearch}
-                      onChange={(e) => {
-                        setJourneySearch(e.target.value);
-                        setJourneyPage(1);
-                      }}
-                      aria-label={t('monitoring.journeys.search.label')}
-                      placeholder={t('monitoring.journeys.search.label')}
-                      style={{
-                        width: '100%',
-                        marginBottom: 'var(--s-3)',
-                        padding: '8px 12px',
-                        border: '1px solid var(--rule-strong)',
-                        borderRadius: 'var(--k-r-s)',
-                        font: 'inherit',
-                        background: 'var(--paper)',
-                        color: 'var(--ink)',
-                      }}
-                    />
+                    <label className="mon-search">
+                      <Search size={16} aria-hidden="true" />
+                      <input
+                        type="search"
+                        value={journeySearch}
+                        onChange={(e) => {
+                          setJourneySearch(e.target.value);
+                          setJourneyPage(1);
+                        }}
+                        aria-label={t('monitoring.journeys.search.label')}
+                        placeholder={t('monitoring.journeys.search.label')}
+                      />
+                    </label>
 
                     {journeysQuery.isLoading ? (
                       <p>{t('common.loading')}</p>

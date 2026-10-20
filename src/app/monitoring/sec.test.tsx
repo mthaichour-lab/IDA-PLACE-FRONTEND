@@ -63,7 +63,9 @@ describe('Écran 8 — classement sans détail des autres compagnies (SEC-26)', 
     renderWithProviders(<MonitoringPage />);
 
     await screen.findByText(/le détail \(taux, délais, parcours\) n’est publié que pour votre compagnie/);
-    const otherRow = screen.getByText('#1').closest('tr')!;
+    // Rang affiché en chiffre seul (maquette) : la ligne est retrouvée par la vignette de la compagnie.
+    const otherRow = screen.getByText('SAA').closest('tr')!;
+    expect(otherRow).toHaveTextContent(/^1/);
     expect(otherRow).toHaveTextContent('—');
     expect(await screen.findByText('Profil — CAAT')).toBeInTheDocument();
 

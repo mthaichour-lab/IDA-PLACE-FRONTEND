@@ -85,8 +85,11 @@ describe('Écran 3 — modèles v1/v2 et avertissements (décision PO §5)', () 
     renderWithProviders(<ImportPage />);
     const user = userEvent.setup();
 
-    const v1 = await screen.findByRole('button', { name: 'Modèle v1 (47 colonnes)' });
-    const v2 = await screen.findByRole('button', { name: 'Modèle v2 — barème Art. 14 (53 colonnes)' });
+    const v1 = await screen.findByRole('button', { name: 'Modèle v1 (.csv)' });
+    const v2 = await screen.findByRole('button', { name: 'Modèle v2 (.csv)' });
+    // Le nombre RÉEL de colonnes (API) est porté par l'infobulle des boutons compacts.
+    await waitFor(() => expect(v1).toHaveAttribute('title', expect.stringContaining('47 colonnes')));
+    await waitFor(() => expect(v2).toHaveAttribute('title', expect.stringContaining('53 colonnes')));
 
     await user.click(v2);
     await user.click(v1);
@@ -102,7 +105,7 @@ describe('Écran 3 — modèles v1/v2 et avertissements (décision PO §5)', () 
     const { container } = renderWithProviders(<ImportPage />);
     const user = userEvent.setup();
 
-    await screen.findByRole('button', { name: 'Modèle v2 — barème Art. 14 (53 colonnes)' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Modèle v2 (.csv)' })).toHaveAttribute('title', expect.stringContaining('53 colonnes')));
     await user.selectOptions(await screen.findByLabelText('Compagnie déclarante'), await screen.findByRole('option', { name: 'CAAT — CAAT' }));
     await user.upload(container.querySelector('input[type="file"]') as HTMLInputElement, new File(['x'], 'lot.csv', { type: 'text/csv' }));
 
@@ -120,7 +123,7 @@ describe('Écran 3 — modèles v1/v2 et avertissements (décision PO §5)', () 
     const { container } = renderWithProviders(<ImportPage />);
     const user = userEvent.setup();
 
-    await screen.findByRole('button', { name: 'Modèle v1 (47 colonnes)' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Modèle v1 (.csv)' })).toHaveAttribute('title', expect.stringContaining('47 colonnes')));
     await user.selectOptions(await screen.findByLabelText('Compagnie déclarante'), await screen.findByRole('option', { name: 'CAAT — CAAT' }));
     await user.upload(container.querySelector('input[type="file"]') as HTMLInputElement, new File(['x'], 'lot.csv', { type: 'text/csv' }));
 

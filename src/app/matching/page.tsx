@@ -1,13 +1,13 @@
 'use client';
 
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { Check, Download, MessageSquareText, Minus, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
 import { Art14Panel } from '@/components/matching/Art14Panel';
 import { apiErrorMessage } from '@/components/referential/fields';
 import { CoChip } from '@/components/ui/CoChip';
 import { isMaskedValue, MaskedValue } from '@/components/ui/Masked';
-import { ScoreBar } from '@/components/ui/ScoreBar';
 import { Tabs } from '@/components/ui/Tabs';
 import { Table, Column } from '@/components/ui/Table';
 import { Tag, TagTone } from '@/components/ui/Tag';
@@ -41,15 +41,22 @@ const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
  * sous-description concordant/discordant — un simple constat booléen (pas de
  * distance/pourcentage inventés, l'algorithme réel n'a jamais été graduel,
  * voir `matching.scoring.ts` back : chaque critère pondéré donne son poids
- * plein ou zéro, jamais une valeur partielle).
+ * plein ou zéro, jamais une valeur partielle). Les tolérances (± 60 min,
+ * 2 km…) sont paramétrables côté back et ne sont pas exposées par l'API :
+ * elles ne figurent donc pas dans les libellés.
  */
 const CRITERIA_WEIGHTS: {
   key: keyof MatchCriteria;
   label: TranslationKey;
   weight: number;
-  sub?: { ok: TranslationKey; ko: TranslationKey };
+  sub: { ok: TranslationKey; ko: TranslationKey };
 }[] = [
-  { key: 'econstatPartage', label: 'matching.criteria.econstatPartage', weight: 0 },
+  {
+    key: 'econstatPartage',
+    label: 'matching.criteria.econstatPartage',
+    weight: 0,
+    sub: { ok: 'matching.criteria.econstatPartage.ok', ko: 'matching.criteria.econstatPartage.ko' },
+  },
   {
     key: 'plaquesCroisees',
     label: 'matching.criteria.plaquesCroisees',
@@ -63,16 +70,16 @@ const CRITERIA_WEIGHTS: {
     sub: { ok: 'matching.criteria.policeCroisee.ok', ko: 'matching.criteria.policeCroisee.ko' },
   },
   {
-    key: 'dateHeure',
-    label: 'matching.criteria.dateHeure',
-    weight: 15,
-    sub: { ok: 'matching.criteria.dateHeure.ok', ko: 'matching.criteria.dateHeure.ko' },
-  },
-  {
     key: 'compagniesCroisees',
     label: 'matching.criteria.compagniesCroisees',
     weight: 10,
     sub: { ok: 'matching.criteria.compagniesCroisees.ok', ko: 'matching.criteria.compagniesCroisees.ko' },
+  },
+  {
+    key: 'dateHeure',
+    label: 'matching.criteria.dateHeure',
+    weight: 15,
+    sub: { ok: 'matching.criteria.dateHeure.ok', ko: 'matching.criteria.dateHeure.ko' },
   },
   {
     key: 'gps',
@@ -96,6 +103,14 @@ const ACTION_LABEL: Record<MatchDecisionAction, TranslationKey> = {
   link: 'matching.history.action.link',
 };
 
+const STATUS_LABEL: Record<MatchStatus, TranslationKey> = {
+  A_CONFIRMER: 'matching.status.A_CONFIRMER',
+  AUTO_CONFIRME: 'matching.status.AUTO_CONFIRME',
+  CONFIRME_MANUEL: 'matching.status.CONFIRME_MANUEL',
+  REJETE: 'matching.status.REJETE',
+  COMPLEMENT: 'matching.status.COMPLEMENT',
+};
+
 /** Libellé d'un canal de déclaration — `masqué` si la valeur est masquée (SEC-03), `—` si absente ou inconnue. */
 function canalLabel(value: string | undefined, t: (key: TranslationKey) => string): string {
   if (isMaskedValue(value)) return t('common.masked');
@@ -116,12 +131,71 @@ function statusTone(status: MatchStatus): TagTone {
   return 'a';
 }
 
+/**
+ * Pilule d'état d'une ligne : statut API traduit. Une ligne encore
+ * `A_CONFIRMER` sans déclaration B (`refB` absent) est affichée « Non
+ * apparié » — même règle que l'onglet `NON_APPARIES` côté back
+ * (`matching.service.ts`, `refB: null`), aucune donnée inventée.
+ */
+function StatusPill({ row, t }: { row: MatchQueueItem; t: (key: TranslationKey) => string }) {
+  if (row.status === 'A_CONFIRMER' && !row.refB) return <Tag tone="ko">{t('matching.status.NON_APPARIE')}</Tag>;
+  const key = STATUS_LABEL[row.status];
+  return <Tag tone={statusTone(row.status)}>{key ? t(key) : row.status}</Tag>;
+}
+
 /** Formatage d'affichage d'une date ISO simple (AAAA-MM-JJ) — `—` si absente/invalide, jamais une valeur fabriquée. */
 function formatDate(value: string | undefined, locale: string): string {
   if (!value) return '—';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString(locale);
+  return d.toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+/** Horodatage de réception d'une ligne de la file (`at`, API) : « 13 oct. 2026 10:56 ». */
+function formatStamp(value: string, locale: string): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return `${d.toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' })} ${d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+/**
+ * Score d'appariement (valeur API, jamais recalculée) : nombre coloré
+ * + « / 100 » + barre, avec deux repères aux seuils RÉELS
+ * (`GET /matching/thresholds`). Couleur : ≥ seuil auto = primaire,
+ * ≥ seuil à confirmer = orange, sinon rouge (neutre tant que les seuils
+ * ne sont pas chargés).
+ */
+function ScoreMeter({ score, thresholds, t, wide = false }: { score: number; thresholds?: MatchThresholds; t: (key: TranslationKey) => string; wide?: boolean }) {
+  const tone = !thresholds ? 'none' : score >= thresholds.autoThreshold ? 'ok' : score >= thresholds.confirmThreshold ? 'warn' : 'ko';
+  const pct = Math.max(0, Math.min(100, score));
+  return (
+    <div className={`mt-score mt-score--${tone}${wide ? ' mt-score--wide' : ''}`}>
+      <div className="mt-score-top">
+        <span className="mt-score-val">{score}</span>
+        <span className="mt-score-max">{t('matching.score.outOf')}</span>
+      </div>
+      <div className="mt-score-track" aria-hidden="true">
+        <span className="mt-score-fill" style={{ width: `${pct}%` }} />
+        {thresholds ? (
+          <>
+            <span className="mt-score-tick" style={{ insetInlineStart: `${thresholds.confirmThreshold}%` }} />
+            <span className="mt-score-tick" style={{ insetInlineStart: `${thresholds.autoThreshold}%` }} />
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** Valeur d'une partie (pastille A bleue / B jaune + lettre + valeur mono). */
+function PartyValue({ party, value, strong }: { party: 'A' | 'B'; value: string; strong?: boolean }) {
+  return (
+    <span className={`mt-pv${strong ? ' is-active' : ''}`}>
+      <span className={`mt-dot mt-dot--${party === 'A' ? 'a' : 'b'}`} aria-hidden="true" />
+      <span className="mt-pv-tag">{party}</span>
+      <span className="mono">{value}</span>
+    </span>
+  );
 }
 
 /**
@@ -149,20 +223,17 @@ function ConfrontationCard({
   activeParty: 'A' | 'B';
 }) {
   return (
-    <div style={{ border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', padding: 'var(--s-3)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--s-2)', gap: 6 }}>
-        <strong style={{ fontSize: 'var(--k-fs-s)' }}>{label}</strong>
-        <Tag tone={concordant ? 'ok' : 'ko'}>{concordant ? okLabel : koLabel}</Tag>
+    <div className={`mt-cf ${concordant ? 'is-ok' : 'is-ko'}`}>
+      <div className="mt-cf-head">
+        <strong>{label}</strong>
+        <span className={`mt-cf-badge ${concordant ? 'ok' : 'ko'}`}>
+          {concordant ? <Check size={12} strokeWidth={2.4} aria-hidden="true" /> : <X size={12} strokeWidth={2.4} aria-hidden="true" />}
+          {concordant ? okLabel : koLabel}
+        </span>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 'var(--k-fs-s)' }}>
-        <span style={{ fontWeight: activeParty === 'A' ? 600 : 400 }}>
-          <span style={{ color: 'var(--ink-3)' }}>A </span>
-          <span className="mono">{valueA}</span>
-        </span>
-        <span style={{ fontWeight: activeParty === 'B' ? 600 : 400 }}>
-          <span style={{ color: 'var(--ink-3)' }}>B </span>
-          <span className="mono">{valueB}</span>
-        </span>
+      <div className="mt-cf-values">
+        <PartyValue party="A" value={valueA} strong={activeParty === 'A'} />
+        <PartyValue party="B" value={valueB} strong={activeParty === 'B'} />
       </div>
     </div>
   );
@@ -180,6 +251,7 @@ function ConfrontationCard({
  */
 function VehicleCard({
   title,
+  party,
   company,
   dossier,
   identite,
@@ -189,7 +261,8 @@ function VehicleCard({
   active,
 }: {
   title: string;
-  company: string;
+  party: 'A' | 'B';
+  company?: string;
   dossier: string;
   identite?: string;
   plate?: string;
@@ -199,33 +272,25 @@ function VehicleCard({
   active?: boolean;
 }) {
   return (
-    <div
-      style={{
-        border: active ? '2px solid var(--k-pri)' : '1px solid var(--rule-strong)',
-        borderRadius: 'var(--k-r-s)',
-        padding: 'var(--s-3)',
-        flex: '1 1 260px',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 'var(--s-3)' }}>
-        <strong style={{ fontSize: 'var(--k-fs-s)' }}>{title}</strong>
-        <CoChip code={company} />
+    <div className={`mt-veh${active ? ' is-active' : ''}`}>
+      <div className="mt-veh-head">
+        <span className={`mt-dot mt-dot--${party === 'A' ? 'a' : 'b'}`} aria-hidden="true" />
+        <strong>{title}</strong>
+        {company ? <CoChip code={company} /> : <span className="mt-muted">—</span>}
       </div>
-      <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 10px', margin: 0, fontSize: 'var(--k-fs-s)' }}>
-        <dt style={{ color: 'var(--ink-3)' }}>{t('matching.vehicle.dossier')}</dt>
-        <dd className="mono" style={{ margin: 0 }}>
-          {dossier}
-        </dd>
-        <dt style={{ color: 'var(--ink-3)' }}>{t('matching.vehicle.identity')}</dt>
-        <dd style={{ margin: 0 }}>
+      <dl className="mt-veh-dl">
+        <dt>{t('matching.vehicle.dossier')}</dt>
+        <dd className="mono">{dossier}</dd>
+        <dt>{t('matching.vehicle.identity')}</dt>
+        <dd>
           <MaskedValue value={identite} />
         </dd>
-        <dt style={{ color: 'var(--ink-3)' }}>{t('matching.vehicle.plate')}</dt>
-        <dd style={{ margin: 0 }}>
+        <dt>{t('matching.vehicle.plate')}</dt>
+        <dd>
           <MaskedValue value={plate} mono />
         </dd>
-        <dt style={{ color: 'var(--ink-3)' }}>{t('matching.vehicle.canal')}</dt>
-        <dd style={{ margin: 0 }}>{canalLabel}</dd>
+        <dt>{t('matching.vehicle.canal')}</dt>
+        <dd>{canalLabel}</dd>
       </dl>
     </div>
   );
@@ -256,6 +321,7 @@ export default function MatchingPage() {
     queryKey: ['matching', 'thresholds'],
     queryFn: () => apiGet<MatchThresholds>('/matching/thresholds'),
   });
+  const thresholds = thresholdsQuery.data;
 
   const queueQuery = useQuery({
     queryKey: ['matching', 'queue', filter, page],
@@ -315,7 +381,8 @@ export default function MatchingPage() {
   // Export CSV (A.3 : "⤓ Excel" de la capture) — généré depuis la file RÉELLEMENT chargée pour
   // le filtre courant (une page de 100, maximum autorisé par l'API — SEC-13), pas un classeur
   // Excel mis en forme (aucun endpoint d'export côté back pour cet écran, même limite
-  // documentée que `/quarter` et `ledger.export.*` — voir HANDOFF.md).
+  // documentée que `/quarter` et `ledger.export.*` — voir HANDOFF.md). Le format est expliqué
+  // dans l'infobulle du bouton (`matching.export.note`).
   const exportMutation = useMutation({
     mutationFn: async () => {
       const res = await apiGet<Paginated<MatchQueueItem>>('/matching/queue', { filter, page: 1, pageSize: 100 });
@@ -386,14 +453,28 @@ export default function MatchingPage() {
 
   const columns: Column<MatchQueueItem>[] = useMemo(
     () => [
-      { key: 'refA', header: t('matching.col.ref'), render: (r) => <span className="mono">{r.refA}</span> },
+      {
+        key: 'refA',
+        header: t('matching.col.ref'),
+        render: (r) => (
+          <span className="mt-ref">
+            <span className="mono mt-ref-id">{r.refA}</span>
+            <span className="mono mt-ref-at">{formatStamp(r.at, locale)}</span>
+          </span>
+        ),
+      },
       {
         key: 'partyA',
         header: t('matching.col.partyA'),
         render: (r) => (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <CoChip code={r.companyA} />
-            <MaskedValue value={r.plateA} mono />
+          <span className="mt-party">
+            <span className="mt-party-co">
+              <span className="mt-dot mt-dot--a" aria-hidden="true" />
+              <CoChip code={r.companyA} />
+            </span>
+            <span className="mt-party-plate">
+              <MaskedValue value={r.plateA} mono />
+            </span>
           </span>
         ),
       },
@@ -402,69 +483,73 @@ export default function MatchingPage() {
         header: t('matching.col.partyB'),
         render: (r) =>
           r.companyB ? (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <CoChip code={r.companyB} />
-              <MaskedValue value={r.plateB} mono />
+            <span className="mt-party">
+              <span className="mt-party-co">
+                <span className="mt-dot mt-dot--b" aria-hidden="true" />
+                <CoChip code={r.companyB} />
+              </span>
+              <span className="mt-party-plate">
+                <MaskedValue value={r.plateB} mono />
+              </span>
             </span>
           ) : (
-            <span style={{ color: 'var(--ink-3)' }}>{t('matching.noPartyB')}</span>
+            <span className="mt-party-pending">{t('matching.partyB.pending')}</span>
           ),
       },
-      { key: 'score', header: t('matching.col.score'), render: (r) => <ScoreBar score={r.score} /> },
-      { key: 'status', header: t('matching.col.status'), render: (r) => <Tag tone={statusTone(r.status)}>{r.status}</Tag> },
+      { key: 'score', header: t('matching.col.score'), render: (r) => <ScoreMeter score={r.score} thresholds={thresholds} t={t} /> },
+      { key: 'status', header: t('matching.col.status'), render: (r) => <StatusPill row={r} t={t} /> },
     ],
-    [t],
+    [t, locale, thresholds],
   );
 
-  return (
-    <>
-      <FolioHeader badge="Module A · §6.3" title={t('matching.title')} subtitle={t('matching.subtitle')} />
+  const decisionDisabled = !canDecide || decideMutation.isPending || reasonMissing;
 
-      <div className="grid g-side">
-        <div className="sheet">
+  const subtitle = thresholds
+    ? `${t('matching.subtitle')} ${t('matching.subtitle.thresholds')} ${t('matching.subtitle.auto')} ≥ ${thresholds.autoThreshold} · ${t('matching.subtitle.confirm')} ≥ ${thresholds.confirmThreshold}.`
+    : t('matching.subtitle');
+
+  return (
+    <div className="mt-screen">
+      <FolioHeader badge="Module A · §6.3" title={t('matching.title')} subtitle={subtitle} />
+
+      <Tabs
+        items={[
+          { key: 'TOUS', label: t('matching.tab.tous'), count: countersQuery.data?.TOUS },
+          { key: 'AUTO', label: t('matching.tab.auto'), count: countersQuery.data?.AUTO },
+          { key: 'A_CONFIRMER', label: t('matching.tab.aConfirmer'), count: countersQuery.data?.A_CONFIRMER },
+          { key: 'NON_APPARIES', label: t('matching.tab.nonApparies'), count: countersQuery.data?.NON_APPARIES },
+        ]}
+        activeKey={filter}
+        onChange={changeFilter}
+      />
+
+      <div className="grid mt-grid">
+        <div className="sheet mt-queue">
           <div className="sheet-head">
             <span>{t('matching.queue.title')}</span>
             <button
               type="button"
+              className="mt-ghost"
               onClick={() => exportMutation.mutate()}
               disabled={exportMutation.isPending}
-              style={{
-                padding: '6px 14px',
-                borderRadius: 'var(--k-r-s)',
-                border: '1px solid var(--k-pri)',
-                background: 'var(--k-pri)',
-                color: '#fff',
-                font: 'inherit',
-                fontWeight: 400,
-                cursor: exportMutation.isPending ? 'not-allowed' : 'pointer',
-              }}
+              aria-label={t('matching.export.aria')}
+              title={t('matching.export.note')}
             >
+              <Download size={14} strokeWidth={2} aria-hidden="true" />
               {t('matching.export.button')}
             </button>
           </div>
-          <div className="sheet-body">
-            <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginTop: 0 }}>{t('matching.export.note')}</p>
-            <Tabs
-              items={[
-                { key: 'TOUS', label: t('matching.tab.tous'), count: countersQuery.data?.TOUS },
-                { key: 'AUTO', label: t('matching.tab.auto'), count: countersQuery.data?.AUTO },
-                { key: 'A_CONFIRMER', label: t('matching.tab.aConfirmer'), count: countersQuery.data?.A_CONFIRMER },
-                { key: 'NON_APPARIES', label: t('matching.tab.nonApparies'), count: countersQuery.data?.NON_APPARIES },
-              ]}
-              activeKey={filter}
-              onChange={changeFilter}
-            />
-
-            <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginTop: 0 }}>{t('matching.shortcuts.hint')}</p>
-
+          <div className="sheet-body flush">
             {queueQuery.isLoading ? (
-              <p>{t('common.loading')}</p>
+              <p className="pad">{t('common.loading')}</p>
             ) : queueQuery.error ? (
-              <div className="note ko" role="alert">
-                <span>{t('common.error')}</span>
-                <button type="button" onClick={() => queueQuery.refetch()}>
-                  {t('common.retry')}
-                </button>
+              <div className="pad">
+                <div className="note ko" role="alert">
+                  <span>{t('common.error')}</span>
+                  <button type="button" onClick={() => queueQuery.refetch()}>
+                    {t('common.retry')}
+                  </button>
+                </div>
               </div>
             ) : (
               <Table
@@ -476,99 +561,73 @@ export default function MatchingPage() {
                 onPageChange={setPage}
                 onRowClick={(r) => setSelectedId(r.id)}
                 getRowKey={(r) => r.id}
+                selectedKey={selectedId ?? undefined}
               />
             )}
           </div>
         </div>
 
-        <aside className="sheet" aria-label={t('matching.panel.title')}>
+        <aside className="sheet mt-panel" aria-label={t('matching.panel.title')}>
           <div className="sheet-head">
-            <span>{t('matching.panel.title')}</span>
+            <span>
+              {t('matching.panel.titleFor')}
+              {selected ? (
+                <>
+                  {' '}
+                  <span className="mono mt-panel-id">{selected.refA}</span>
+                </>
+              ) : null}
+            </span>
           </div>
           <div className="sheet-body">
             {!selected ? (
-              <p style={{ color: 'var(--ink-3)' }}>{t('matching.panel.empty')}</p>
+              <p className="mt-muted">{t('matching.panel.empty')}</p>
             ) : (
               <>
-                <div style={{ marginBottom: 'var(--s-4)' }}>
-                  <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>
-                    {t('matching.panel.confrontation')}
-                  </strong>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-2)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <CoChip code={selected.companyA} />
-                      <MaskedValue value={selected.plateA} mono />
-                      <span className="mono" style={{ color: 'var(--ink-3)' }}>
-                        {selected.refA}
-                      </span>
-                    </div>
-                    {selected.companyB ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <CoChip code={selected.companyB} />
-                        <MaskedValue value={selected.plateB} mono />
-                        <span className="mono" style={{ color: 'var(--ink-3)' }}>
-                          {selected.refB}
-                        </span>
-                      </div>
-                    ) : (
-                      <Tag tone="warn">{t('matching.noPartyB')}</Tag>
-                    )}
-                  </div>
-                  {selected.masked ? (
-                    <p className="note" role="note" style={{ fontSize: 'var(--k-fs-xs)', marginBottom: 0 }}>
-                      {t('matching.masked.note')}
-                    </p>
-                  ) : null}
+                <div className="mt-panel-score">
+                  <ScoreMeter score={selected.score} thresholds={thresholds} t={t} wide />
+                  <StatusPill row={selected} t={t} />
                 </div>
 
-                <div style={{ marginBottom: 'var(--s-4)' }}>
-                  <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>
-                    {t('matching.panel.criteria')}
-                  </strong>
-                  <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {CRITERIA_WEIGHTS.map((c) => {
-                      const ok = selected.criteria[c.key];
-                      if (!c.sub) {
-                        // e-constat partagé — poids 0 (clé exacte, pas un critère composite) : tag OK/— inchangé.
-                        return (
-                          <li key={c.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 'var(--k-fs-s)' }}>
-                            <span>{t(c.label)}</span>
-                            <Tag tone={ok ? 'ok' : 'a'}>{ok ? 'OK' : '—'}</Tag>
-                          </li>
-                        );
-                      }
-                      // Critère pondéré (B.5) — fraction réelle poids/poids (ou 0/poids) : l'algorithme
-                      // réel n'accorde jamais de crédit partiel (voir `MATCH_WEIGHTS`, matching.scoring.ts back).
-                      return (
-                        <li key={c.key} style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 'var(--k-fs-s)' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>{t(c.label)}</span>
-                            <span className="mono" style={{ color: ok ? 'var(--ok)' : 'var(--ko)', fontWeight: 600 }}>
-                              {ok ? c.weight : 0}/{c.weight}
-                            </span>
-                          </div>
-                          <span style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}>{t(ok ? c.sub.ok : c.sub.ko)}</span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-
-                {thresholdsQuery.data ? (
-                  <div style={{ marginBottom: 'var(--s-4)', fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
-                    <strong>{t('matching.panel.thresholds')}</strong> · {t('matching.panel.auto')} ≥ {thresholdsQuery.data.autoThreshold} ·{' '}
-                    {t('matching.panel.confirm')} ≥ {thresholdsQuery.data.confirmThreshold}
-                  </div>
+                {selected.masked ? (
+                  <p className="note mt-note" role="note">
+                    {t('matching.masked.note')}
+                  </p>
                 ) : null}
 
+                <ul className="mt-crit" aria-label={t('matching.panel.criteria')}>
+                  {CRITERIA_WEIGHTS.map((c) => {
+                    const ok = selected.criteria[c.key];
+                    // Sans déclaration B, aucun critère n'a pu être comparé : icône « − » neutre
+                    // (pas de verdict ✗ trompeur), valeur réelle 0/poids conservée.
+                    const pending = !selected.refB;
+                    const state = pending ? 'pending' : ok ? 'ok' : 'ko';
+                    return (
+                      <li key={c.key} className={`mt-crit-item is-${state}`}>
+                        <span className="mt-crit-icon" aria-hidden="true">
+                          {state === 'ok' ? <Check size={15} strokeWidth={2.2} /> : state === 'ko' ? <X size={15} strokeWidth={2.2} /> : <Minus size={15} strokeWidth={2.2} />}
+                        </span>
+                        <span className="mt-crit-body">
+                          <span className="mt-crit-label">{t(c.label)}</span>
+                          <span className="mt-crit-sub">{pending ? t('matching.criteria.pending') : t(ok ? c.sub.ok : c.sub.ko)}</span>
+                        </span>
+                        {/* Critère pondéré (B.5) — fraction réelle poids/poids (ou 0/poids) : l'algorithme
+                            réel n'accorde jamais de crédit partiel (voir `MATCH_WEIGHTS`, matching.scoring.ts back).
+                            e-constat partagé : poids 0, c'est la clé exacte (score 100 d'office). */}
+                        <span className="mt-crit-val">{c.weight === 0 ? t('matching.criteria.exactKey') : `${ok ? c.weight : 0}/${c.weight}`}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+
                 {selected.status === 'REJETE' && selected.rejectReason ? (
-                  <p className="note ko" style={{ fontSize: 'var(--k-fs-xs)' }}>
+                  <p className="note ko mt-note">
                     {t('matching.rejectReason')}: {selected.rejectReason}
                   </p>
                 ) : null}
 
                 {selected.confirmedBy ? (
-                  <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <p className="mt-decided">
                     <span>
                       {t('matching.decidedBy')}: {selected.confirmedBy}
                     </span>
@@ -577,13 +636,14 @@ export default function MatchingPage() {
                   </p>
                 ) : null}
 
-                {!canDecide ? <p className="note warn">{t('common.forbidden')}</p> : null}
+                {!canDecide ? <p className="note warn mt-note">{t('common.forbidden')}</p> : null}
 
-                <label htmlFor="reject-reason" style={{ display: 'block', fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', marginBottom: 4 }}>
+                <label htmlFor="reject-reason" className="mt-reason-label">
                   {reasonRequired ? t('matching.action.reasonRequired') : t('matching.action.reason')}
                 </label>
                 <input
                   id="reject-reason"
+                  className="mt-reason"
                   type="text"
                   value={rejectReason}
                   maxLength={500}
@@ -591,42 +651,21 @@ export default function MatchingPage() {
                   aria-required={reasonRequired}
                   onChange={(e) => setRejectReason(e.target.value)}
                   disabled={!canDecide}
-                  style={{ width: '100%', marginBottom: reasonMissing && canDecide ? 4 : 'var(--s-3)', padding: '6px 10px', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', font: 'inherit', background: 'var(--paper)', color: 'var(--ink)' }}
                 />
-                {reasonMissing && canDecide ? (
-                  <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginTop: 0, marginBottom: 'var(--s-3)' }}>{t('matching.reason.requiredHint')}</p>
-                ) : null}
+                {reasonMissing && canDecide ? <p className="mt-reason-hint">{t('matching.reason.requiredHint')}</p> : null}
 
-                <div style={{ display: 'flex', gap: 'var(--s-2)', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    className="tag ok"
-                    style={{ cursor: canDecide && !reasonMissing ? 'pointer' : 'not-allowed', border: 'none' }}
-                    disabled={!canDecide || decideMutation.isPending || reasonMissing}
-                    onClick={() => decide('confirm')}
-                    aria-label={t('matching.action.confirm')}
-                  >
-                    {t('matching.action.confirm')} (C)
+                <div className="mt-actions">
+                  <button type="button" className="btn-primary mt-btn" disabled={decisionDisabled} onClick={() => decide('confirm')}>
+                    <Check size={16} strokeWidth={2.2} aria-hidden="true" />
+                    {t('matching.action.confirmMatch')}
                   </button>
-                  <button
-                    type="button"
-                    className="tag ko"
-                    style={{ cursor: canDecide && !reasonMissing ? 'pointer' : 'not-allowed', border: 'none' }}
-                    disabled={!canDecide || decideMutation.isPending || reasonMissing}
-                    onClick={() => decide('reject')}
-                    aria-label={t('matching.action.reject')}
-                  >
-                    {t('matching.action.reject')} (R)
+                  <button type="button" className="mt-btn mt-btn-danger" disabled={decisionDisabled} onClick={() => decide('reject')}>
+                    <X size={16} strokeWidth={2.2} aria-hidden="true" />
+                    {t('matching.action.reject')}
                   </button>
-                  <button
-                    type="button"
-                    className="tag warn"
-                    style={{ cursor: canDecide && !reasonMissing ? 'pointer' : 'not-allowed', border: 'none' }}
-                    disabled={!canDecide || decideMutation.isPending || reasonMissing}
-                    onClick={() => decide('complement')}
-                    aria-label={t('matching.action.complement')}
-                  >
-                    {t('matching.action.complement')}
+                  <button type="button" className="mt-btn mt-btn-soft" disabled={decisionDisabled} onClick={() => decide('complement')}>
+                    <MessageSquareText size={16} strokeWidth={2} aria-hidden="true" />
+                    {t('matching.action.requestComplement')}
                   </button>
                 </div>
 
@@ -637,23 +676,23 @@ export default function MatchingPage() {
         </aside>
       </div>
 
-      <div className="sheet" style={{ marginTop: 'var(--s-5)' }}>
+      <section className="sheet mt-conf" aria-label={t('matching.confrontation.title')}>
         <div className="sheet-head">
           <span>
             {t('matching.confrontation.title')}
             {selected?.refB ? (
               <>
                 {' — '}
-                <span className="mono">{selected.refA}</span> / <span className="mono">{selected.refB}</span>
+                <span className="mono mt-conf-id">{selected.refA}</span> / <span className="mono mt-conf-id">{selected.refB}</span>
               </>
             ) : null}
           </span>
           {selected?.refB ? (
-            <div className="tabs" role="tablist" aria-label={t('matching.confrontation.title')}>
-              <button type="button" role="tab" aria-selected={activeParty === 'A'} className="tab" onClick={() => setActiveParty('A')}>
+            <div className="mt-party-toggle" role="tablist" aria-label={t('matching.confrontation.title')}>
+              <button type="button" role="tab" aria-selected={activeParty === 'A'} onClick={() => setActiveParty('A')}>
                 {t('matching.col.partyA')}
               </button>
-              <button type="button" role="tab" aria-selected={activeParty === 'B'} className="tab" onClick={() => setActiveParty('B')}>
+              <button type="button" role="tab" aria-selected={activeParty === 'B'} onClick={() => setActiveParty('B')}>
                 {t('matching.col.partyB')}
               </button>
             </div>
@@ -661,22 +700,37 @@ export default function MatchingPage() {
         </div>
         <div className="sheet-body">
           {!selected || !selected.refB ? (
-            <p style={{ color: 'var(--ink-3)' }}>{t('matching.confrontation.empty')}</p>
+            <p className="mt-muted">{t('matching.confrontation.empty')}</p>
           ) : (
             <>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                  gap: 'var(--s-3)',
-                  marginBottom: 'var(--s-5)',
-                }}
-              >
+              <div className="mt-conf-key">
+                <h3>{t('matching.confrontation.key')}</h3>
+                <div className="mt-conf-score">
+                  <ScoreMeter score={selected.score} thresholds={thresholds} t={t} wide />
+                  <StatusPill row={selected} t={t} />
+                </div>
+              </div>
+              <div className="mt-cf-grid">
                 <ConfrontationCard
                   label={t('matching.confrontation.field.econstat')}
                   valueA={selected.refA}
                   valueB={selected.refB}
                   concordant={selected.refA === selected.refB}
+                  okLabel={t('matching.confrontation.badge.concordant')}
+                  koLabel={t('matching.confrontation.badge.discordant')}
+                  activeParty={activeParty}
+                />
+                {/* Immatriculations/polices croisées : le badge réutilise le booléen RÉEL déjà
+                    calculé par l'algorithme (`criteria.*`, matching.scoring.ts back) plutôt qu'une
+                    égalité naïve des valeurs affichées — `plateA`/`plateB` et `policeA`/`policeB`
+                    sont chacun la valeur "soi-même" de SA déclaration (même convention), pas une
+                    paire directement comparable ; le vrai croisement compare les deux ENSEMBLES
+                    {plaque/police propre, plaque/police adverse déclarée} des deux côtés. */}
+                <ConfrontationCard
+                  label={t('matching.confrontation.field.plaques')}
+                  valueA={shown(selected.plateA, t('matching.confrontation.unknown'), t)}
+                  valueB={shown(selected.plateB, t('matching.confrontation.unknown'), t)}
+                  concordant={selected.criteria.plaquesCroisees}
                   okLabel={t('matching.confrontation.badge.concordant')}
                   koLabel={t('matching.confrontation.badge.discordant')}
                   activeParty={activeParty}
@@ -699,21 +753,6 @@ export default function MatchingPage() {
                   koLabel={t('matching.confrontation.badge.discordant')}
                   activeParty={activeParty}
                 />
-                {/* Immatriculations/polices croisées : le badge réutilise le booléen RÉEL déjà
-                    calculé par l'algorithme (`criteria.*`, matching.scoring.ts back) plutôt qu'une
-                    égalité naïve des valeurs affichées — `plateA`/`plateB` et `policeA`/`policeB`
-                    sont chacun la valeur "soi-même" de SA déclaration (même convention), pas une
-                    paire directement comparable ; le vrai croisement compare les deux ENSEMBLES
-                    {plaque/police propre, plaque/police adverse déclarée} des deux côtés. */}
-                <ConfrontationCard
-                  label={t('matching.confrontation.field.plaques')}
-                  valueA={shown(selected.plateA, t('matching.confrontation.unknown'), t)}
-                  valueB={shown(selected.plateB, t('matching.confrontation.unknown'), t)}
-                  concordant={selected.criteria.plaquesCroisees}
-                  okLabel={t('matching.confrontation.badge.concordant')}
-                  koLabel={t('matching.confrontation.badge.discordant')}
-                  activeParty={activeParty}
-                />
                 <ConfrontationCard
                   label={t('matching.confrontation.field.police')}
                   valueA={shown(selected.policeA, t('matching.confrontation.unknown'), t)}
@@ -725,35 +764,51 @@ export default function MatchingPage() {
                 />
               </div>
 
-              <div style={{ display: 'flex', gap: 'var(--s-3)', flexWrap: 'wrap' }}>
-                <VehicleCard
-                  title={t('matching.vehicle.titleA')}
-                  company={selected.companyA}
-                  dossier={selected.refA}
-                  identite={selected.assureAIdentite}
-                  plate={selected.plateA}
-                  canalLabel={canalLabel(selected.canalDeclarationA, t)}
-                  t={t}
-                  active={activeParty === 'A'}
-                />
-                <VehicleCard
-                  title={t('matching.vehicle.titleB')}
-                  company={selected.companyB ?? '—'}
-                  dossier={selected.refB}
-                  identite={selected.assureBIdentite}
-                  plate={selected.plateB}
-                  canalLabel={canalLabel(selected.canalDeclarationB, t)}
-                  t={t}
-                  active={activeParty === 'B'}
-                />
+              <div className="mt-actions mt-conf-actions">
+                <button type="button" className="btn-primary mt-btn" disabled={decisionDisabled} onClick={() => decide('confirm')}>
+                  <Check size={16} strokeWidth={2.2} aria-hidden="true" />
+                  {t('matching.action.confirmMatch')}
+                </button>
+                <button type="button" className="mt-btn mt-btn-danger" disabled={decisionDisabled} onClick={() => decide('reject')}>
+                  <X size={16} strokeWidth={2.2} aria-hidden="true" />
+                  {t('matching.action.reject')}
+                </button>
               </div>
             </>
           )}
+          <p className="mt-shortcuts">{t('matching.shortcuts.hint')}</p>
+
+          {selected?.refB ? (
+            <div className="mt-veh-grid">
+              <VehicleCard
+                title={t('matching.vehicle.titleA')}
+                party="A"
+                company={selected.companyA}
+                dossier={selected.refA}
+                identite={selected.assureAIdentite}
+                plate={selected.plateA}
+                canalLabel={canalLabel(selected.canalDeclarationA, t)}
+                t={t}
+                active={activeParty === 'A'}
+              />
+              <VehicleCard
+                title={t('matching.vehicle.titleB')}
+                party="B"
+                company={selected.companyB}
+                dossier={selected.refB}
+                identite={selected.assureBIdentite}
+                plate={selected.plateB}
+                canalLabel={canalLabel(selected.canalDeclarationB, t)}
+                t={t}
+                active={activeParty === 'B'}
+              />
+            </div>
+          ) : null}
         </div>
-      </div>
+      </section>
 
       {selected ? <Art14Panel key={selected.id} item={selected} /> : null}
-    </>
+    </div>
   );
 }
 
@@ -769,10 +824,10 @@ function DecisionHistory({
 }) {
   const entries = query.data ?? [];
   return (
-    <section aria-label={t('matching.history.title')} style={{ marginTop: 'var(--s-4)' }}>
-      <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('matching.history.title')}</strong>
+    <section aria-label={t('matching.history.title')} className="mt-history">
+      <strong className="mt-history-title">{t('matching.history.title')}</strong>
       {query.isLoading ? (
-        <p style={{ fontSize: 'var(--k-fs-xs)' }}>{t('common.loading')}</p>
+        <p className="mt-history-empty">{t('common.loading')}</p>
       ) : query.error ? (
         <div className="note ko" role="alert">
           <span>{t('common.error')}</span>
@@ -781,13 +836,13 @@ function DecisionHistory({
           </button>
         </div>
       ) : entries.length === 0 ? (
-        <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', margin: 0 }}>{t('matching.history.empty')}</p>
+        <p className="mt-history-empty">{t('matching.history.empty')}</p>
       ) : (
-        <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <ol className="mt-history-list">
           {entries.map((d) => (
-            <li key={d.id} style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', borderInlineStart: '2px solid var(--rule-strong)', paddingInlineStart: 8 }}>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                <strong style={{ color: 'var(--ink)' }}>{ACTION_LABEL[d.action] ? t(ACTION_LABEL[d.action]) : d.action}</strong>
+            <li key={d.id}>
+              <div className="mt-history-row">
+                <strong>{ACTION_LABEL[d.action] ? t(ACTION_LABEL[d.action]) : d.action}</strong>
                 <span className="mono">
                   {d.previousStatus} → {d.newStatus}
                 </span>

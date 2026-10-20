@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it, vi, afterEach } from 'vitest';
+import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import { mockFetchRequests, mockFetchRouter, renderWithProviders } from '@/test/render';
 import { MeResponse, PipelineStepView, PriceGrid, QuarterlyPipeline, SettlementQuarter, SettlementQuarterMatrix, SettlementQuarterSummary } from '@/lib/types';
 import QuarterPage from './page';
@@ -101,16 +101,39 @@ function mockQuarterApiEmptyFlows() {
  * bordereau de référence.
  */
 describe('Écran Compensation trimestrielle (/quarter)', () => {
+  /**
+   * Le trimestre affiché par défaut est le lot EN COURS DE RÈGLEMENT (le
+   * trimestre qui précède le trimestre courant, même règle que le Cockpit) :
+   * l'horloge est figée au 20 janvier 2027 pour que ce lot soit 2026-Q4,
+   * celui des jeux de données ci-dessus. Seul `Date` est simulé (les
+   * minuteries de `waitFor` restent réelles).
+   */
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2027-01-20T10:00:00Z') });
+  });
+
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it('sélectionne par défaut le lot en cours de règlement (trimestre précédent), sélecteur conservé', async () => {
+    mockQuarterApi();
+    renderWithProviders(<QuarterPage />);
+
+    await waitFor(() => expect(screen.getByRole('tab', { name: '2026 Q4' })).toHaveAttribute('aria-selected', 'true'));
+    expect(screen.getByRole('tab', { name: '2027 Q1' })).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByRole('tab', { name: '2026 Q2' })).toBeInTheDocument();
   });
 
   it('affiche les KPI de synthèse (brut, net bilatéral, net multilatéral, réduction, recours)', async () => {
     mockQuarterApi();
     renderWithProviders(<QuarterPage />);
 
-    await waitFor(() => expect(screen.getAllByText(/400\s?000/).length).toBeGreaterThan(0));
-    expect(screen.getByText('37.5%')).toBeInTheDocument();
+    // Montants compacts de la maquette (« 400 k DA »), valeur exacte en infobulle.
+    await waitFor(() => expect(screen.getAllByText(/^400\s?k$/).length).toBeGreaterThan(0));
+    expect(screen.getByTitle(/400\s?000 DA/)).toBeInTheDocument();
+    expect(screen.getByText('37,5 %')).toBeInTheDocument();
     expect(screen.getByText('3')).toBeInTheDocument();
     expect(screen.getByText('1')).toBeInTheDocument();
   });
@@ -129,8 +152,11 @@ describe('Écran Compensation trimestrielle (/quarter)', () => {
     renderWithProviders(<QuarterPage />);
 
     await waitFor(() => expect(screen.getByRole('table', { name: /positions brutes/i })).toBeInTheDocument());
-    expect(screen.getAllByText(/300\s?000/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/50\s?000/).length).toBeGreaterThan(0);
+    const matrix = within(screen.getByRole('table', { name: /positions brutes/i }));
+    // Cellule CAAT→SAA (et son total de ligne) : 300 k ; cellule SAA→CAAT : 50 k ; montant exact en infobulle.
+    expect(matrix.getAllByText('300 k').length).toBeGreaterThan(0);
+    expect(matrix.getAllByText('50 k').length).toBeGreaterThan(0);
+    expect(matrix.getAllByTitle(/^300\s?000 DA$/).length).toBeGreaterThan(0);
   });
 
   it('affiche la référence du bordereau trimestriel', async () => {
@@ -146,23 +172,23 @@ describe('Écran Compensation trimestrielle (/quarter)', () => {
    * (`/settlement/quarter/:q/pipeline`, Art. 17-18), jamais une convocation
    * ou un ordre du jour fabriqués (aucune entité de planification côté API).
    */
-  it('affiche la carte « Trimestre en compensation » : statut, étape en cours et échéance de la réunion (données réelles)', async () => {
+  it('affiche la carte « Trimestre … — en compensation » : statut, étape en cours et échéance de la réunion (données réelles)', async () => {
     mockQuarterApi();
     renderWithProviders(<QuarterPage />);
 
-    await waitFor(() => expect(screen.getByText('Trimestre en compensation')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Trimestre 2026 Q4 — en compensation')).toBeInTheDocument());
     expect(screen.getByText('En compensation')).toBeInTheDocument();
     expect(screen.getAllByText('Saisie et validation des recours sur la plateforme').length).toBeGreaterThan(0);
     expect(screen.getAllByText("Synthèse globale trimestrielle et réunion au siège de l'UAR").length).toBeGreaterThan(0);
-    // Gap documenté : aucune convocation ni ordre du jour fabriqués.
-    expect(screen.getByText(/Aucune entité de planification de réunion/)).toBeInTheDocument();
+    // Gap documenté (aucune entité de planification côté API) : ni convocation ni ordre du jour fabriqués.
+    expect(screen.queryByText(/Convocation|Ordre du jour/)).not.toBeInTheDocument();
   });
 
   it('affiche la légende de la carte thermique des positions brutes', async () => {
     mockQuarterApi();
     renderWithProviders(<QuarterPage />);
 
-    await waitFor(() => expect(screen.getByText('Échelle (intensité relative au maximum de la matrice)')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/0 → 300\s?000 DA \(échelle racine\)/)).toBeInTheDocument());
   });
 
   it('propose un export Excel (CSV) des positions nettes multilatérales', async () => {

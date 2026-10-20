@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
-import { LabeledSelect } from '@/components/referential/fields';
+import { Download, FileText, ShieldCheck, Upload } from 'lucide-react';
 import { Table, Column } from '@/components/ui/Table';
 import { Tag, TagTone } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
@@ -150,29 +150,33 @@ export default function ImportPage() {
     },
   ];
 
+
+  // Boutons d'en-tête : v2 (modèle complet, barème Art. 14) en primaire, v1 en bouton fantôme —
+  // emplacement des « Modèle Excel / Modèle CSV » de la capture ; les deux sont des CSV d'en-têtes.
+  const templates = [
+    { version: 'v2', label: t('import.template.v2.short'), data: columnsV2Query.data, primary: true },
+    { version: 'v1', label: t('import.template.v1.short'), data: columnsQuery.data, primary: false },
+  ] as const;
+
   return (
-    <>
+    <div className="im-screen">
       <FolioHeader
         badge="Module A · §6.3 · Art. 14"
         title={t('import.title')}
         subtitle={t('import.subtitle')}
         actions={
           <>
-            {(
-              [
-                { version: 'v1', label: t('import.template.v1'), data: columnsQuery.data },
-                { version: 'v2', label: t('import.template.v2'), data: columnsV2Query.data },
-              ] as const
-            ).map(({ version, label, data }) => (
+            {templates.map(({ version, label, data, primary }) => (
               <button
                 key={version}
                 type="button"
+                className={primary ? 'btn-primary im-btn' : 'im-ghost'}
                 onClick={() => onDownloadTemplate(version)}
                 disabled={!data}
-                title={t('import.template.note')}
-                style={{ padding: '8px 16px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--rule-strong)', background: 'var(--paper)', color: 'var(--ink)', font: 'inherit', cursor: data ? 'pointer' : 'not-allowed' }}
+                title={`${data?.length ?? '…'} ${t('import.template.columns')} — ${t('import.template.note')}`}
               >
-                {label} ({data?.length ?? '…'} {t('import.template.columns')})
+                <Download size={15} strokeWidth={2} aria-hidden="true" />
+                {label}
               </button>
             ))}
           </>
@@ -180,17 +184,17 @@ export default function ImportPage() {
       />
 
       {!canImport ? (
-        <div className="note warn" role="alert" style={{ marginBottom: 'var(--s-5)' }}>
+        <div className="note warn im-forbidden" role="alert">
           <strong>{t('import.forbidden.title')}</strong>
           <span>{t('import.forbidden.body')}</span>
         </div>
       ) : null}
 
       {canImport ? (
-        <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
+        <div className="sheet im-upload">
           <div className="sheet-body">
             {/* SEC-02 : compagnie déclarante — choisie par un rôle place, imposée par le jeton pour un rôle compagnie. */}
-            <div style={{ marginBottom: 'var(--s-4)' }}>
+            <div className="im-company">
               {placeImporter ? (
                 companiesQuery.error ? (
                   <div className="note ko" role="alert">
@@ -200,23 +204,26 @@ export default function ImportPage() {
                     </button>
                   </div>
                 ) : (
-                  <>
-                    <LabeledSelect
-                      label={t('import.company.label')}
+                  <label className="im-field">
+                    <span className="im-field-label">{t('import.company.label')}</span>
+                    <select
+                      className="im-select"
                       value={declaringCompany}
                       required
                       disabled={companiesQuery.isLoading || importMutation.isPending}
-                      onChange={setDeclaringCompany}
-                      options={[
-                        { value: '', label: companiesQuery.isLoading ? t('common.loading') : t('import.company.placeholder') },
-                        ...companyOptions.map((c) => ({ value: c.code, label: `${c.code} — ${c.name}` })),
-                      ]}
-                    />
-                    <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', margin: '4px 0 0' }}>{t('import.company.placeHint')}</p>
-                  </>
+                      onChange={(e) => setDeclaringCompany(e.target.value)}
+                    >
+                      <option value="">{companiesQuery.isLoading ? t('common.loading') : t('import.company.placeholder')}</option>
+                      {companyOptions.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {`${c.code} — ${c.name}`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 )
               ) : companyRole ? (
-                <p style={{ fontSize: 'var(--k-fs-s)', margin: 0 }}>
+                <p className="im-own">
                   {t('import.company.own')} <strong className="mono">{me?.company ?? '—'}</strong>
                 </p>
               ) : null}
@@ -224,92 +231,91 @@ export default function ImportPage() {
 
             {/* Bandeau d'information (capture) — liste RÉELLE des compagnies actives
                 (`GET /referential/companies`), jamais une liste figée en dur. Rôle place
-                uniquement (même périmètre que le sélecteur ci-dessus, SEC-07/21). */}
+                uniquement (même périmètre que le sélecteur ci-dessus, SEC-07/21). Volontairement
+                SANS « fichier lu localement / aucun envoi réseau » : le fichier est transmis à
+                l'API (`POST /claims/import`) — la règle d'attribution SEC-02 la remplace. */}
             {placeImporter ? (
-              <p className="note" role="note" style={{ fontSize: 'var(--k-fs-xs)', marginBottom: 'var(--s-4)' }}>
-                {t('import.notice.companies')}{' '}
-                {companiesQuery.isLoading ? t('import.notice.companiesLoading') : activeCompanies.map((c) => c.code).join(' · ') || '—'}
+              <p className="im-notice" role="note">
+                <ShieldCheck size={15} strokeWidth={2} aria-hidden="true" />
+                <span>
+                  {t('import.company.placeHint')} {t('import.notice.companies')}{' '}
+                  {companiesQuery.isLoading ? t('import.notice.companiesLoading') : activeCompanies.map((c) => c.code).join(' · ') || '—'}
+                </span>
               </p>
             ) : null}
 
             {/* Zone de dépôt drag-drop (A.4, écran 3) — inactive tant que la compagnie déclarante n'est pas choisie. */}
             <div
-                  role="button"
-                  tabIndex={ready ? 0 : -1}
-                  aria-disabled={!ready}
-                  aria-label={t('import.dropzone.title')}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDragOver(true);
-                  }}
-                  onDragLeave={() => setDragOver(false)}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setDragOver(false);
-                    handleFiles(e.dataTransfer.files);
-                  }}
-                  onClick={() => ready && fileInputRef.current?.click()}
-                  onKeyDown={(e) => {
-                    if (ready && (e.key === 'Enter' || e.key === ' ')) fileInputRef.current?.click();
-                  }}
-                  style={{
-                    border: `2px dashed ${dragOver ? 'var(--k-pri)' : 'var(--rule-strong)'}`,
-                    borderRadius: 'var(--k-r-l)',
-                    padding: 'var(--s-8)',
-                    textAlign: 'center',
-                    cursor: ready ? 'pointer' : 'not-allowed',
-                    opacity: ready ? 1 : 0.6,
-                    background: dragOver ? 'var(--k-mint)' : 'var(--sheet)',
-                  }}
-                >
-                  <strong style={{ display: 'block', marginBottom: 'var(--s-2)' }}>{t('import.dropzone.title')}</strong>
-                  <p style={{ color: 'var(--ink-2)', marginBottom: 'var(--s-3)' }}>{ready ? t('import.dropzone.subtitle') : t('import.company.required')}</p>
-                  <button
-                    type="button"
-                    disabled={!ready || importMutation.isPending}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      fileInputRef.current?.click();
-                    }}
-                    style={{ padding: '8px 16px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--k-pri)', background: 'var(--k-pri)', color: '#fff', font: 'inherit', cursor: ready ? 'pointer' : 'not-allowed' }}
-                  >
-                    {t('import.dropzone.button')}
-                  </button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".xlsx,.xls,.csv"
-                    aria-hidden="true"
-                    style={{ display: 'none' }}
-                    onChange={(e) => handleFiles(e.target.files)}
-                  />
-                </div>
+              role="button"
+              tabIndex={ready ? 0 : -1}
+              aria-disabled={!ready}
+              aria-label={t('import.dropzone.title')}
+              className={`im-drop${dragOver ? ' is-over' : ''}${ready ? '' : ' is-disabled'}`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                handleFiles(e.dataTransfer.files);
+              }}
+              onClick={() => ready && fileInputRef.current?.click()}
+              onKeyDown={(e) => {
+                if (ready && (e.key === 'Enter' || e.key === ' ')) fileInputRef.current?.click();
+              }}
+            >
+              <Upload className="im-drop-icon" size={24} strokeWidth={1.8} aria-hidden="true" />
+              <strong className="im-drop-title">{t('import.dropzone.title')}</strong>
+              <p className="im-drop-sub">{ready ? t('import.dropzone.subtitle') : t('import.company.required')}</p>
+              <button
+                type="button"
+                className="btn-primary im-btn"
+                disabled={!ready || importMutation.isPending}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
+              >
+                <FileText size={15} strokeWidth={2} aria-hidden="true" />
+                {t('import.dropzone.button')}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                aria-hidden="true"
+                style={{ display: 'none' }}
+                onChange={(e) => handleFiles(e.target.files)}
+              />
+            </div>
 
-                {importMutation.isPending ? (
-                  <p role="status" style={{ marginTop: 'var(--s-3)' }}>
-                    {t('import.uploading')}
-                  </p>
-                ) : importError ? (
-                  <p className="note ko" role="alert" style={{ marginTop: 'var(--s-3)' }}>
-                    {importError}
-                  </p>
-                ) : null}
+            {importMutation.isPending ? (
+              <p role="status" className="im-status">
+                {t('import.uploading')}
+              </p>
+            ) : importError ? (
+              <p className="note ko im-status" role="alert">
+                {importError}
+              </p>
+            ) : null}
           </div>
         </div>
       ) : null}
 
       {/* "Aperçu des lignes importées" (capture) — verdict d'éligibilité IDA réel par ligne
           (API, ligne à ligne), pas de donnée recalculée côté front (C.1). */}
-      <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
+      <div className="sheet im-preview">
         <div className="sheet-head">
           <span>{t('import.preview.title')}</span>
         </div>
         <div className="sheet-body">
           {!latestReport ? (
-            <p style={{ color: 'var(--ink-3)' }}>{t('import.preview.empty')}</p>
+            <p className="im-empty">{t('import.preview.empty')}</p>
           ) : (
             <>
-              <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--s-3)', marginBottom: 'var(--s-4)' }}>
+              <dl className="im-report">
                 <Field label={t('import.report.file')}>
                   <span className="mono">{latestReport.fileName}</span>
                 </Field>
@@ -329,7 +335,7 @@ export default function ImportPage() {
                 </Field>
               </dl>
               {latestReport.rejectedCount > 0 ? (
-                <p className="note warn" role="status" style={{ fontSize: 'var(--k-fs-xs)' }}>
+                <p className="note warn im-note" role="status">
                   {t('import.report.rejectedNote')}
                 </p>
               ) : null}
@@ -345,11 +351,11 @@ export default function ImportPage() {
               />
 
               {warnings.length > 0 ? (
-                <section aria-label={t('import.warnings.title')} style={{ marginTop: 'var(--s-5)' }}>
-                  <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>
+                <section aria-label={t('import.warnings.title')} className="im-warnings">
+                  <strong className="im-warnings-title">
                     {t('import.warnings.title')} ({warnings.length})
                   </strong>
-                  <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginTop: 0 }}>{t('import.warnings.note')}</p>
+                  <p className="im-warnings-note">{t('import.warnings.note')}</p>
                   <Table
                     columns={warningColumns}
                     rows={warnings.slice((warningsPage - 1) * PAGE_SIZE, warningsPage * PAGE_SIZE)}
@@ -368,17 +374,17 @@ export default function ImportPage() {
 
       {/* "Historique des lots importés" (capture) — journal de la session courante uniquement
           (pas de persistance back pour cet écran), un lot par import réussi. */}
-      <div className="sheet">
+      <div className="sheet im-history">
         <div className="sheet-head">
           <span>{t('import.history.title')}</span>
         </div>
         <div className="sheet-body">
           {journal.length === 0 ? (
-            <p style={{ color: 'var(--ink-3)' }}>{t('import.history.empty')}</p>
+            <p className="im-empty">{t('import.history.empty')}</p>
           ) : (
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <ul className="im-history-list">
               {journal.map((r, i) => (
-                <li key={`${r.fileName}-${r.importedAt}-${i}`} style={{ fontSize: 'var(--k-fs-s)', color: 'var(--ink-2)', display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                <li key={`${r.fileName}-${r.importedAt}-${i}`}>
                   <span className="mono">
                     {r.fileName} · {r.company}
                   </span>
@@ -389,15 +395,15 @@ export default function ImportPage() {
           )}
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <dt style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>{label}</dt>
-      <dd style={{ margin: 0 }}>{children}</dd>
+      <dt className="im-report-label">{label}</dt>
+      <dd className="im-report-value">{children}</dd>
     </div>
   );
 }

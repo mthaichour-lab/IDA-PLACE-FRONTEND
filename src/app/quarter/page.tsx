@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { Download, Table2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
 import { FlowDiagram, FlowDiagramMode } from '@/components/settlement/FlowDiagram';
@@ -8,58 +9,95 @@ import { PipelineSection } from '@/components/settlement/PipelineSection';
 import { CoChip } from '@/components/ui/CoChip';
 import { Kpi, KpiRow } from '@/components/ui/Kpi';
 import { Tabs } from '@/components/ui/Tabs';
-import { Tag } from '@/components/ui/Tag';
 import { useI18n } from '@/i18n/provider';
 import { apiGet, apiPath } from '@/lib/api-client';
 import { buildCsv, downloadCsv } from '@/lib/csv';
 import { PriceGrid, QuarterlyPipeline, SettlementQuarter, SettlementQuarterMatrix, SettlementQuarterSummary } from '@/lib/types';
 
+/** Montant entier « 1 234 567 DA » (unité de la maquette ; le `Kpi` affiche « DA » en petit). */
 function formatDzd(amount: number, locale: string): string {
-  try {
-    return new Intl.NumberFormat(locale, { style: 'currency', currency: 'DZD', maximumFractionDigits: 0 }).format(amount);
-  } catch {
-    return `${amount.toLocaleString()} DA`;
-  }
+  return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(amount)} DA`;
 }
 
-function formatIsoDate(iso: string, locale: string): string {
-  return new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString(locale, { timeZone: 'UTC' });
+/** Montant signé « +1 072 850 DA » / « −269 325 DA » (colonne Position). */
+function formatSignedDzd(amount: number, locale: string): string {
+  if (amount === 0) return formatDzd(0, locale);
+  return `${amount > 0 ? '+' : '−'}${formatDzd(Math.abs(amount), locale)}`;
 }
 
 /**
- * Dégradé charte `--k-mint → --k-pri-2 → --k-pri` (carte thermique, écran 6)
- * — deux segments `color-mix` plutôt qu'une seule teinte, pour un rendu
- * plus proche de la capture de référence sans sortir des tokens fixes.
+ * Montant compact de la maquette (« 5,65 M », « 757 k », « 0 ») — simple
+ * mise en forme d'un montant réel de l'API ; la valeur exacte reste
+ * disponible en infobulle (`title`) là où elle est utilisée.
  */
-function heatColor(intensity: number): string {
-  const clamped = Math.max(0, Math.min(1, intensity));
-  if (clamped <= 0) return 'var(--paper)';
-  if (clamped <= 0.5) return `color-mix(in srgb, var(--k-pri-2) ${Math.round((clamped / 0.5) * 100)}%, var(--k-mint))`;
-  return `color-mix(in srgb, var(--k-pri) ${Math.round(((clamped - 0.5) / 0.5) * 100)}%, var(--k-pri-2))`;
+function formatCompact(amount: number, locale: string): string {
+  const abs = Math.abs(amount);
+  const sign = amount < 0 ? '−' : '';
+  if (abs < 1000) return `${sign}${new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(abs)}`;
+  if (Math.round(abs / 1000) < 1000) return `${sign}${new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(Math.round(abs / 1000))} k`;
+  return `${sign}${new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(abs / 1_000_000)} M`;
 }
 
-/** Trimestre courant (simple formatage de date, pas une règle métier) + les 3 précédents, pour le sélecteur. */
-function quarterOptions(): string[] {
-  const now = new Date();
-  const currentQ = Math.floor(now.getMonth() / 3) + 1;
-  const options: string[] = [];
-  let y = now.getFullYear();
-  let q = currentQ;
-  for (let i = 0; i < 5; i++) {
-    options.push(`${y}-Q${q}`);
-    q -= 1;
-    if (q === 0) {
-      q = 4;
-      y -= 1;
-    }
-  }
-  return options;
+function formatIsoDate(iso: string, locale: string): string {
+  return new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString(locale, { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/** Les trois mois d'un trimestre `AAAA-Qn` (« juillet 2026 · août 2026 · septembre 2026 ») — formatage de dates, pas une donnée. */
+function quarterMonths(quarter: string, locale: string): string {
+  const m = /^(\d{4})-Q([1-4])$/.exec(quarter);
+  if (!m) return '';
+  const year = Number(m[1]);
+  const first = (Number(m[2]) - 1) * 3;
+  return [0, 1, 2]
+    .map((i) => new Date(Date.UTC(year, first + i, 1)).toLocaleDateString(locale, { timeZone: 'UTC', month: 'long', year: 'numeric' }))
+    .join(' · ');
+}
+
+/**
+ * Carte thermique (écran 6) en échelle racine, comme la maquette :
+ * `--k-mint` (0) → `--k-acc-2` → `--k-acc` → `--k-pri` → `--k-pri` assombri
+ * vers `--k-head` (maximum) — uniquement des tokens de la charte.
+ */
+function heatColor(intensity: number): string {
+  const t = Math.max(0, Math.min(1, intensity));
+  if (t <= 0) return 'var(--k-mint)';
+  if (t <= 0.4) return `color-mix(in srgb, var(--k-acc-2) ${Math.round((t / 0.4) * 100)}%, var(--k-mint))`;
+  if (t <= 0.55) return `color-mix(in srgb, var(--k-acc) ${Math.round(((t - 0.4) / 0.15) * 100)}%, var(--k-acc-2))`;
+  if (t <= 0.8) return `color-mix(in srgb, var(--k-pri) ${Math.round(((t - 0.55) / 0.25) * 100)}%, var(--k-acc))`;
+  return `color-mix(in srgb, color-mix(in srgb, var(--k-pri) 45%, var(--k-head)) ${Math.round(((t - 0.8) / 0.2) * 100)}%, var(--k-pri))`;
+}
+
+function quarterOf(date: Date): string {
+  return `${date.getFullYear()}-Q${Math.floor(date.getMonth() / 3) + 1}`;
+}
+
+function previousQuarter(quarter: string): string {
+  const m = /^(\d{4})-Q([1-4])$/.exec(quarter);
+  if (!m) return quarter;
+  const year = Number(m[1]);
+  const q = Number(m[2]);
+  return q === 1 ? `${year - 1}-Q4` : `${year}-Q${q - 1}`;
+}
+
+/**
+ * Sélecteur de trimestre (ordre chronologique, comme la maquette) : les
+ * trois derniers trimestres échus — le dernier étant le lot EN COURS DE
+ * RÈGLEMENT, sélectionné par défaut (même règle que le Cockpit : en
+ * octobre, c'est le lot T3 qui est compensé, Art. 16-18) — puis le
+ * trimestre courant, encore ouvert (positions en cours de constitution).
+ * Simple formatage de dates, pas une règle métier.
+ */
+function quarterOptions(now: Date): { options: string[]; settling: string } {
+  const current = quarterOf(now);
+  const settling = previousQuarter(current);
+  const before = previousQuarter(settling);
+  return { options: [previousQuarter(before), before, settling, current], settling };
 }
 
 export default function QuarterPage() {
   const { t, locale } = useI18n();
-  const options = useMemo(quarterOptions, []);
-  const [quarter, setQuarter] = useState(options[0]);
+  const { options, settling } = useMemo(() => quarterOptions(new Date()), []);
+  const [quarter, setQuarter] = useState(settling);
   /** Bascule d'affichage du diagramme de flux (section additive 2026-10-18, §11-6 — mode à confirmer par l'UAR, les deux sont calculés). */
   const [flowMode, setFlowMode] = useState<FlowDiagramMode>('multilateral');
 
@@ -86,9 +124,9 @@ export default function QuarterPage() {
   /**
    * Même requête que `PipelineSection` (même `queryKey`, dédupliquée par
    * TanStack Query) — réutilisée ici UNIQUEMENT pour la carte condensée
-   * "Trimestre en compensation" (étape en cours + réunion), sans dupliquer
-   * l'appel réseau ni les actions (clôture/réalisation d'étape), qui
-   * restent dans `PipelineSection` ci-dessous.
+   * "Trimestre … — en compensation" (étape en cours + limite de la
+   * réunion), sans dupliquer l'appel réseau ni les actions
+   * (clôture/réalisation d'étape), qui restent dans `PipelineSection`.
    */
   const pipelineQuery = useQuery({
     queryKey: ['settlement', 'quarter', quarter, 'pipeline'],
@@ -105,7 +143,7 @@ export default function QuarterPage() {
     return (from: string, to: string) => byKey.get(`${from}|${to}`) ?? 0;
   }, [rawMatrix]);
 
-  const rawMax = useMemo(() => Math.max(1, ...(rawMatrix?.cells.map((c) => c.amount) ?? [0])), [rawMatrix]);
+  const rawMax = useMemo(() => Math.max(0, ...(rawMatrix?.cells.map((c) => c.amount) ?? [0])), [rawMatrix]);
 
   const rowTotals = useMemo(() => {
     const totals = new Map<string, number>();
@@ -123,57 +161,49 @@ export default function QuarterPage() {
     return totals;
   }, [rawMatrix]);
 
+  /** Somme des positions nettes (ligne de pied de la table, comme la maquette) — À recevoir = À payer par construction. */
+  const netTotals = useMemo(() => {
+    const net = data?.net ?? [];
+    return {
+      receivable: net.filter((n) => n.net > 0).reduce((s, n) => s + n.net, 0),
+      payable: net.filter((n) => n.net < 0).reduce((s, n) => s - n.net, 0),
+      position: net.reduce((s, n) => s + n.net, 0),
+    };
+  }, [data]);
+
   const currentStep = pipelineQuery.data?.steps.find((s) => s.status === 'EN_COURS');
   const meetingStep = pipelineQuery.data?.steps.find((s) => s.step === 'SYNTHESE_GLOBALE_REUNION');
+  const quarterLabel = quarter.replace('-', ' ');
+  /** Intensité en échelle racine (« 0 → max DA (échelle racine) », maquette). */
+  const intensityOf = (amount: number) => (rawMax > 0 ? Math.sqrt(amount / rawMax) : 0);
 
   return (
-    <>
+    <div className="q-screen">
       <FolioHeader
         badge="Module D · §6.6"
         title={t('quarter.title')}
         subtitle={t('quarter.subtitle')}
         actions={
-          <button
-            type="button"
-            onClick={() => document.getElementById('quarter-positions')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            style={{ padding: '6px 12px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--k-pri)', background: 'var(--k-pri)', color: '#fff', font: 'inherit', cursor: 'pointer' }}
-          >
-            {t('quarter.actions.positions')}
-          </button>
+          <>
+            <div className="q-seg" role="group" aria-label={t('quarter.period.label')}>
+              <Tabs items={options.map((o) => ({ key: o, label: o.replace('-', ' ') }))} activeKey={quarter} onChange={setQuarter} />
+            </div>
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => document.getElementById('quarter-positions')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            >
+              <Table2 size={16} strokeWidth={2} aria-hidden="true" />
+              {t('quarter.actions.positions')}
+            </button>
+          </>
         }
       />
 
-      <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
-        <div className="sheet-body">
-          <span style={{ display: 'block', fontSize: 'var(--k-fs-s)', color: 'var(--ink-2)', marginBottom: 4 }}>{t('quarter.period.label')}</span>
-          <Tabs items={options.map((o) => ({ key: o, label: o.replace('-', ' ') }))} activeKey={quarter} onChange={setQuarter} />
-        </div>
-      </div>
-
-      {summaryQuery.isLoading ? (
-        <p>{t('common.loading')}</p>
-      ) : summaryQuery.error || !summary ? (
-        <div className="note ko" role="alert">
-          <span>{t('common.error')}</span>
-          <button type="button" onClick={() => summaryQuery.refetch()}>
-            {t('common.retry')}
-          </button>
-        </div>
-      ) : (
-        <KpiRow>
-          <Kpi value={formatDzd(summary.grossTotal, locale)} label={t('quarter.kpi.grossTotal')} />
-          <Kpi value={formatDzd(summary.bilateralNetTotal, locale)} label={t('quarter.kpi.bilateralNetTotal')} />
-          <Kpi value={formatDzd(summary.multilateralNetTotal, locale)} label={t('quarter.kpi.multilateralNetTotal')} />
-          <Kpi value={`${summary.reductionPct}%`} label={t('quarter.kpi.reductionPct')} />
-          <Kpi value={summary.settledCount} label={t('quarter.kpi.settledCount')} />
-          <Kpi value={summary.opposedCount} label={t('quarter.kpi.opposedCount')} />
-        </KpiRow>
-      )}
-
       {quarterQuery.isLoading ? (
-        <p style={{ marginTop: 'var(--s-5)' }}>{t('common.loading')}</p>
+        <p>{t('common.loading')}</p>
       ) : quarterQuery.error || !data ? (
-        <div className="note ko" role="alert" style={{ marginTop: 'var(--s-5)' }}>
+        <div className="note ko" role="alert">
           <span>{t('common.error')}</span>
           <button type="button" onClick={() => quarterQuery.refetch()}>
             {t('common.retry')}
@@ -181,70 +211,78 @@ export default function QuarterPage() {
         </div>
       ) : (
         <>
-          <div className="grid g-mon" style={{ marginTop: 'var(--s-5)', marginBottom: 'var(--s-5)' }}>
+          <div className="grid q-top">
             {/*
-             * "Trimestre en compensation" — la capture de référence montre
-             * une réunion avec convocation, lieu précis et ordre du jour
-             * détaillé : aucune entité de planification (convocation, lieu,
-             * ordre du jour) n'existe côté API pour ce module (voir
-             * `quarter.compensation.gap.note` et le rapport de livraison).
-             * Seules l'étape en cours et l'échéance réelle de la réunion
-             * (`/settlement/quarter/:q/pipeline`, Art. 17-18) sont affichées.
+             * "Trimestre … — en compensation" — la capture de référence
+             * montre une réunion avec convocation, lieu précis et ordre du
+             * jour détaillé : aucune entité de planification (convocation,
+             * lieu, ordre du jour) n'existe côté API pour ce module. Seules
+             * les lignes alimentées par des données RÉELLES sont affichées
+             * (étape en cours et limite de la réunion,
+             * `/settlement/quarter/:q/pipeline`, Art. 16-18) — aucune
+             * convocation ni ordre du jour inventés (voir le rapport de
+             * livraison).
              */}
-            <div className="sheet">
+            <div className="sheet q-comp">
               <div className="sheet-head">
-                <span>{t('quarter.compensation.title')}</span>
-                <Tag tone={data.closedAt ? 'ok' : 'warn'}>{t(data.closedAt ? 'quarter.compensation.status.CLOSED' : 'quarter.compensation.status.OPEN')}</Tag>
+                <span>
+                  {t('quarter.compensation.titlePrefix')}
+                  {quarterLabel}
+                  {t(data.closedAt ? 'quarter.compensation.titleSuffix.CLOSED' : 'quarter.compensation.titleSuffix.OPEN')}
+                </span>
+                <span className="head-chip">{t('quarter.compensation.article')}</span>
               </div>
               <div className="sheet-body">
+                <div className="q-comp-status">
+                  <span className={`q-status ${data.closedAt ? 'ok' : 'warn'}`}>
+                    {t(data.closedAt ? 'quarter.compensation.status.CLOSED' : 'quarter.compensation.status.OPEN')}
+                  </span>
+                  <span className="q-months">{quarterMonths(quarter, locale)}</span>
+                </div>
                 {pipelineQuery.isLoading ? (
                   <p>{t('common.loading')}</p>
                 ) : pipelineQuery.error || !pipelineQuery.data ? (
-                  <p style={{ color: 'var(--ink-3)' }}>{t('common.noData')}</p>
+                  <p className="muted">{t('common.noData')}</p>
                 ) : (
-                  <>
-                    {currentStep ? (
-                      <p style={{ margin: '0 0 var(--s-3)' }}>
-                        <strong style={{ display: 'block', fontSize: 'var(--k-fs-s)' }}>{currentStep.label}</strong>
-                        <span className="mono" style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}>
-                          {currentStep.article}
-                        </span>{' '}
-                        <Tag tone={currentStep.overdue ? 'ko' : 'warn'}>{t('quarter.pipeline.status.EN_COURS')}</Tag>
-                        <br />
-                        <span style={{ fontSize: 'var(--k-fs-s)', color: 'var(--ink-2)' }}>
-                          {t('quarter.pipeline.dueDate')} : <span className="mono">{formatIsoDate(currentStep.dueDate, locale)}</span>
-                        </span>
-                      </p>
-                    ) : null}
+                  <dl className="q-dl">
                     {meetingStep ? (
-                      <p style={{ margin: 0 }}>
-                        <strong style={{ display: 'block', fontSize: 'var(--k-fs-s)' }}>{t('quarter.compensation.meeting.label')}</strong>
-                        <span style={{ fontSize: 'var(--k-fs-s)', color: 'var(--ink-2)' }}>{meetingStep.label}</span>
-                        <br />
-                        <span style={{ fontSize: 'var(--k-fs-s)', color: 'var(--ink-2)' }}>
-                          {t('quarter.pipeline.dueDate')} : <span className="mono">{formatIsoDate(meetingStep.dueDate, locale)}</span>
+                      <>
+                        <dt>{t('quarter.compensation.meeting.label')}</dt>
+                        <dd>
+                          {meetingStep.label}
                           {meetingStep.completedAt ? (
-                            <>
-                              {' · '}
+                            <span className="q-dd-sub">
                               {t('quarter.pipeline.completedAt')} <span className="mono">{new Date(meetingStep.completedAt).toLocaleString(locale)}</span>
-                            </>
+                            </span>
                           ) : null}
-                        </span>
-                      </p>
+                        </dd>
+                        <dt>{t('quarter.compensation.deadline.label')}</dt>
+                        <dd>{formatIsoDate(meetingStep.dueDate, locale)}</dd>
+                      </>
                     ) : null}
-                  </>
+                    {currentStep ? (
+                      <>
+                        <dt>{t('quarter.compensation.current.label')}</dt>
+                        <dd>
+                          {currentStep.label} <span className="q-art">{currentStep.article}</span>
+                          <span className={`q-dd-sub${currentStep.overdue ? ' ko' : ''}`}>
+                            {t('quarter.pipeline.dueDate')} : {formatIsoDate(currentStep.dueDate, locale)}
+                            {currentStep.overdue ? ` · ${t('quarter.pipeline.overdue')}` : ''}
+                          </span>
+                        </dd>
+                      </>
+                    ) : null}
+                  </dl>
                 )}
-                <p className="note" style={{ marginTop: 'var(--s-4)', marginBottom: 0, fontSize: 'var(--k-fs-xs)' }}>
-                  {t('quarter.compensation.gap.note')}
-                </p>
               </div>
             </div>
 
-            <div className="sheet" id="quarter-positions">
+            <div className="sheet q-net" id="quarter-positions">
               <div className="sheet-head">
                 <span>{t('quarter.net.title')}</span>
                 <button
                   type="button"
+                  className="q-ghost"
                   onClick={() =>
                     downloadCsv(
                       `positions-nettes-${quarter}.csv`,
@@ -253,95 +291,143 @@ export default function QuarterPage() {
                   }
                   disabled={data.net.length === 0}
                   title={t('common.exportExcel.note')}
-                  style={{ padding: '4px 10px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--rule-strong)', background: 'var(--paper)', color: 'var(--ink)', font: 'inherit', cursor: data.net.length === 0 ? 'not-allowed' : 'pointer' }}
                 >
+                  <Download size={15} strokeWidth={2} aria-hidden="true" />
                   {t('common.exportExcel')}
                 </button>
               </div>
-              <div className="sheet-body">
+              <div className="sheet-body flush">
                 <div className="t-wrap">
-                  <table className="t">
+                  <table className="t q-net-t">
                     <thead>
                       <tr>
                         <th>{t('quarter.net.col.company')}</th>
-                        <th>{t('quarter.net.col.receivable')}</th>
-                        <th>{t('quarter.net.col.payable')}</th>
-                        <th>{t('quarter.net.col.position')}</th>
+                        <th className="num">{t('quarter.net.col.receivable')}</th>
+                        <th className="num">{t('quarter.net.col.payable')}</th>
+                        <th className="num">{t('quarter.net.col.position')}</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {data.net.map((n) => (
-                        <tr key={n.code}>
-                          <td style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <CoChip code={n.code} />
-                            <span className="mono">{n.code}</span>
-                          </td>
-                          <td className="mono">{n.net > 0 ? formatDzd(n.net, locale) : '—'}</td>
-                          <td className="mono">{n.net < 0 ? formatDzd(-n.net, locale) : '—'}</td>
-                          <td>
-                            <Tag tone={n.net >= 0 ? 'ok' : 'ko'}>{n.net >= 0 ? t('quarter.net.receivable') : t('quarter.net.payable')}</Tag>{' '}
-                            <span className="mono">{formatDzd(Math.abs(n.net), locale)}</span>
+                      {data.net.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="muted" style={{ textAlign: 'center' }}>
+                            {t('common.noData')}
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        data.net.map((n) => (
+                          <tr key={n.code}>
+                            <td>
+                              <CoChip code={n.code} withName />
+                            </td>
+                            <td className="mono num">{n.net > 0 ? formatDzd(n.net, locale) : '—'}</td>
+                            <td className="mono num">{n.net < 0 ? formatDzd(-n.net, locale) : '—'}</td>
+                            <td className={`mono num q-pos ${n.net > 0 ? 'pos' : n.net < 0 ? 'neg' : ''}`}>
+                              <span className="q-sr">{n.net >= 0 ? t('quarter.net.receivable') : t('quarter.net.payable')} </span>
+                              {formatSignedDzd(n.net, locale)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
+                    {data.net.length > 0 ? (
+                      <tfoot>
+                        <tr>
+                          <td>{t('quarter.net.total')}</td>
+                          <td className="mono num">{formatDzd(netTotals.receivable, locale)}</td>
+                          <td className="mono num">{formatDzd(netTotals.payable, locale)}</td>
+                          <td className="mono num">{formatDzd(netTotals.position, locale)}</td>
+                        </tr>
+                      </tfoot>
+                    ) : null}
                   </table>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
+          {summaryQuery.isLoading ? (
+            <p>{t('common.loading')}</p>
+          ) : summaryQuery.error || !summary ? (
+            <div className="note ko" role="alert" style={{ margin: '14px 0' }}>
+              <span>{t('common.error')}</span>
+              <button type="button" onClick={() => summaryQuery.refetch()}>
+                {t('common.retry')}
+              </button>
+            </div>
+          ) : (
+            <KpiRow>
+              <Kpi value={`${formatCompact(summary.grossTotal, locale)} DA`} label={t('quarter.kpi.grossTotal')} title={formatDzd(summary.grossTotal, locale)} />
+              <Kpi value={`${formatCompact(summary.bilateralNetTotal, locale)} DA`} label={t('quarter.kpi.bilateralNetTotal')} title={formatDzd(summary.bilateralNetTotal, locale)} />
+              <Kpi value={`${formatCompact(summary.multilateralNetTotal, locale)} DA`} label={t('quarter.kpi.multilateralNetTotal')} title={formatDzd(summary.multilateralNetTotal, locale)} />
+              <Kpi value={`${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(summary.reductionPct)} %`} label={t('quarter.kpi.reductionPct')} />
+              <Kpi value={summary.settledCount} label={t('quarter.kpi.settledCount')} />
+              <Kpi value={summary.opposedCount} label={t('quarter.kpi.opposedCount')} />
+            </KpiRow>
+          )}
+
+          <div className="sheet q-matrix">
             <div className="sheet-head">
               <span>{t('quarter.rawMatrix.title')}</span>
+              <span className="head-chip">{t('quarter.compensation.article')}</span>
             </div>
             <div className="sheet-body">
               {matrixQuery.isLoading ? (
                 <p>{t('common.loading')}</p>
               ) : matrixQuery.error || !rawMatrix || rawMatrix.companies.length === 0 ? (
-                <p style={{ color: 'var(--ink-3)' }}>{t('common.noData')}</p>
+                <p className="muted">{t('common.noData')}</p>
               ) : (
                 <>
                   <div className="t-wrap">
-                    <table className="t" aria-label={t('quarter.rawMatrix.title')}>
+                    <table className="q-heat" aria-label={t('quarter.rawMatrix.title')}>
                       <thead>
                         <tr>
-                          <th>{t('quarter.rawMatrix.from')}</th>
+                          <th className="q-heat-corner" scope="col">
+                            {t('quarter.rawMatrix.from')}
+                          </th>
                           {rawMatrix.companies.map((c) => (
-                            <th key={c}>
-                              <CoChip code={c} />
+                            <th key={c} scope="col" className="q-heat-code">
+                              {c}
                             </th>
                           ))}
-                          <th>{t('quarter.net.receivable')}</th>
+                          <th scope="col" className="q-heat-total-h">
+                            {t('quarter.rawMatrix.receivableRow')}
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
                         {rawMatrix.companies.map((from) => (
                           <tr key={from}>
-                            <td>
-                              <CoChip code={from} />
-                            </td>
+                            <th scope="row" className="q-heat-code q-heat-row">
+                              {from}
+                            </th>
                             {rawMatrix.companies.map((to) => {
+                              if (from === to) return <td key={to} className="q-heat-cell diag" aria-hidden="true" />;
                               const amount = rawAmountAt(from, to);
-                              const intensity = from === to ? 0 : amount / rawMax;
+                              const intensity = intensityOf(amount);
                               return (
                                 <td
                                   key={to}
-                                  className="mono"
-                                  style={from === to ? undefined : { background: heatColor(intensity), color: intensity > 0.6 ? '#fff' : 'var(--ink)' }}
+                                  className={`q-heat-cell${intensity >= 0.45 ? ' dark' : ''}`}
+                                  style={{ background: heatColor(intensity) }}
+                                  title={formatDzd(amount, locale)}
                                 >
-                                  {from === to || amount === 0 ? <span style={{ color: 'var(--ink-3)' }}>—</span> : formatDzd(amount, locale)}
+                                  <span className="mono">{formatCompact(amount, locale)}</span>
                                 </td>
                               );
                             })}
-                            <td className="mono">{formatDzd(rowTotals.get(from) ?? 0, locale)}</td>
+                            <td className="mono q-heat-total" title={formatDzd(rowTotals.get(from) ?? 0, locale)}>
+                              {formatCompact(rowTotals.get(from) ?? 0, locale)}
+                            </td>
                           </tr>
                         ))}
                         <tr>
-                          <td>{t('quarter.rawMatrix.payableRow')}</td>
+                          <th scope="row" className="q-heat-total-h q-heat-row">
+                            {t('quarter.rawMatrix.payableRow')}
+                          </th>
                           {rawMatrix.companies.map((c) => (
-                            <td key={c} className="mono">
-                              {formatDzd(colTotals.get(c) ?? 0, locale)}
+                            <td key={c} className="mono q-heat-total center" title={formatDzd(colTotals.get(c) ?? 0, locale)}>
+                              {formatCompact(colTotals.get(c) ?? 0, locale)}
                             </td>
                           ))}
                           <td />
@@ -349,41 +435,43 @@ export default function QuarterPage() {
                       </tbody>
                     </table>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 'var(--s-3)', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>{t('quarter.rawMatrix.legend.title')}</span>
-                    {[0, 0.25, 0.5, 0.75, 1].map((stop) => (
-                      <span key={stop} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <span style={{ width: 16, height: 12, background: heatColor(stop), border: '1px solid var(--rule)', display: 'inline-block' }} />
-                        <span className="mono" style={{ fontSize: 'var(--k-fs-xs)' }}>
-                          {formatDzd(Math.round(stop * rawMax), locale)}
-                        </span>
-                      </span>
-                    ))}
+                  <div className="q-legend">
+                    <span className="q-legend-bar" aria-hidden="true">
+                      {[0.1, 0.4, 0.55, 0.8, 1].map((stop) => (
+                        <span key={stop} style={{ background: heatColor(stop) }} />
+                      ))}
+                    </span>
+                    <span>
+                      0 → {formatDzd(rawMax, locale)} {t('quarter.rawMatrix.legend.title')}
+                    </span>
                   </div>
                 </>
               )}
             </div>
           </div>
 
-          <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
+          <div className="sheet q-flow">
             <div className="sheet-head">
               <span>
                 {t('quarter.flow.titlePrefix')}
                 {rawMatrix?.companies.length ?? 0}
                 {t('quarter.flow.titleSuffix')}
               </span>
+              <span className="head-chip">{t('quarter.flow.article')}</span>
             </div>
             <div className="sheet-body">
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--s-4)', flexWrap: 'wrap', marginBottom: 'var(--s-3)' }}>
-                <Tabs
-                  items={[
-                    { key: 'multilateral', label: t('quarter.flow.multilateral') },
-                    { key: 'bilateral', label: t('quarter.flow.bilateral') },
-                  ]}
-                  activeKey={flowMode}
-                  onChange={(key) => setFlowMode(key as FlowDiagramMode)}
-                />
-                <p style={{ fontSize: 'var(--k-fs-s)', color: 'var(--ink-2)', margin: 0 }}>{t('quarter.flow.caption')}</p>
+              <div className="q-flow-bar">
+                <div className="q-seg">
+                  <Tabs
+                    items={[
+                      { key: 'multilateral', label: t('quarter.flow.multilateral') },
+                      { key: 'bilateral', label: t('quarter.flow.bilateral') },
+                    ]}
+                    activeKey={flowMode}
+                    onChange={(key) => setFlowMode(key as FlowDiagramMode)}
+                  />
+                </div>
+                <p className="q-flow-caption">{t('quarter.flow.caption')}</p>
               </div>
               <FlowDiagram
                 mode={flowMode}
@@ -398,14 +486,16 @@ export default function QuarterPage() {
 
           <PipelineSection quarter={quarter} />
 
-          <div className="sheet" style={{ marginTop: 'var(--s-5)', marginBottom: 'var(--s-5)' }}>
+          <div className="sheet q-bordereau">
             <div className="sheet-head">
               <span>{t('quarter.bordereau.title')}</span>
             </div>
             <div className="sheet-body">
-              <p style={{ fontSize: 'var(--k-fs-s)', color: 'var(--ink-2)', marginTop: 0 }}>{t('quarter.bordereau.reference')}</p>
-              <p className="mono" style={{ fontSize: 'var(--k-fs-l)', fontWeight: 700 }}>
-                {data.bordereau}
+              <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+                {t('quarter.bordereau.reference')}
+              </p>
+              <p className="mono" style={{ fontSize: 'var(--k-fs-l)', fontWeight: 700, margin: 0 }}>
+                {data.bordereau ?? '—'}
               </p>
             </div>
           </div>
@@ -425,7 +515,7 @@ export default function QuarterPage() {
                 </div>
               ) : (
                 <>
-                  <p style={{ fontSize: 'var(--k-fs-s)', color: 'var(--ink-2)' }}>
+                  <p className="muted" style={{ fontSize: 13 }}>
                     {t('quarter.grid.subscription')} : <span className="mono">{formatDzd(gridQuery.data.subscription.monthly, locale)}</span>
                   </p>
                   <div className="t-wrap">
@@ -456,6 +546,6 @@ export default function QuarterPage() {
           </div>
         </>
       )}
-    </>
+    </div>
   );
 }

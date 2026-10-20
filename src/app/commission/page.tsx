@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Download } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { ExchangeEvent, ExchangeThread } from '@/components/shared/ExchangeThread';
 import { FolioHeader } from '@/components/FolioHeader';
@@ -16,6 +17,7 @@ import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { apiGet, apiPath, apiPost } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
+import { buildCsv, downloadCsv } from '@/lib/csv';
 import { useApiErrorMessage } from '@/lib/error-message';
 import { isCompanyActor } from '@/lib/recours-actions';
 import { buildRecoursExchangeEvents, oppositionBody } from '@/lib/recours-timeline';
@@ -27,6 +29,7 @@ import {
   CommissionSummary,
   CompanyView,
   DocumentView,
+  MembershipRequest,
   OppositionMotif,
   Paginated,
   RecoursItem,
@@ -35,6 +38,16 @@ import {
 } from '@/lib/types';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
+
+/**
+ * Délai de conciliation de l'Art. 24 (15 jours à compter de la saisine,
+ * `createdAt`) — MÊME constante que le back (`ART24_CONCILIATION_DAYS`,
+ * `commission.service.ts`), qui s'en sert pour le KPI « Hors délai 15 j »
+ * (`overdue15dCount`). La colonne « Conciliation (15 j) » n'en fait qu'un
+ * calcul d'affichage (barre + jours restants), jamais un état métier.
+ */
+const ART24_CONCILIATION_DAYS = 15;
+const DAY_MS = 86_400_000;
 
 type CommissionTab = 'role' | 'sanctions' | 'membership';
 
@@ -57,12 +70,19 @@ function centimes(amount: number): { minimumFractionDigits: number; maximumFract
   return { minimumFractionDigits: digits, maximumFractionDigits: digits };
 }
 
+/** « 240 850 DA » (unité de la maquette). */
 function formatDzd(amount: number, locale: string): string {
-  try {
-    return new Intl.NumberFormat(locale, { style: 'currency', currency: 'DZD', ...centimes(amount) }).format(amount);
-  } catch {
-    return `${amount.toLocaleString()} DA`;
-  }
+  return `${new Intl.NumberFormat(locale, centimes(amount)).format(amount)} DA`;
+}
+
+/** « 11 oct. 2026 ». */
+function formatDay(iso: string, locale: string): string {
+  return new Date(iso).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/** Référence courte affichée (8 premiers caractères de l'identifiant réel, valeur complète en infobulle) — même idiome que `/monthly`. */
+function shortRef(id: string): string {
+  return id.slice(0, 8);
 }
 
 interface LocalDecision {
@@ -125,6 +145,17 @@ export default function CommissionPage() {
   });
 
   const sanctionRows = sanctionsQuery.data?.items ?? [];
+
+  /**
+   * Compteur de l'onglet « Adhésions & retraits » (maquette) : total RÉEL
+   * des demandes (`GET /commission/membership-requests`, page de 1 ligne —
+   * seul `total` est lu). Clé sous `['commission', 'membership']` : la
+   * création/décision d'une demande (`MembershipTab`) l'invalide aussi.
+   */
+  const membershipCountQuery = useQuery({
+    queryKey: ['commission', 'membership', 'count'],
+    queryFn: () => apiGet<Paginated<MembershipRequest>>('/commission/membership-requests', { page: 1, pageSize: 1 }),
+  });
 
   /** Noms/couleurs réels des compagnies (SEC-26/SEC-50) — cartes des parties du panneau de détail. */
   const companiesQuery = useQuery({
@@ -216,11 +247,36 @@ export default function CommissionPage() {
 
   const columns: Column<CommissionCase>[] = useMemo(
     () => [
-      { key: 'recoursId', header: t('commission.col.case'), render: (r) => <span className="mono">{r.recoursId}</span> },
-      { key: 'status', header: t('commission.col.status'), render: (r) => <Tag tone={statusTone(r.status)}>{t(`commission.status.${r.status}` as TranslationKey)}</Tag> },
-      { key: 'scheduledAt', header: t('commission.col.scheduledAt'), render: (r) => new Date(r.scheduledAt).toLocaleDateString(locale) },
+      {
+        key: 'case',
+        header: t('commission.col.case'),
+        render: (r) => (
+          <span className="cm-ref">
+            <span className="mono" title={r.id}>
+              {shortRef(r.id)}
+            </span>
+            <span className="mono cm-ref-sub" title={r.recoursId}>
+              {shortRef(r.recoursId)}
+            </span>
+          </span>
+        ),
+      },
+      {
+        key: 'parties',
+        header: t('commission.col.parties'),
+        render: (r) => (
+          <span className="cm-parties">
+            <CoChip code={r.companyA} color={companyByCode.get(r.companyA)?.color} name={companyByCode.get(r.companyA)?.name} />
+            <span aria-hidden="true">/</span>
+            <CoChip code={r.companyB} color={companyByCode.get(r.companyB)?.color} name={companyByCode.get(r.companyB)?.name} />
+          </span>
+        ),
+      },
+      { key: 'amount', header: t('commission.col.amount'), render: (r) => <span className="mono cm-amount">{formatDzd(r.amount, locale)}</span> },
+      { key: 'status', header: t('commission.col.status'), render: (r) => <PhaseTag status={r.status} label={t(`commission.status.${r.status}` as TranslationKey)} /> },
+      { key: 'conciliation', header: t('commission.col.conciliation'), render: (r) => <ConciliationCell row={r} t={t} locale={locale} /> },
     ],
-    [t, locale],
+    [t, locale, companyByCode],
   );
 
   const sanctionColumns: Column<Sanction>[] = useMemo(
@@ -236,7 +292,7 @@ export default function CommissionPage() {
       },
       { key: 'amount', header: t('commission.sanctions.col.amount'), render: (s) => <span className="mono">{s.amount !== undefined ? formatDzd(s.amount, locale) : '—'}</span> },
       { key: 'reason', header: t('commission.sanctions.col.reason'), render: (s) => s.reason },
-      { key: 'orderedAt', header: t('commission.sanctions.col.orderedAt'), render: (s) => new Date(s.orderedAt).toLocaleDateString(locale) },
+      { key: 'orderedAt', header: t('commission.sanctions.col.orderedAt'), render: (s) => formatDay(s.orderedAt, locale) },
       { key: 'orderedBy', header: t('commission.sanctions.col.orderedBy'), render: (s) => s.orderedBy },
       {
         key: 'status',
@@ -259,8 +315,7 @@ export default function CommissionPage() {
           s.status === 'A_CONTRESIGNER' && canCountersign ? (
             <button
               type="button"
-              className="tag ok"
-              style={{ border: 'none', cursor: 'pointer' }}
+              className="btn-soft"
               disabled={countersignMutation.isPending}
               onClick={() => countersignMutation.mutate(s.id)}
             >
@@ -312,8 +367,18 @@ export default function CommissionPage() {
   }, [linkedRecours, documents, t, motifLabels, meCompany]);
 
   return (
-    <>
+    <div className="cm-screen">
       <FolioHeader badge="Module E · §6.7" title={t('commission.title')} subtitle={t('commission.subtitle')} />
+
+      <Tabs
+        items={[
+          { key: 'role', label: t('commission.tab.role'), count: summaryQuery.data?.pendingCount },
+          { key: 'sanctions', label: t('commission.tab.sanctions'), count: sanctionsQuery.data?.total },
+          { key: 'membership', label: t('commission.tab.membership'), count: membershipCountQuery.data?.total },
+        ]}
+        activeKey={tab}
+        onChange={changeTab}
+      />
 
       {summaryQuery.isLoading ? (
         <p>{t('common.loading')}</p>
@@ -333,37 +398,29 @@ export default function CommissionPage() {
         </KpiRow>
       )}
 
-      <div className="sheet" style={{ marginTop: 'var(--s-5)' }}>
-        <div className="sheet-body">
-          <Tabs
-            items={[
-              { key: 'role', label: t('commission.tab.role'), count: summaryQuery.data?.pendingCount },
-              { key: 'sanctions', label: t('commission.tab.sanctions'), count: sanctionsQuery.data?.total },
-              { key: 'membership', label: t('commission.tab.membership') },
-            ]}
-            activeKey={tab}
-            onChange={changeTab}
-          />
-        </div>
-      </div>
-
       {tab === 'membership' ? (
-        <div className="sheet" style={{ marginTop: 'var(--s-5)' }}>
+        <div className="sheet">
           <div className="sheet-body">
             <MembershipTab />
           </div>
         </div>
       ) : tab === 'sanctions' ? (
-        <div className="sheet" style={{ marginTop: 'var(--s-5)' }}>
-          <div className="sheet-body">
+        <div className="sheet">
+          <div className="sheet-head">
+            <span>{t('commission.sanctions.title')}</span>
+            <span className="head-chip">{t('commission.sanctions.article')}</span>
+          </div>
+          <div className="sheet-body flush">
             {sanctionsQuery.isLoading ? (
-              <p>{t('common.loading')}</p>
+              <p className="pad">{t('common.loading')}</p>
             ) : sanctionsQuery.error ? (
-              <div className="note ko" role="alert">
-                <span>{t('common.error')}</span>
-                <button type="button" onClick={() => sanctionsQuery.refetch()}>
-                  {t('common.retry')}
-                </button>
+              <div className="pad">
+                <div className="note ko" role="alert">
+                  <span>{t('common.error')}</span>
+                  <button type="button" onClick={() => sanctionsQuery.refetch()}>
+                    {t('common.retry')}
+                  </button>
+                </div>
               </div>
             ) : (
               <Table
@@ -379,17 +436,43 @@ export default function CommissionPage() {
           </div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(360px, 460px)', gap: 'var(--s-5)', marginTop: 'var(--s-5)', alignItems: 'start' }}>
-          <div className="sheet">
-            <div className="sheet-body">
+        <>
+          <div className="sheet cm-role">
+            <div className="sheet-head">
+              <span>{t('commission.role.title')}</span>
+              <span className="cm-head-actions">
+                <button
+                  type="button"
+                  className="cm-ghost"
+                  disabled={pageRows.length === 0}
+                  title={t('common.exportExcel.note')}
+                  onClick={() =>
+                    downloadCsv(
+                      `role-commission-p${page}.csv`,
+                      buildCsv(
+                        ['affaire', 'recours', 'compagnie_a', 'compagnie_b', 'enjeu', 'phase', 'saisine', 'seance_prevue'],
+                        pageRows.map((r) => [r.id, r.recoursId, r.companyA, r.companyB, r.amount, r.status, r.createdAt, r.scheduledAt]),
+                      ),
+                    )
+                  }
+                >
+                  <Download size={15} strokeWidth={2} aria-hidden="true" />
+                  {t('common.exportExcel')}
+                </button>
+                <span className="head-chip">{t('commission.role.article')}</span>
+              </span>
+            </div>
+            <div className="sheet-body flush">
               {casesQuery.isLoading ? (
-                <p>{t('common.loading')}</p>
+                <p className="pad">{t('common.loading')}</p>
               ) : casesQuery.error ? (
-                <div className="note ko" role="alert">
-                  <span>{t('common.error')}</span>
-                  <button type="button" onClick={() => casesQuery.refetch()}>
-                    {t('common.retry')}
-                  </button>
+                <div className="pad">
+                  <div className="note ko" role="alert">
+                    <span>{t('common.error')}</span>
+                    <button type="button" onClick={() => casesQuery.refetch()}>
+                      {t('common.retry')}
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <Table
@@ -401,26 +484,45 @@ export default function CommissionPage() {
                   onPageChange={setPage}
                   onRowClick={setSelected}
                   getRowKey={(r) => r.id}
+                  selectedKey={selected?.id}
                 />
               )}
             </div>
           </div>
 
-          <div className="sheet" style={{ position: 'sticky', top: 'var(--s-5)' }}>
+          <div className="sheet cm-detail">
             <div className="sheet-head">
-              <strong>{selected ? `${t('commission.col.case')} ${selected.recoursId}` : t('commission.panel.title')}</strong>
-              {selected ? <Tag tone={statusTone(selected.status)}>{t(`commission.status.${selected.status}` as TranslationKey)}</Tag> : null}
+              <span>
+                {selected ? (
+                  <>
+                    {t('commission.detail.titlePrefix')}
+                    <span className="mono" title={selected.id}>
+                      {shortRef(selected.id)}
+                    </span>
+                  </>
+                ) : (
+                  t('commission.panel.title')
+                )}
+              </span>
+              {selected ? <PhaseTag status={selected.status} label={t(`commission.status.${selected.status}` as TranslationKey)} /> : null}
             </div>
             <div className="sheet-body">
               {!selected ? (
-                <p style={{ color: 'var(--ink-3)' }}>{t('commission.panel.empty')}</p>
+                <p className="muted">{t('commission.panel.empty')}</p>
               ) : (
                 <>
-                  <div className="mono" style={{ fontSize: 'var(--k-fs-2xl)', fontWeight: 700, marginBottom: 'var(--s-4)' }}>
-                    {formatDzd(selected.amount, locale)}
+                  <div className="cm-meta">
+                    <span>
+                      {t('commission.col.scheduledAt')} : {new Date(selected.scheduledAt).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' })}
+                    </span>
+                    <span className="cm-meta-right">
+                      {t('commission.detail.saisine')} {formatDay(selected.createdAt, locale)} · {t('commission.detail.deadline')}{' '}
+                      {formatDay(new Date(new Date(selected.createdAt).getTime() + ART24_CONCILIATION_DAYS * DAY_MS).toISOString(), locale)}
+                      <span className="head-chip">{t('commission.concil.article')}</span>
+                    </span>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-3)', marginBottom: 'var(--s-3)' }}>
+                  <div className="cm-parties-grid">
                     <PartyCard
                       title={t('commission.party.direct')}
                       code={selected.companyA}
@@ -437,146 +539,177 @@ export default function CommissionPage() {
                     />
                   </div>
 
-                  <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginTop: 0, marginBottom: 'var(--s-4)' }}>
-                    {documents.length} {t('commission.pieces.count')}
-                  </p>
-
-                  <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--s-3)', marginBottom: 'var(--s-4)' }}>
-                    <Field label={t('commission.detail.recours')}>
-                      <span className="mono">{selected.claimId}</span>
-                    </Field>
-                    <Field label={t('commission.detail.saisine')}>{new Date(selected.createdAt).toLocaleDateString(locale)}</Field>
-                    <Field label={t('commission.col.scheduledAt')}>{new Date(selected.scheduledAt).toLocaleString(locale)}</Field>
-                  </dl>
-
-                  {selectedDecision?.penalty ? (
-                    <p className="note warn">
-                      <strong>{t(selectedDecision.penalty.status === 'PRONONCEE' ? 'commission.decision.penaltyIssued' : 'commission.decision.penaltyProposed')}</strong> : {formatDzd(selectedDecision.penalty.amount, locale)} — {selectedDecision.penalty.reason}
-                    </p>
-                  ) : null}
-                  {selected.pv ? (
-                    <p className="note ok">
-                      <strong>{t('commission.decision.pvSigned')}</strong> : {new Date(selected.pv.signedAt).toLocaleString(locale)} ({selected.pv.ref})
-                    </p>
-                  ) : null}
-
-                  <div style={{ marginBottom: 'var(--s-4)' }}>
-                    <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('commission.action.penalty.title')}</strong>
-                    {!canPenalty ? <p className="note warn">{t('commission.forbidden.penalty')}</p> : null}
-                    {canPenalty && !selected.pv ? (
-                      <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}>{t('commission.penalty.requiresPv')}</p>
-                    ) : null}
-
-                    <label htmlFor="penalty-company" style={{ display: 'block', fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', marginBottom: 4 }}>
-                      {t('commission.action.penalty.company')}
-                    </label>
-                    <select
-                      id="penalty-company"
-                      value={penaltyCompany}
-                      onChange={(e) => setPenaltyCompany(e.target.value as 'A' | 'B')}
-                      disabled={!canPenalty}
-                      style={{ width: '100%', marginBottom: 'var(--s-2)', padding: '6px 10px', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', font: 'inherit', background: 'var(--paper)', color: 'var(--ink)' }}
-                    >
-                      <option value="A">{selected.companyA}</option>
-                      <option value="B">{selected.companyB}</option>
-                    </select>
-
-                    <label htmlFor="penalty-amount" style={{ display: 'block', fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', marginBottom: 4 }}>
-                      {t('commission.action.penalty.amount')}
-                    </label>
-                    <input
-                      id="penalty-amount"
-                      type="number"
-                      min={0.01}
-                      step={0.01}
-                      aria-invalid={!!penaltyAmount && !isValidAmount(penaltyAmount)}
-                      value={penaltyAmount}
-                      onChange={(e) => setPenaltyAmount(e.target.value)}
-                      disabled={!canPenalty}
-                      style={{ width: '100%', marginBottom: 'var(--s-2)', padding: '6px 10px', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', font: 'inherit', background: 'var(--paper)', color: 'var(--ink)' }}
-                    />
-
-                    <label htmlFor="penalty-reason" style={{ display: 'block', fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', marginBottom: 4 }}>
-                      {t('commission.action.penalty.reason')}
-                    </label>
-                    <input
-                      id="penalty-reason"
-                      type="text"
-                      value={penaltyReason}
-                      onChange={(e) => setPenaltyReason(e.target.value)}
-                      disabled={!canPenalty}
-                      style={{ width: '100%', marginBottom: 'var(--s-3)', padding: '6px 10px', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', font: 'inherit', background: 'var(--paper)', color: 'var(--ink)' }}
-                    />
-
-                    <div style={{ display: 'flex', gap: 'var(--s-2)', flexWrap: 'wrap' }}>
-                      <button
-                        type="button"
-                        className="tag warn"
-                        style={{ border: 'none', cursor: canPenalty ? 'pointer' : 'not-allowed' }}
-                        disabled={!canPenalty || !selected.pv || !isValidAmount(penaltyAmount) || !penaltyReason.trim() || penaltyMutation.isPending}
-                        onClick={() =>
-                          penaltyMutation.mutate({
-                            id: selected.id,
-                            companyCode: penaltyCompany === 'A' ? selected.companyA : selected.companyB,
-                            amount: Number(penaltyAmount),
-                            reason: penaltyReason,
-                          })
-                        }
-                      >
-                        {t('commission.action.penalty.submit')}
-                      </button>
-
-                      {!canSignPv ? (
-                        <span className="note warn" style={{ display: 'inline-flex' }}>
-                          {t('commission.forbidden.pvSign')}
-                        </span>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="tag ok"
-                        style={{ border: 'none', cursor: canSignPv && selected.status === 'PRONONCE' && !selected.pv ? 'pointer' : 'not-allowed' }}
-                        disabled={!canSignPv || selected.status !== 'PRONONCE' || !!selected.pv || pvSignMutation.isPending}
-                        onClick={() => pvSignMutation.mutate(selected.id)}
-                      >
-                        {t('commission.action.pvSign')}
-                      </button>
-                    </div>
-                    {canSignPv && !selected.pv ? (
-                      <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginBottom: 0 }}>
-                        {selected.status === 'PRONONCE' ? t('commission.pvSign.fourEyesHint') : t('commission.pvSign.requiresDecision')}
-                      </p>
-                    ) : null}
+                  <div className="cm-thread-head">
+                    <h3>{t('commission.thread.title')}</h3>
+                    <span className="cm-count">
+                      {documents.length} {t('commission.pieces.count')}
+                    </span>
                   </div>
-
-                  <div style={{ marginBottom: 'var(--s-4)' }}>
-                    <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('commission.thread.title')}</strong>
+                  <div className="cm-thread">
                     <ExchangeThread events={threadEvents} locale={locale} emptyLabel={t('commission.thread.empty')} />
                   </div>
 
-                  {/*
-                    QUESTIONS_UAR.md §9, décision Product Owner 2026-10-18 : pièces
-                    manuelles (PV de commission) attachées à CE dossier — jamais à un
-                    Recours depuis cet écran (voir `AttachmentsPanel`).
-                  */}
-                  <div style={{ paddingTop: 'var(--s-4)', borderTop: '1px solid var(--rule)' }}>
-                    <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('commission.detail.attachments')}</strong>
-                    <AttachmentsPanel commissionCaseId={selected.id} />
+                  <div className="cm-decide">
+                    <div className="cm-box">
+                      <h3>{t('commission.action.penalty.title')}</h3>
+                      <dl className="cm-dl">
+                        <Field label={t('commission.col.amount')}>
+                          <span className="mono">{formatDzd(selected.amount, locale)}</span>
+                        </Field>
+                        <Field label={t('commission.detail.recours')}>
+                          <span className="mono" title={selected.claimId}>
+                            {shortRef(selected.claimId)}
+                          </span>
+                        </Field>
+                      </dl>
+
+                      {selectedDecision?.penalty ? (
+                        <p className="note warn">
+                          <strong>{t(selectedDecision.penalty.status === 'PRONONCEE' ? 'commission.decision.penaltyIssued' : 'commission.decision.penaltyProposed')}</strong> : {formatDzd(selectedDecision.penalty.amount, locale)} — {selectedDecision.penalty.reason}
+                        </p>
+                      ) : null}
+                      {selected.pv ? (
+                        <p className="note ok">
+                          <strong>{t('commission.decision.pvSigned')}</strong> : {new Date(selected.pv.signedAt).toLocaleString(locale)} ({selected.pv.ref})
+                        </p>
+                      ) : null}
+
+                      {!canPenalty ? <p className="note warn">{t('commission.forbidden.penalty')}</p> : null}
+                      {canPenalty && !selected.pv ? <p className="cm-hint">{t('commission.penalty.requiresPv')}</p> : null}
+
+                      <div className="cm-form">
+                        <label htmlFor="penalty-company">{t('commission.action.penalty.company')}</label>
+                        <select id="penalty-company" value={penaltyCompany} onChange={(e) => setPenaltyCompany(e.target.value as 'A' | 'B')} disabled={!canPenalty}>
+                          <option value="A">{selected.companyA}</option>
+                          <option value="B">{selected.companyB}</option>
+                        </select>
+
+                        <label htmlFor="penalty-amount">{t('commission.action.penalty.amount')}</label>
+                        <input
+                          id="penalty-amount"
+                          type="number"
+                          min={0.01}
+                          step={0.01}
+                          aria-invalid={!!penaltyAmount && !isValidAmount(penaltyAmount)}
+                          value={penaltyAmount}
+                          onChange={(e) => setPenaltyAmount(e.target.value)}
+                          disabled={!canPenalty}
+                        />
+
+                        <label htmlFor="penalty-reason">{t('commission.action.penalty.reason')}</label>
+                        <input id="penalty-reason" type="text" value={penaltyReason} onChange={(e) => setPenaltyReason(e.target.value)} disabled={!canPenalty} />
+                      </div>
+
+                      <div className="cm-actions">
+                        <button
+                          type="button"
+                          className="btn-outline"
+                          disabled={!canPenalty || !selected.pv || !isValidAmount(penaltyAmount) || !penaltyReason.trim() || penaltyMutation.isPending}
+                          onClick={() =>
+                            penaltyMutation.mutate({
+                              id: selected.id,
+                              companyCode: penaltyCompany === 'A' ? selected.companyA : selected.companyB,
+                              amount: Number(penaltyAmount),
+                              reason: penaltyReason,
+                            })
+                          }
+                        >
+                          {t('commission.action.penalty.submit')}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          disabled={!canSignPv || selected.status !== 'PRONONCE' || !!selected.pv || pvSignMutation.isPending}
+                          onClick={() => pvSignMutation.mutate(selected.id)}
+                        >
+                          {t('commission.action.pvSign')}
+                        </button>
+                      </div>
+                      {!canSignPv ? <p className="note warn">{t('commission.forbidden.pvSign')}</p> : null}
+                      {canSignPv && !selected.pv ? (
+                        <p className="cm-hint">{selected.status === 'PRONONCE' ? t('commission.pvSign.fourEyesHint') : t('commission.pvSign.requiresDecision')}</p>
+                      ) : null}
+                    </div>
+
+                    {/*
+                      QUESTIONS_UAR.md §9, décision Product Owner 2026-10-18 : pièces
+                      manuelles (PV de commission) attachées à CE dossier — jamais à un
+                      Recours depuis cet écran (voir `AttachmentsPanel`).
+                    */}
+                    <div className="cm-box">
+                      <h3>{t('commission.detail.attachments')}</h3>
+                      <AttachmentsPanel commissionCaseId={selected.id} />
+                    </div>
                   </div>
                 </>
               )}
             </div>
           </div>
-        </div>
+        </>
       )}
-    </>
+    </div>
   );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <dt style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>{label}</dt>
-      <dd style={{ margin: 0 }}>{children}</dd>
+      <dt>{label}</dt>
+      <dd>{children}</dd>
+    </div>
+  );
+}
+
+/** Phase d'une affaire (maquette) : pastille grise à point pour l'instruction/l'audience, cartouche teal bordé pour une affaire conciliée. */
+function PhaseTag({ status, label }: { status: CommissionCaseStatus; label: string }) {
+  return <span className={`cm-phase ${status === 'PRONONCE' ? 'done' : status === 'EN_DELIBERE' ? 'hearing' : 'open'}`}>{label}</span>;
+}
+
+type T = ReturnType<typeof useI18n>['t'];
+
+/**
+ * Colonne « Conciliation (15 j) » : délai de l'Art. 24 à compter de la
+ * saisine (`createdAt`) — calcul d'affichage uniquement (même constante
+ * que le back), l'état réel restant `status`. Une affaire tranchée affiche
+ * sa date de décision réelle (`decidedAt`) et la durée écoulée.
+ */
+function ConciliationCell({ row, t, locale }: { row: CommissionCase; t: T; locale: string }) {
+  const start = new Date(row.createdAt).getTime();
+  if (row.status === 'PRONONCE' && row.decidedAt) {
+    const days = Math.max(0, Math.round((new Date(row.decidedAt).getTime() - start) / DAY_MS));
+    return (
+      <span className="cm-decided">
+        {t('commission.concil.decided')} {formatDay(row.decidedAt, locale)} ({days} {t('commission.concil.daysShort')})
+      </span>
+    );
+  }
+  const deadline = start + ART24_CONCILIATION_DAYS * DAY_MS;
+  const now = Date.now();
+  const percent = Math.round((Math.min(Math.max(0, now - start), deadline - start) / (deadline - start)) * 100);
+  const remaining = Math.ceil((deadline - now) / DAY_MS);
+  const overdue = remaining <= 0;
+  const overdueDays = Math.max(1, Math.floor((now - deadline) / DAY_MS));
+  return (
+    <div className={`cm-concil${overdue ? ' ko' : ''}`}>
+      <div className="cm-concil-top">
+        <span className="cm-concil-label">
+          {t('commission.concil.label')} <span>· {t('commission.concil.article')}</span>
+        </span>
+        <span className="mono cm-concil-left">
+          {overdue
+            ? `${t('commission.concil.overduePrefix')}${overdueDays} ${t(overdueDays > 1 ? 'commission.concil.days' : 'commission.concil.day')}`
+            : `J-${remaining} · ${remaining} ${t('commission.concil.remaining')}`}
+        </span>
+      </div>
+      <div className="cm-concil-track" role="presentation">
+        <div style={{ width: `${overdue ? 100 : percent}%` }} />
+      </div>
+      <div className="cm-concil-dates mono">
+        <span>{formatDay(row.createdAt, locale)}</span>
+        <span>
+          {t('commission.concil.deadline')} {formatDay(new Date(deadline).toISOString(), locale)}
+        </span>
+      </div>
     </div>
   );
 }
@@ -584,14 +717,15 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 /** Carte d'une partie au dossier (Créancier/assureur direct = `companyA`, débiteur/assureur tiers = `companyB`) — nom/couleur réels (SEC-26/SEC-50), phrase réelle optionnelle (voir `directPartySummary`/`tiersPartySummary`). */
 function PartyCard({ title, code, name, color, summary }: { title: string; code: string; name?: string; color?: string; summary?: string }) {
   return (
-    <div style={{ border: '1px solid var(--rule)', borderRadius: 'var(--k-r-s)', padding: 'var(--s-3)' }}>
-      <div style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', marginBottom: 4 }}>{title}</div>
-      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
-        <CoChip code={code} color={color} /> {name ?? code}
+    <div className="cm-party">
+      <div className="cm-party-head">
+        <CoChip code={code} color={color} name={name} />
+        <div>
+          <strong>{name ?? code}</strong>
+          <span>{title}</span>
+        </div>
       </div>
-      {summary ? (
-        <p style={{ margin: '6px 0 0', fontSize: 'var(--k-fs-s)', color: 'var(--ink-2)' }}>{summary}</p>
-      ) : null}
+      {summary ? <p>{summary}</p> : null}
     </div>
   );
 }

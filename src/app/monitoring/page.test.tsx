@@ -3,6 +3,9 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 import { mockFetchRouter, renderWithProviders } from '@/test/render';
 import { MeResponse, MonitoringCompanyProfile, MonitoringCompanyScore, MonitoringJourney, MonitoringScores, Paginated } from '@/lib/types';
 import MonitoringPage from './page';
+import { downloadCsv } from '@/lib/csv';
+
+vi.mock('@/lib/csv', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/lib/csv')>()), downloadCsv: vi.fn() }));
 
 const ME: MeResponse = {
   user: { id: 'dev-op', name: 'Opérateur Place (dev)', email: 'operateur@finlab.dz' },
@@ -237,5 +240,28 @@ describe('Écran Monitoring & scoring (/monitoring)', () => {
 
     await waitFor(() => expect(screen.getByText('rec-7')).toBeInTheDocument());
     expect(screen.queryByText('rec-1')).not.toBeInTheDocument();
+  });
+  it('« Excel » du classement exporte en CSV les lignes RÉELLES chargées ; « KPI conformité » mène aux statistiques de la place', async () => {
+    const scores: MonitoringScores = {
+      weights: WEIGHTS,
+      companies: [companyScore('SAA', 82, { rank: 1 }), companyScore('CASH', 65, { rank: 2 })],
+      notes: [],
+      silenceDays: 30,
+      oppositionAlertThresholdPct: 20,
+    };
+    mockMonitoringApi(scores);
+
+    renderWithProviders(<MonitoringPage />);
+
+    await waitFor(() => expect(screen.getByText('Profil — SAA')).toBeInTheDocument());
+    expect(screen.getByRole('link', { name: /KPI conformité/ })).toHaveAttribute('href', '/stats');
+
+    const rankingSheet = screen.getByText('Classement de conformité').closest('.sheet') as HTMLElement;
+    fireEvent.click(within(rankingSheet).getByRole('button', { name: /Excel/ }));
+    expect(downloadCsv).toHaveBeenCalledTimes(1);
+    const [fileName, content] = vi.mocked(downloadCsv).mock.calls[0];
+    expect(fileName).toBe('classement-conformite.csv');
+    expect(content).toContain('SAA;82;B;86;14;21;4.5;0;82');
+    expect(content).toContain('CASH;65;C');
   });
 });

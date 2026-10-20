@@ -1,1 +1,422 @@
-/* Écran monitoring — styles propres à l'écran (maquette de référence). */
+/* Écran monitoring — styles propres à l'écran (maquette de référence r17). */
+
+/* En-tête d'écran (scopé à cet écran) : sous-titre plus compact et action alignée en bas, comme la maquette. */
+.folio-h:has(.mon-kpi-link) {
+  margin-bottom: 18px;
+}
+
+.folio-h:has(.mon-kpi-link) .folio-actions {
+  align-self: flex-end;
+  padding-top: 0;
+}
+
+/* --- Bouton « ⤓ Excel » d'en-tête de carte (texte seul, icône) --- */
+.mon-xl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--k-r-pill);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-family: var(--f-text);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.mon-xl:hover:not(:disabled) {
+  background: var(--k-soft-2);
+}
+
+.mon-xl:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* --- Classement de conformité --- */
+.mon-rank .sheet-head {
+  padding-bottom: 10px;
+}
+
+.mon-rank .sheet-body.flush {
+  padding: 0;
+}
+
+.mon-rank .t thead th {
+  font-size: 12px;
+  padding: 8px 12px;
+}
+
+.mon-rank .co-chip-name {
+  max-width: 150px;
+}
+
+.mon-rank .t tbody td {
+  padding: 7px 12px;
+  height: 42px;
+  white-space: nowrap;
+}
+
+.mon-rank .t th:first-child,
+.mon-rank .t td:first-child {
+  padding-inline-start: 20px;
+  width: 36px;
+}
+
+.mon-rank .t th:last-child,
+.mon-rank .t td:last-child {
+  padding-inline-end: 20px;
+}
+
+/* Colonnes chiffrées (Délais → Données) alignées à droite, comme la maquette. */
+.mon-rank .t th:nth-child(n + 5),
+.mon-rank .t td:nth-child(n + 5) {
+  text-align: end;
+}
+
+.mon-rank .t td:nth-child(n + 5) .mono {
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.mon-rank .t tbody tr.selected td {
+  background: var(--k-mint);
+}
+
+.mon-rank .co-chip {
+  min-width: 46px;
+  height: 30px;
+}
+
+/* Une seule page (≤ 6 compagnies) : pas de pied de pagination, comme la maquette. */
+.mon-rank.single .pager {
+  display: none;
+}
+
+.mon-rank .pager {
+  padding: 12px 20px;
+}
+
+.mon-rank-n {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.mon-restricted {
+  font-size: var(--k-fs-xs);
+  color: var(--ink-3);
+  margin: 0;
+  padding: 0 20px 8px;
+}
+
+/* Score composite : grand chiffre coloré + barre fine. */
+.mon-score {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  --mon-tone: var(--k-acc);
+}
+
+.mon-score.warn {
+  --mon-tone: var(--warn);
+}
+
+.mon-score.ko {
+  --mon-tone: var(--ko);
+}
+
+.mon-score.na {
+  --mon-tone: var(--ink-3);
+}
+
+.mon-score-value {
+  font-family: var(--f-display);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--mon-tone);
+  min-width: 26px;
+  font-feature-settings: 'tnum';
+}
+
+.mon-score-track {
+  flex: 1;
+  height: 5px;
+  width: 100px;
+  flex: none;
+  border-radius: var(--k-r-pill);
+  background: var(--paper-2);
+  overflow: hidden;
+}
+
+.mon-score-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--k-r-pill);
+  background: var(--mon-tone);
+}
+
+/* Note lettrée : pastille grise, lettre colorée. */
+.mon-grade {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: var(--k-r-pill);
+  background: var(--paper-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--k-acc);
+  white-space: nowrap;
+}
+
+.mon-grade.warn {
+  color: var(--warn);
+}
+
+.mon-grade.ko {
+  color: var(--ko);
+}
+
+.mon-grade.na {
+  color: var(--ink-3);
+}
+
+.mon-na {
+  color: var(--ink-3);
+}
+
+.mon-empty {
+  color: var(--ink-3);
+}
+
+/* --- Profil + tuiles + vue par dossier --- */
+.mon-rank + .mon-grid,
+.mon-rank + .mon-empty {
+  margin-top: 18px;
+}
+
+.grid.g-mon.mon-grid {
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  align-items: start;
+}
+
+@media (max-width: 1020px) {
+  .grid.g-mon.mon-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mon-profile {
+  overflow: hidden;
+}
+
+.mon-profile .sheet-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding-top: 4px;
+}
+
+/* Radar partagé, agrandi et retypé comme la maquette (libellés gris en DM Sans, score central en Urbanist noir, sans points). */
+.mon-radar {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.mon-radar svg {
+  max-width: 357px !important;
+  overflow: visible;
+}
+
+.mon-radar svg text {
+  font-family: var(--f-text);
+  font-size: 16.5px;
+  fill: var(--ink-3);
+}
+
+.mon-radar svg text.mono {
+  font-family: var(--f-display);
+  font-size: 38px;
+  font-weight: 500;
+  fill: var(--ink);
+}
+
+.mon-radar svg circle {
+  display: none;
+}
+
+.mon-radar svg polygon:last-of-type {
+  fill: var(--k-pri);
+  fill-opacity: 0.16;
+  stroke: var(--k-pri);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+
+.mon-alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--ko-soft);
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.mon-alert svg {
+  flex-shrink: 0;
+  color: var(--k-red);
+}
+
+.mon-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.mon-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mon-tiles .kpi {
+  padding: 11px 10px 11px 12px;
+}
+
+/* Vue par dossier */
+.mon-journeys .sheet-body {
+  padding-top: 8px;
+}
+
+.mon-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 14px;
+  margin-bottom: 8px;
+  border-radius: var(--k-r-pill);
+  background: var(--paper-2);
+  color: var(--ink-3);
+}
+
+.mon-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.mon-search:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.mon-journeys .t thead th {
+  font-size: 12px;
+  padding: 8px 10px;
+}
+
+.mon-journeys .t tbody td {
+  padding: 6px 10px;
+  height: 42px;
+  white-space: nowrap;
+}
+
+.mon-journeys .pager {
+  padding: 14px 4px 2px;
+  border-top: 1px solid var(--rule);
+}
+
+.mon-ref {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+  font-size: 12px;
+}
+
+.mon-ref .mono {
+  color: var(--ink);
+}
+
+.mon-ref .mon-ref-sub {
+  color: var(--ink-3);
+}
+
+.mon-dir {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: var(--k-r-pill);
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.mon-dir.emis {
+  background: var(--k-mint);
+  color: var(--k-pri);
+}
+
+.mon-dir.recu {
+  background: var(--paper-2);
+  color: var(--ink);
+}
+
+.mon-steps {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: normal;
+}
+
+.mon-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.mon-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--k-pri);
+  display: inline-block;
+}
+
+.mon-dot.ko {
+  background: var(--k-red);
+}
+
+.mon-dot.na {
+  background: var(--rule-strong);
+}
+
+.mon-steps-n {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.mon-state {
+  text-transform: uppercase;
+  font-size: 11px;
+  white-space: nowrap;
+}

@@ -1,1 +1,703 @@
-/* Écran matching — styles propres à l'écran (maquette de référence). */
+/* Écran matching — styles propres à l'écran (maquette de référence r11). */
+
+/* --- Onglets pilule au-dessus des deux colonnes (plus compacts que le gabarit par défaut) --- */
+.mt-screen > .tabs {
+  margin-bottom: 16px;
+}
+
+.mt-screen > .tabs .tab {
+  height: 31px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+.mt-screen > .tabs .tab-count {
+  min-width: 22px;
+  height: 19px;
+  font-size: 11px;
+  padding: 0 6px;
+}
+
+/* --- Grille : file (gauche, plus large) + panneau d'appariement (droite) --- */
+.grid.mt-grid {
+  grid-template-columns: minmax(0, 54fr) minmax(0, 46fr);
+  align-items: start;
+}
+
+/* La règle globale « .sheet + .sheet » décalerait le panneau de droite : les deux colonnes partent du même haut. */
+.grid.mt-grid > .sheet + .sheet {
+  margin-top: 0;
+}
+
+@media (max-width: 1020px) {
+  .grid.mt-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mt-muted {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+/* Pilules d'état douces (plus fines que la .tag par défaut). */
+.mt-screen .tag {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 9px;
+  line-height: 1.55;
+  white-space: nowrap;
+}
+
+/* Bouton fantôme compact « ⤓ Excel » de l'en-tête de carte. */
+.mt-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-family: var(--f-text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mt-ghost:hover {
+  background: var(--paper-2);
+}
+
+.mt-ghost:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- Tableau de la file --- */
+.mt-queue .sheet-head {
+  padding-bottom: 8px;
+}
+
+.mt-queue .t {
+  font-size: 12px;
+}
+
+.mt-queue .t thead th {
+  font-size: 11.5px;
+  padding: 8px 8px;
+}
+
+.mt-queue .t tbody td {
+  padding: 7px 8px;
+  vertical-align: middle;
+}
+
+.mt-queue .t thead th:first-child,
+.mt-queue .t tbody td:first-child {
+  padding-inline-start: 16px;
+}
+
+.mt-queue .t thead th:last-child,
+.mt-queue .t tbody td:last-child {
+  padding-inline-end: 12px;
+}
+
+.mt-ref {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  white-space: nowrap;
+}
+
+.mt-ref-id {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.mt-ref-at {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.mt-party {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.mt-party-co {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mt-party .co-chip {
+  min-width: 40px;
+  height: 19px;
+  font-size: 10px;
+  padding: 0 5px;
+  border-radius: 5px;
+}
+
+.mt-party-plate {
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.mt-party-pending {
+  display: block;
+  max-width: 112px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--ink-3);
+  white-space: normal;
+}
+
+/* Pastilles de partie : A bleue, B jaune (tokens --party-*). */
+.mt-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mt-dot--a {
+  background: var(--party-a);
+}
+
+.mt-dot--b {
+  background: var(--party-b-fill);
+}
+
+/* --- Score : nombre coloré + « / 100 » + barre avec repères aux seuils --- */
+.mt-score {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100px;
+  --mt-score-c: var(--ink-3);
+}
+
+.mt-score--wide {
+  width: 108px;
+}
+
+.mt-score--ok {
+  --mt-score-c: var(--k-pri);
+}
+
+.mt-score--warn {
+  --mt-score-c: var(--warn);
+}
+
+.mt-score--ko {
+  --mt-score-c: var(--ko);
+}
+
+.mt-score-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  font-family: var(--f-mono);
+}
+
+.mt-score-val {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--mt-score-c);
+}
+
+.mt-score-max {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.mt-score-track {
+  position: relative;
+  height: 5px;
+  border-radius: var(--k-r-pill);
+  background: var(--paper-2);
+}
+
+.mt-score-fill {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  border-radius: var(--k-r-pill);
+  background: var(--mt-score-c);
+}
+
+.mt-score-tick {
+  position: absolute;
+  top: -4px;
+  width: 1.5px;
+  height: 13px;
+  border-radius: 1px;
+  background: var(--ink-2);
+  transform: translateX(-50%);
+}
+
+/* --- Panneau « Appariement <id> » --- */
+.mt-panel-id {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.mt-panel .sheet-body {
+  padding-top: 6px;
+}
+
+.mt-panel-score {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+}
+
+.mt-note {
+  font-size: 11.5px;
+  margin: 6px 0;
+}
+
+.mt-crit {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+}
+
+.mt-crit-item {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 4px;
+  padding: 5px 0 6px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.mt-crit-icon {
+  display: inline-grid;
+  place-items: center;
+  height: 18px;
+}
+
+.mt-crit-item.is-ok .mt-crit-icon {
+  color: var(--ok);
+}
+
+.mt-crit-item.is-ko .mt-crit-icon {
+  color: var(--ko);
+}
+
+.mt-crit-item.is-pending .mt-crit-icon {
+  color: var(--warn);
+}
+
+.mt-crit-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mt-crit-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 17px;
+}
+
+.mt-crit-sub {
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  line-height: 14px;
+  color: var(--ink-3);
+}
+
+.mt-crit-val {
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  color: var(--ink-3);
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.mt-decided {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin: 0 0 10px;
+}
+
+.mt-reason-label {
+  display: block;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  margin-bottom: 4px;
+}
+
+.mt-reason {
+  width: 100%;
+  height: 34px;
+  margin-bottom: 12px;
+  padding: 0 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 13px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.mt-reason:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.mt-reason-hint {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin: -8px 0 12px;
+}
+
+/* Gros boutons de décision : confirmer = primaire, rejeter = rouge clair, complément = gris. */
+.mt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mt-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  font: inherit;
+  font-family: var(--f-text);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mt-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mt-btn-danger {
+  background: var(--ko-soft);
+  color: var(--ko);
+}
+
+.mt-btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ko-soft) 80%, var(--ko));
+}
+
+.mt-btn-soft {
+  background: var(--paper-2);
+  color: var(--ink-2);
+}
+
+.mt-btn-soft:hover:not(:disabled) {
+  background: var(--rule);
+  color: var(--ink);
+}
+
+/* Historique des décisions (SEC-28) — discret sous les actions. */
+.mt-history {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+}
+
+.mt-history-title {
+  display: block;
+  font-size: 12.5px;
+  margin-bottom: 6px;
+}
+
+.mt-history-empty {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin: 0;
+}
+
+.mt-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mt-history-list li {
+  font-size: 11.5px;
+  color: var(--ink-2);
+  border-inline-start: 2px solid var(--rule-strong);
+  padding-inline-start: 8px;
+}
+
+.mt-history-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.mt-history-row strong {
+  color: var(--ink);
+}
+
+/* --- Vue de confrontation --- */
+.mt-conf-id {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.mt-party-toggle {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.mt-party-toggle button {
+  height: 22px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--k-r-pill);
+  background: var(--paper-2);
+  color: var(--ink);
+  font: inherit;
+  font-family: var(--f-text);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.mt-party-toggle button[aria-selected='true'] {
+  background: var(--k-mint);
+  color: var(--k-pri);
+}
+
+.mt-conf-key {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 6px 0 8px;
+}
+
+.mt-conf-key h3 {
+  font-family: var(--f-display);
+  font-size: 15px;
+  font-weight: 600;
+  margin: 10px 0 0;
+}
+
+.mt-conf-score {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.mt-cf-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+@media (max-width: 1100px) {
+  .mt-cf-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.mt-cf {
+  border: 1px solid var(--rule);
+  border-inline-start: 3px solid var(--rule-strong);
+  border-radius: 6px;
+  padding: 8px 10px 10px;
+  min-width: 0;
+}
+
+.mt-cf.is-ok {
+  border-inline-start-color: var(--ok);
+}
+
+.mt-cf.is-ko {
+  border-inline-start-color: var(--ko);
+}
+
+.mt-cf-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.mt-cf-head strong {
+  font-size: 12px;
+  font-weight: 700;
+  min-width: 0;
+}
+
+.mt-cf-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: var(--k-r-pill);
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1.55;
+}
+
+.mt-cf-badge.ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.mt-cf-badge.ko {
+  background: var(--ko-soft);
+  color: var(--ko);
+}
+
+.mt-cf-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.mt-pv {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--ink);
+  min-width: 0;
+}
+
+.mt-pv .mono {
+  overflow-wrap: anywhere;
+}
+
+.mt-pv.is-active .mono {
+  font-weight: 600;
+}
+
+.mt-pv-tag {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--ink-2);
+  align-self: flex-start;
+  margin-top: 1px;
+}
+
+.mt-conf-actions {
+  margin-top: 4px;
+}
+
+.mt-shortcuts {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin: 8px 0 0;
+}
+
+.mt-veh-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+@media (max-width: 820px) {
+  .mt-veh-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mt-veh {
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+  padding: 12px 16px 16px;
+  min-width: 0;
+}
+
+.mt-veh.is-active {
+  border-color: var(--k-acc-2);
+}
+
+.mt-veh-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.mt-veh-head strong {
+  font-family: var(--f-display);
+  font-size: 14px;
+  font-weight: 700;
+  flex: 1;
+}
+
+.mt-veh-dl {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 6px 10px;
+  margin: 0;
+  font-size: 12.5px;
+}
+
+.mt-veh-dl dt {
+  color: var(--ink-3);
+}
+
+.mt-veh-dl dd {
+  margin: 0;
+  color: var(--ink);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* --- Thème sombre : --k-mint / --k-soft restent clairs (tokens non redéfinis) ; la ligne
+   sélectionnée et le survol de la file passent sur un teal assombri lisible. --- */
+:root[data-theme='dark'] .mt-queue .t tbody tr.selected,
+:root[data-theme='dark'] .mt-queue .t tbody tr.click:hover,
+:root[data-theme='dark'] .mt-party-toggle button[aria-selected='true'] {
+  background: color-mix(in srgb, var(--k-pri) 24%, var(--paper));
+}
+
+:root[data-theme='dark'] .mt-party-toggle button[aria-selected='true'] {
+  color: var(--ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .mt-queue .t tbody tr.selected,
+  :root:not([data-theme='light']) .mt-queue .t tbody tr.click:hover,
+  :root:not([data-theme='light']) .mt-party-toggle button[aria-selected='true'] {
+    background: color-mix(in srgb, var(--k-pri) 24%, var(--paper));
+  }
+
+  :root:not([data-theme='light']) .mt-party-toggle button[aria-selected='true'] {
+    color: var(--ink);
+  }
+}

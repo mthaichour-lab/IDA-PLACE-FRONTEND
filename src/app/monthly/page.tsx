@@ -1,17 +1,15 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Check, CircleCheck, CircleSlash, Download, FileText } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
 import { CoChip } from '@/components/ui/CoChip';
-import { CountdownBar } from '@/components/ui/CountdownBar';
 import { Kpi, KpiRow } from '@/components/ui/Kpi';
 import { Table, Column } from '@/components/ui/Table';
-import { Tag } from '@/components/ui/Tag';
 import { TruncationNote } from '@/components/ui/TruncationNote';
 import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
-import { TranslationKey } from '@/i18n/translations';
 import { apiGet, apiPath, apiPost } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { buildCsv, downloadCsv } from '@/lib/csv';
@@ -28,12 +26,64 @@ import {
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 
+/** Montant + unité « DA » (maquette) — le nombre reste formaté par `Intl` (séparateurs de la langue). */
 function formatDzd(amount: number, locale: string): string {
   try {
-    return new Intl.NumberFormat(locale, { style: 'currency', currency: 'DZD', maximumFractionDigits: 0 }).format(amount);
+    return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(amount)} DA`;
   } catch {
     return `${amount.toLocaleString()} DA`;
   }
+}
+
+/**
+ * KPI « Montant de la synthèse » en notation compacte à partir du million
+ * (« 1,62 M DA », maquette) — simple mise en forme du total renvoyé par
+ * `/summary` ; le montant exact reste lisible en infobulle (`title`).
+ */
+function compactDzd(amount: number, locale: string): string {
+  if (Math.abs(amount) < 1_000_000) return formatDzd(amount, locale);
+  try {
+    return `${new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount / 1_000_000)} M DA`;
+  } catch {
+    return formatDzd(amount, locale);
+  }
+}
+
+/** Date calendaire « AAAA-MM-JJ » (ou ISO) affichée « 5 nov. 2026 », lue en UTC pour ne jamais décaler le jour. */
+function isoDate(iso: string, locale: string): string {
+  const d = new Date(iso.length === 10 ? `${iso}T00:00:00Z` : iso);
+  return d.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+
+/** Horodatage « 6 oct. 2026 09:39 » (maquette). */
+function dateTime(iso: string, locale: string): string {
+  const d = new Date(iso);
+  return `${d.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' })} ${d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+/** « octobre 2026 » pour la période « AAAA-MM » (titre, comme la maquette). */
+function periodLabel(period: string, locale: string): string {
+  const [y, m] = period.split('-').map(Number);
+  if (!y || !m) return period;
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
+/**
+ * Position d'affichage d'une échéance entre deux dates déjà connues (même
+ * calcul que `CountdownBar`) — purement présentationnel, ne tranche aucune
+ * règle Art. 16.
+ */
+function meterInfo(startAt: string, deadlineAt: string, now: Date = new Date()) {
+  const start = new Date(startAt.length === 10 ? `${startAt}T00:00:00Z` : startAt).getTime();
+  const end = new Date(deadlineAt.length === 10 ? `${deadlineAt}T00:00:00Z` : deadlineAt).getTime();
+  const span = Math.max(1, end - start);
+  const elapsed = Math.min(span, Math.max(0, now.getTime() - start));
+  const percent = Math.round((elapsed / span) * 100);
+  const remainingMs = end - now.getTime();
+  const overdue = remainingMs <= 0;
+  const remainingDays = Math.ceil(Math.abs(remainingMs) / (24 * 60 * 60 * 1000));
+  const tone = overdue ? 'ko' : percent >= 75 ? 'warn' : 'pri';
+  return { percent, overdue, remainingDays, tone };
 }
 
 function currentPeriod(): string {
@@ -173,41 +223,43 @@ export default function MonthlyPage() {
       {
         key: 'company',
         header: t('monthly.col.company'),
-        render: (r) => (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <CoChip code={r.code} /> <span className="mono">{r.code}</span>
-          </span>
-        ),
+        render: (r) => <CoChip code={r.code} withName />,
       },
       { key: 'claimsCount', header: t('monthly.col.claimsCount'), render: (r) => <span className="mono">{r.claimsCount}</span> },
       { key: 'totalAmount', header: t('monthly.col.totalAmount'), render: (r) => <span className="mono">{formatDzd(r.totalAmount, locale)}</span> },
       {
         key: 'status',
         header: t('monthly.col.status'),
-        render: (r) => <Tag tone={r.status === 'CLOTURE' ? 'ok' : 'warn'}>{t(`monthly.status.${r.status}` as TranslationKey)}</Tag>,
+        render: (r) =>
+          r.status === 'CLOTURE' ? (
+            <span className="tag ok mo-status">
+              <Check size={12} strokeWidth={2.5} aria-hidden="true" />
+              {t('monthly.status.CLOTURE')}
+            </span>
+          ) : (
+            <span className="tag warn mo-status">{t('monthly.status.EN_COURS')}</span>
+          ),
       },
       {
         key: 'closedAt',
         header: t('monthly.col.closedAt'),
-        render: (r) => (r.closedAt ? <span className="mono" style={{ fontSize: 'var(--k-fs-xs)' }}>{new Date(r.closedAt).toLocaleString(locale)}</span> : <span style={{ color: 'var(--ink-3)' }}>—</span>),
+        render: (r) => (r.closedAt ? <span className="mono mo-date">{dateTime(r.closedAt, locale)}</span> : <span className="mo-dash">—</span>),
       },
       {
         key: 'action',
         header: '',
         render: (r) =>
           r.status === 'CLOTURE' ? (
-            <span className="mono" style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}>
-              {r.bordereauRef}
-            </span>
+            <span className="mono mo-ref">{r.bordereauRef}</span>
           ) : (
             <button
               type="button"
-              className="tag ok"
-              style={{ border: 'none', cursor: canGenerate ? 'pointer' : 'not-allowed' }}
+              className="btn-soft mo-action"
               disabled={!canGenerate || closeMutation.isPending}
               onClick={() => closeMutation.mutate(r.code)}
               title={!canGenerate ? t('common.forbidden') : undefined}
             >
+              <FileText size={14} strokeWidth={2} aria-hidden="true" />
               {t('monthly.action.generateBordereau')}
             </button>
           ),
@@ -223,18 +275,31 @@ export default function MonthlyPage() {
         key: 'pair',
         header: t('monthly.lot.col.pair'),
         render: (r) => (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <CoChip code={r.from} /> <span style={{ color: 'var(--ink-3)' }}>→</span> <CoChip code={r.to} />
+          <span className="mo-pair">
+            <CoChip code={r.from} />
+            <span aria-hidden="true" className="mo-arrow">
+              →
+            </span>
+            <CoChip code={r.to} />
           </span>
         ),
       },
-      { key: 'settledAt', header: t('monthly.lot.col.settledAt'), render: (r) => (r.settledAt ? new Date(r.settledAt).toLocaleDateString(locale) : <span style={{ color: 'var(--ink-3)' }}>—</span>) },
-      { key: 'insertedAt', header: t('monthly.lot.col.insertedAt'), render: (r) => new Date(r.createdAt).toLocaleDateString(locale) },
+      { key: 'settledAt', header: t('monthly.lot.col.settledAt'), render: (r) => (r.settledAt ? <span className="mono">{r.settledAt.slice(0, 10)}</span> : <span className="mo-dash">—</span>) },
+      { key: 'insertedAt', header: t('monthly.lot.col.insertedAt'), render: (r) => <span className="mono">{r.createdAt.slice(0, 10)}</span> },
       { key: 'amount', header: t('monthly.lot.col.amount'), render: (r) => <span className="mono">{formatDzd(r.amount, locale)}</span> },
       {
         key: 'state',
         header: t('monthly.lot.col.state'),
-        render: (r) => <Tag tone={r.included ? 'ok' : 'warn'}>{t(r.included ? 'monthly.lot.state.included' : 'monthly.lot.state.excluded')}</Tag>,
+        // Icône compacte (la maquette n'a qu'une colonne d'icône), libellé conservé pour les lecteurs d'écran et en infobulle.
+        render: (r) => {
+          const label = t(r.included ? 'monthly.lot.state.included' : 'monthly.lot.state.excluded');
+          return (
+            <span className={`mo-lot-state ${r.included ? 'ok' : 'warn'}`} title={label}>
+              {r.included ? <CircleCheck size={16} strokeWidth={2} aria-hidden="true" /> : <CircleSlash size={16} strokeWidth={2} aria-hidden="true" />}
+              <span className="mo-sr">{label}</span>
+            </span>
+          );
+        },
       },
     ],
     [t, locale],
@@ -242,57 +307,48 @@ export default function MonthlyPage() {
 
   const annexe7Columns: Column<SettlementMonthlyAnnexe7Pair>[] = useMemo(
     () => [
-      {
-        key: 'creditor',
-        header: t('monthly.annexe7.col.creditor'),
-        render: (p) => (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <CoChip code={p.from} /> <span className="mono">{p.from}</span>
-          </span>
-        ),
-      },
-      {
-        key: 'debtor',
-        header: t('monthly.annexe7.col.debtor'),
-        render: (p) => (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <CoChip code={p.to} /> <span className="mono">{p.to}</span>
-          </span>
-        ),
-      },
+      { key: 'creditor', header: t('monthly.annexe7.col.creditor'), render: (p) => <CoChip code={p.from} withName /> },
+      { key: 'debtor', header: t('monthly.annexe7.col.debtor'), render: (p) => <CoChip code={p.to} withName /> },
       { key: 'count', header: t('monthly.annexe7.col.count'), render: (p) => <span className="mono">{p.count}</span> },
       { key: 'amount', header: t('monthly.annexe7.col.amount'), render: (p) => <span className="mono">{formatDzd(p.totalAmount, locale)}</span> },
     ],
     [t, locale],
   );
 
+  const summary = summaryQuery.data;
+  const allClosed = companies.length > 0 && closedCount === companies.length;
+  const closurePct = companies.length > 0 ? Math.round((closedCount / companies.length) * 100) : 0;
+  const saisieMeter = summary ? meterInfo(firstDayOfPeriodIso(period), summary.insertionDeadline) : null;
+
   return (
     <>
-      <FolioHeader badge="Module C · §6.5" title={t('monthly.title')} subtitle={t('monthly.subtitle')} />
+      <FolioHeader
+        badge="Module C · §6.5"
+        title={`${t('monthly.title')} — ${periodLabel(period, locale)}`}
+        subtitle={t('monthly.subtitle')}
+        actions={
+          <div className="mo-period">
+            <label htmlFor="monthly-period" className="mo-period-label">
+              {t('monthly.period.label')}
+            </label>
+            <input
+              id="monthly-period"
+              type="month"
+              value={period}
+              onChange={(e) => {
+                setPeriod(e.target.value);
+                setPage(1);
+                setLotPage(1);
+              }}
+            />
+          </div>
+        }
+      />
 
-      <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
-        <div className="sheet-body">
-          <label htmlFor="monthly-period" style={{ display: 'block', fontSize: 'var(--k-fs-s)', color: 'var(--ink-2)', marginBottom: 4 }}>
-            {t('monthly.period.label')}
-          </label>
-          <input
-            id="monthly-period"
-            type="month"
-            value={period}
-            onChange={(e) => {
-              setPeriod(e.target.value);
-              setPage(1);
-              setLotPage(1);
-            }}
-            style={{ padding: '6px 10px', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', font: 'inherit', background: 'var(--paper)', color: 'var(--ink)' }}
-          />
-
-          {!canGenerate ? <p className="note warn" style={{ marginTop: 'var(--s-3)' }}>{t('common.forbidden')}</p> : null}
-        </div>
-      </div>
+      {!canGenerate ? <p className="note warn mo-forbidden">{t('common.forbidden')}</p> : null}
 
       {/*
-       * Avancement du cycle — la capture de référence montre une frise à 5
+       * Avancement du lot — la capture de référence montre une frise à 5
        * étapes (Annexe 8, transmission tiers + Commission, scellement
        * définitif) qui sont en réalité celles du Diagramme 2 du lot
        * TRIMESTRIEL (voir `quarter.compensation.gap.note` et le rapport de
@@ -300,60 +356,88 @@ export default function MonthlyPage() {
        * API. Seules deux étapes sont réelles ici : l'échéance de saisie
        * (`summary.insertionDeadline`) et la clôture par compagnie
        * (`companies[].status`) — jamais une date fabriquée pour les
-       * étapes manquantes (règle d'or du projet).
+       * étapes manquantes (règle d'or du projet). L'état visuel d'une
+       * étape ne découle QUE de `companies[].status` (toutes clôturées =
+       * réalisée), jamais d'une règle de calendrier recalculée ici.
        */}
-      <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
+      <div className="sheet">
         <div className="sheet-head">
           <span>{t('monthly.progress.title')}</span>
         </div>
         <div className="sheet-body">
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s-5)' }}>
-            <div style={{ flex: '1 1 260px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <span className="co-chip" style={{ background: 'var(--k-pri)' }}>1</span>
-                <strong style={{ fontSize: 'var(--k-fs-s)' }}>{t('monthly.progress.step1.label')}</strong>
+          <div className="mo-steps">
+            <div className={`mo-step ${allClosed ? 'done' : 'current'}`}>
+              <span className="mo-step-badge">{allClosed ? <Check size={12} strokeWidth={3} aria-hidden="true" /> : null}</span>
+              <div className="mo-step-body">
+                <div className="mo-step-kicker">1 · {t('monthly.step.article')}</div>
+                <div className="mo-step-title">{t('monthly.step.saisie')}</div>
+                <div className="mo-step-meta">{summary ? isoDate(summary.insertionDeadline, locale) : '—'}</div>
               </div>
-              {summaryQuery.data ? (
-                <CountdownBar
-                  startAt={firstDayOfPeriodIso(period)}
-                  deadlineAt={summaryQuery.data.insertionDeadline}
-                  renderLabel={({ remainingDays, overdue }) => `${remainingDays} ${t(overdue ? 'exchanges.countdown.overdue' : 'exchanges.countdown.remaining')}`}
-                />
+            </div>
+            <div className={`mo-step ${allClosed ? 'done' : closedCount > 0 ? 'current' : ''}`}>
+              <span className="mo-step-badge">{allClosed ? <Check size={12} strokeWidth={3} aria-hidden="true" /> : null}</span>
+              <div className="mo-step-body">
+                <div className="mo-step-kicker">2 · {t('monthly.step.article')}</div>
+                <div className="mo-step-title">{t('monthly.step.cloture')}</div>
+                <div className="mo-step-meta">{isoDate(lastDayOfPeriodIso(period), locale)}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mo-meters">
+            <div className={`mo-meter ${saisieMeter?.tone ?? ''}`}>
+              <div className="mo-meter-top">
+                <span className="mo-meter-label">{t('monthly.progress.step1.label')}</span>
+                {saisieMeter ? (
+                  <span className="mo-meter-right mono">
+                    {saisieMeter.remainingDays} {t(saisieMeter.overdue ? 'exchanges.countdown.overdue' : 'exchanges.countdown.remaining')}
+                  </span>
+                ) : null}
+              </div>
+              {summary && saisieMeter ? (
+                <>
+                  <div className="mo-meter-track">
+                    <div className="mo-meter-fill" style={{ width: `${Math.max(0, Math.min(100, saisieMeter.percent))}%` }} />
+                  </div>
+                  <div className="mo-meter-dates mono">
+                    <span>{isoDate(firstDayOfPeriodIso(period), locale)}</span>
+                    <span>
+                      {t('monthly.meter.dueOn')} {isoDate(summary.insertionDeadline, locale)}
+                    </span>
+                  </div>
+                </>
               ) : (
-                <p style={{ margin: 0, color: 'var(--ink-3)' }}>{t('common.loading')}</p>
+                <p className="muted">{t('common.loading')}</p>
               )}
             </div>
-            <div style={{ flex: '1 1 260px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <span className="co-chip" style={{ background: closedCount === companies.length && companies.length > 0 ? 'var(--ok)' : 'var(--k-pri)' }}>2</span>
-                <strong style={{ fontSize: 'var(--k-fs-s)' }}>{t('monthly.progress.step2.label')}</strong>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div className="score-bar-track" style={{ minWidth: 70 }}>
-                  <div
-                    className="score-bar-fill"
-                    style={{ width: `${companies.length > 0 ? Math.round((closedCount / companies.length) * 100) : 0}%`, background: 'var(--ok)' }}
-                  />
-                </div>
-                <span className="mono" style={{ fontSize: 'var(--k-fs-xs)' }}>
+
+            <div className={`mo-meter ${allClosed ? 'ok' : 'pri'}`}>
+              <div className="mo-meter-top">
+                <span className="mo-meter-label">{t('monthly.progress.step2.label')}</span>
+                <span className="mo-meter-right mono">
                   {closedCount}/{companies.length} {t('monthly.progress.step2.closedSuffix')}
                 </span>
               </div>
-              <p style={{ margin: 'var(--s-1) 0 0', fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}>
-                {t('monthly.progress.step2.deadlineLabel')} <span className="mono">{new Date(`${lastDayOfPeriodIso(period)}T00:00:00Z`).toLocaleDateString(locale, { timeZone: 'UTC' })}</span>
-              </p>
+              <div className="mo-meter-track">
+                <div className="mo-meter-fill" style={{ width: `${closurePct}%` }} />
+              </div>
+              <div className="mo-meter-dates mono">
+                <span>{isoDate(firstDayOfPeriodIso(period), locale)}</span>
+                <span>
+                  {t('monthly.progress.step2.deadlineLabel')} {isoDate(lastDayOfPeriodIso(period), locale)}
+                </span>
+              </div>
             </div>
           </div>
-          <p className="note" style={{ marginTop: 'var(--s-4)', marginBottom: 0, fontSize: 'var(--k-fs-xs)' }}>
-            {t('monthly.progress.gap.note')}
-          </p>
+
+          <p className="mo-gap-note">{t('monthly.progress.gap.note')}</p>
         </div>
       </div>
 
       {summaryQuery.isLoading ? (
-        <p>{t('common.loading')}</p>
-      ) : summaryQuery.error || !summaryQuery.data ? (
-        <div className="note ko" role="alert">
+        <p className="muted mo-kpi-state">{t('common.loading')}</p>
+      ) : summaryQuery.error || !summary ? (
+        <div className="note ko mo-kpi-state" role="alert">
           <span>{t('common.error')}</span>
           <button type="button" onClick={() => summaryQuery.refetch()}>
             {t('common.retry')}
@@ -361,107 +445,126 @@ export default function MonthlyPage() {
         </div>
       ) : (
         <KpiRow>
-          <Kpi value={summaryQuery.data.settledCount} label={t('monthly.kpi.settledCount')} />
-          <Kpi value={formatDzd(summaryQuery.data.totalAmount, locale)} label={t('monthly.kpi.totalAmount')} />
-          <Kpi value={summaryQuery.data.excludedOppositionCount} label={t('monthly.kpi.excludedOppositionCount')} />
-          <Kpi
-            value={new Date(summaryQuery.data.insertionDeadline).toLocaleDateString(locale)}
-            label={t('monthly.kpi.insertionDeadline')}
-            extra={t('monthly.kpi.insertionDeadline.extra')}
-          />
+          <Kpi value={summary.settledCount} label={t('monthly.kpi.settledCount')} />
+          <Kpi value={compactDzd(summary.totalAmount, locale)} title={formatDzd(summary.totalAmount, locale)} label={t('monthly.kpi.totalAmount')} />
+          <Kpi value={summary.excludedOppositionCount} label={t('monthly.kpi.excludedOppositionCount')} />
+          <Kpi value={isoDate(summary.insertionDeadline, locale)} label={t('monthly.kpi.insertionDeadline')} extra={t('monthly.kpi.insertionDeadline.extra')} />
         </KpiRow>
       )}
 
-      <div className="sheet" style={{ marginTop: 'var(--s-5)' }}>
+      <div className="sheet">
         <div className="sheet-head">
           <span>{t('monthly.completeness.title')}</span>
-          <button
-            type="button"
-            onClick={() => downloadCsv(`completude-saisie-${period}.csv`, companiesCsv(companies))}
-            disabled={companies.length === 0}
-            title={t('common.exportExcel.note')}
-            style={{ padding: '4px 10px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--rule-strong)', background: 'var(--paper)', color: 'var(--ink)', font: 'inherit', cursor: companies.length === 0 ? 'not-allowed' : 'pointer' }}
-          >
-            {t('common.exportExcel')}
-          </button>
+          <span className="mo-head-actions">
+            <button
+              type="button"
+              className="mo-excel"
+              onClick={() => downloadCsv(`completude-saisie-${period}.csv`, companiesCsv(companies))}
+              disabled={companies.length === 0}
+              title={t('common.exportExcel.note')}
+            >
+              <Download size={15} strokeWidth={2} aria-hidden="true" />
+              {t('common.exportExcel')}
+            </button>
+            <span className="head-chip">{t('monthly.step.article')}</span>
+          </span>
         </div>
-        <div className="sheet-body">
+        <div className="sheet-body flush">
           {monthlyQuery.isLoading ? (
-            <p>{t('common.loading')}</p>
+            <p className="pad muted">{t('common.loading')}</p>
           ) : monthlyQuery.error ? (
-            <div className="note ko" role="alert">
-              <span>{t('common.error')}</span>
-              <button type="button" onClick={() => monthlyQuery.refetch()}>
-                {t('common.retry')}
-              </button>
+            <div className="pad">
+              <div className="note ko" role="alert">
+                <span>{t('common.error')}</span>
+                <button type="button" onClick={() => monthlyQuery.refetch()}>
+                  {t('common.retry')}
+                </button>
+              </div>
             </div>
           ) : (
-            <Table columns={columns} rows={pageRows} page={page} total={companies.length} pageSize={PAGE_SIZE} onPageChange={setPage} getRowKey={(r) => r.code} />
+            <div className="mo-table mo-completeness">
+              <Table columns={columns} rows={pageRows} page={page} total={companies.length} pageSize={PAGE_SIZE} onPageChange={setPage} getRowKey={(r) => r.code} />
+            </div>
           )}
         </div>
       </div>
 
-      <div className="grid g-side" style={{ marginTop: 'var(--s-5)' }}>
+      <div className="mo-grid">
         <div className="sheet">
           <div className="sheet-head">
             <span>{t('monthly.lot.title')}</span>
             <button
               type="button"
+              className="mo-excel"
               onClick={() => downloadCsv(`recours-du-lot-${period}.csv`, lotRowsCsv(lotRows))}
               disabled={lotRows.length === 0}
               title={t('common.exportExcel.note')}
-              style={{ padding: '4px 10px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--rule-strong)', background: 'var(--paper)', color: 'var(--ink)', font: 'inherit', cursor: lotRows.length === 0 ? 'not-allowed' : 'pointer' }}
             >
+              <Download size={15} strokeWidth={2} aria-hidden="true" />
               {t('common.exportExcel')}
             </button>
           </div>
-          <div className="sheet-body">
+          <div className="sheet-body flush">
             {lotRegleQuery.isLoading || lotOppositionQuery.isLoading ? (
-              <p>{t('common.loading')}</p>
+              <p className="pad muted">{t('common.loading')}</p>
             ) : lotRegleQuery.error || lotOppositionQuery.error ? (
-              <div className="note ko" role="alert">
-                <span>{t('common.error')}</span>
+              <div className="pad">
+                <div className="note ko" role="alert">
+                  <span>{t('common.error')}</span>
+                </div>
               </div>
             ) : (
               <>
-                <TruncationNote truncated={lotRegleQuery.data?.truncated || lotOppositionQuery.data?.truncated} shown={lotRows.length} total={(lotRegleQuery.data?.total ?? 0) + (lotOppositionQuery.data?.total ?? 0)} />
-                {summaryQuery.data ? (
-                  <p style={{ margin: '0 0 var(--s-3)', fontSize: 'var(--k-fs-s)' }}>
-                    {t('monthly.lot.total')} ({summaryQuery.data.settledCount}) : <strong className="mono">{formatDzd(summaryQuery.data.totalAmount, locale)}</strong>
-                  </p>
-                ) : null}
-                <Table columns={lotColumns} rows={lotPageRows} page={lotPage} total={lotRows.length} pageSize={PAGE_SIZE} onPageChange={setLotPage} getRowKey={(r) => r.id} />
-                <p style={{ margin: 'var(--s-2) 0 0', fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}>{t('monthly.lot.insertedAt.note')}</p>
+                <div className="pad mo-trunc">
+                  <TruncationNote truncated={lotRegleQuery.data?.truncated || lotOppositionQuery.data?.truncated} shown={lotRows.length} total={(lotRegleQuery.data?.total ?? 0) + (lotOppositionQuery.data?.total ?? 0)} />
+                </div>
+                <div className="mo-table mo-lot">
+                  <Table columns={lotColumns} rows={lotPageRows} page={lotPage} total={lotRows.length} pageSize={PAGE_SIZE} onPageChange={setLotPage} getRowKey={(r) => r.id} />
+                  {summary ? (
+                    <div className="mo-total">
+                      <span>
+                        {t('monthly.lot.total')} ({summary.settledCount} {t('monthly.lot.recoursUnit')})
+                      </span>
+                      <strong className="mono">{formatDzd(summary.totalAmount, locale)}</strong>
+                    </div>
+                  ) : null}
+                </div>
+                <p className="pad mo-foot-note">{t('monthly.lot.insertedAt.note')}</p>
               </>
             )}
           </div>
         </div>
 
         <div className="sheet">
-          <div className="sheet-head">
+          <div className="sheet-head mo-head-wrap">
             <span>{t('monthly.annexe7.title')}</span>
             <button
               type="button"
+              className="mo-excel"
               onClick={() => downloadCsv(`annexe7-${period}.csv`, annexe7Csv(annexe7Pairs))}
               disabled={annexe7Pairs.length === 0}
               title={t('common.exportExcel.note')}
-              style={{ padding: '4px 10px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--rule-strong)', background: 'var(--paper)', color: 'var(--ink)', font: 'inherit', cursor: annexe7Pairs.length === 0 ? 'not-allowed' : 'pointer' }}
             >
+              <Download size={15} strokeWidth={2} aria-hidden="true" />
               {t('common.exportExcel')}
             </button>
           </div>
-          <div className="sheet-body">
+          <div className="sheet-body flush">
             {annexe7Query.isLoading ? (
-              <p>{t('common.loading')}</p>
+              <p className="pad muted">{t('common.loading')}</p>
             ) : annexe7Query.error || !annexe7Query.data ? (
-              <div className="note ko" role="alert">
-                <span>{t('common.error')}</span>
-                <button type="button" onClick={() => annexe7Query.refetch()}>
-                  {t('common.retry')}
-                </button>
+              <div className="pad">
+                <div className="note ko" role="alert">
+                  <span>{t('common.error')}</span>
+                  <button type="button" onClick={() => annexe7Query.refetch()}>
+                    {t('common.retry')}
+                  </button>
+                </div>
               </div>
             ) : (
-              <Table columns={annexe7Columns} rows={annexe7PageRows} page={annexe7Page} total={annexe7Pairs.length} pageSize={PAGE_SIZE} onPageChange={setAnnexe7Page} getRowKey={(p) => `${p.from}|${p.to}`} />
+              <div className="mo-table mo-annexe7">
+                <Table columns={annexe7Columns} rows={annexe7PageRows} page={annexe7Page} total={annexe7Pairs.length} pageSize={PAGE_SIZE} onPageChange={setAnnexe7Page} getRowKey={(p) => `${p.from}|${p.to}`} />
+              </div>
             )}
           </div>
         </div>

@@ -1,1 +1,432 @@
-/* Écran quarter — styles propres à l'écran (maquette de référence). */
+/* Écran quarter — styles propres à l'écran (maquette de référence r15). */
+
+.q-screen .folio-actions {
+  align-items: center;
+  padding-top: 44px;
+}
+
+/* Sélecteur segmenté (trimestres, mode du diagramme) : piste grise, pastille active pleine. */
+.q-seg {
+  display: inline-flex;
+}
+
+.q-seg .tabs {
+  margin: 0;
+  gap: 2px;
+  padding: 3px;
+  background: var(--paper-2);
+  border-radius: var(--k-r-pill);
+}
+
+.q-seg .tab {
+  height: 30px;
+  padding: 0 14px;
+  background: transparent;
+  font-size: 13.5px;
+}
+
+.q-seg .tab[aria-selected='true'] {
+  background: var(--k-pri);
+  color: #fff;
+}
+
+.q-screen .folio-actions > .btn-outline {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 13.5px;
+}
+
+/* Bouton discret « Excel » d'en-tête de carte (icône + libellé, sans bordure). */
+.q-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-family: var(--f-text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.q-ghost:hover:not(:disabled) {
+  background: var(--k-soft-2);
+}
+
+.q-ghost:disabled {
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+
+.q-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* --- Ligne haute : trimestre en compensation + positions nettes --- */
+
+.grid.q-top {
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr);
+  align-items: stretch;
+}
+
+@media (max-width: 1020px) {
+  .grid.q-top {
+    grid-template-columns: 1fr;
+  }
+}
+
+.q-comp-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.q-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--k-r-pill);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.q-status::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.q-status.warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.q-status.ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.q-months {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.q-dl {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  column-gap: 12px;
+  row-gap: 7px;
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+
+.q-dl dt {
+  color: var(--ink-3);
+}
+
+.q-dl dd {
+  margin: 0;
+  color: var(--ink);
+}
+
+.q-dd-sub {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+
+.q-dd-sub.ko {
+  color: var(--ko);
+}
+
+.q-art {
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+/* Positions nettes multilatérales : table pleine largeur, montants à droite, pied grisé. */
+.q-net .sheet-body.flush {
+  padding-bottom: 0;
+}
+
+.q-net-t thead th,
+.q-net-t tbody td,
+.q-net-t tfoot td {
+  padding-inline: 10px;
+}
+
+.q-net-t thead th:first-child,
+.q-net-t tbody td:first-child,
+.q-net-t tfoot td:first-child {
+  padding-inline-start: 20px;
+}
+
+.q-net-t thead th:last-child,
+.q-net-t tbody td:last-child,
+.q-net-t tfoot td:last-child {
+  padding-inline-end: 20px;
+}
+
+.q-net-t tbody td {
+  padding-block: 9px;
+}
+
+.q-net-t .num {
+  text-align: end;
+  white-space: nowrap;
+}
+
+.q-net-t td.mono {
+  font-size: 12px;
+}
+
+.q-net-t .q-pos.pos {
+  color: var(--ok);
+}
+
+.q-net-t .q-pos.neg {
+  color: var(--ko);
+}
+
+.q-net-t tbody tr:last-child td {
+  border-bottom: 1px solid var(--rule);
+}
+
+.q-net-t tfoot td {
+  background: var(--k-soft-2);
+  padding-block: 11px;
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.q-net-t tfoot td.mono {
+  font-weight: 700;
+}
+
+.q-net-t tfoot tr td:first-child {
+  border-end-start-radius: 18px;
+}
+
+.q-net-t tfoot tr td:last-child {
+  border-end-end-radius: 18px;
+}
+
+/* --- Matrice brute : carte thermique en tuiles --- */
+
+.q-heat {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 4px;
+  table-layout: fixed;
+  font-size: 13px;
+}
+
+.q-heat th {
+  font-weight: 500;
+}
+
+.q-heat-corner {
+  width: 128px;
+  text-align: start;
+  vertical-align: top;
+  color: var(--ink-3);
+  font-family: var(--f-text);
+  font-size: 13.5px;
+  font-weight: 400;
+  white-space: nowrap;
+  padding: 0 0 6px;
+}
+
+.q-heat thead .q-heat-code {
+  padding: 18px 0 8px;
+}
+
+.q-heat-code {
+  font-family: var(--f-mono);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+  text-align: center;
+}
+
+.q-heat-row {
+  text-align: end;
+  padding-inline-end: 12px;
+}
+
+.q-heat-total-h {
+  width: 96px;
+  color: var(--ink-3);
+  font-family: var(--f-text);
+  font-size: 13.5px;
+  font-weight: 400;
+  text-align: start;
+  padding: 18px 0 8px 10px;
+}
+
+.q-heat tbody .q-heat-total-h {
+  text-align: end;
+  padding: 6px 12px 0 0;
+}
+
+.q-heat-cell {
+  height: 62px;
+  border-radius: 10px;
+  text-align: center;
+  vertical-align: middle;
+  color: var(--ink);
+}
+
+.q-heat-cell .mono {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.q-heat-cell.dark {
+  color: #fff;
+}
+
+.q-heat-cell.diag {
+  background: var(--paper-2);
+}
+
+.q-heat-total {
+  color: var(--ink-2);
+  font-size: 14px;
+  padding-inline-start: 10px;
+  white-space: nowrap;
+}
+
+.q-heat-total.center {
+  text-align: center;
+  padding: 6px 0 0;
+}
+
+.q-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  padding-inline-start: 136px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+
+.q-legend-bar {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.q-legend-bar > span {
+  width: 30px;
+  height: 14px;
+  border-radius: 7px;
+}
+
+/* --- Flux de règlement --- */
+
+.q-flow-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.q-flow-caption {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+/* Nœuds de compagnie du diagramme : pastille ronde pleine dans la couleur de marque (maquette). */
+.q-flow [data-testid^='flow-node-'] .co-chip {
+  width: 48px;
+  min-width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: currentColor;
+  -webkit-text-fill-color: #fff;
+  font-style: normal;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.q-flow [data-testid^='flow-node-'] > .mono {
+  font-size: 13px !important;
+  font-weight: 700;
+}
+
+.q-bordereau {
+  margin-top: 14px;
+}
+
+.q-screen > .sheet + .sheet,
+.q-screen > .sheet + div > .sheet {
+  margin-top: 14px;
+}
+
+.q-screen .folio-h {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+
+.q-screen .folio-h > div:first-child {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+@media (max-width: 1020px) {
+  .q-screen .folio-h {
+    flex-wrap: wrap;
+  }
+}
+
+.q-screen .folio-actions {
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
+.q-screen .kpi {
+  padding: 14px 13px 13px;
+}
+
+/* Libellé du montant au-dessus de la pastille (maquette), sans décaler la pastille du point de la géométrie SVG. */
+.q-flow [data-testid^='flow-node-'] > .mono {
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0 !important;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--paper);
+}

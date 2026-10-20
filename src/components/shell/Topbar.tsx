@@ -83,10 +83,10 @@ export function Topbar({ onToggleNav }: { onToggleNav: () => void }) {
         <button type="button" className="tb-circle" onClick={onToggleNav} aria-label={t('shell.toggleNav')}>
           <Menu size={17} strokeWidth={2} />
         </button>
-        <FinLabLogo />
+        <FinLabLogo size={24} />
         <span className="tb-sep" aria-hidden="true" />
         <Link href="/cockpit" className="ida-brand" aria-label={t('app.brand')}>
-          <IdaPlaceMark size={24} />
+          <IdaPlaceMark size={28} />
           <span className="ida-brand-text">
             <strong>{t('app.brand')}</strong>
             <small>{t('app.tagline')}</small>

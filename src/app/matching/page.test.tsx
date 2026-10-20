@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import { mockFetchRequests, mockFetchRouter, renderWithProviders } from '@/test/render';
@@ -32,6 +32,9 @@ function queueItem(i: number, overrides: Partial<MatchQueueItem> = {}): MatchQue
     ...overrides,
   };
 }
+
+/** Panneau « Appariement » (aside) : les boutons de décision y sont uniques (la vue de confrontation en répète deux). */
+const panel = () => screen.getByRole('complementary', { name: 'Appariement' });
 
 const COUNTERS = { TOUS: 9, AUTO: 9, A_CONFIRMER: 0, NON_APPARIES: 0 };
 const THRESHOLDS = { autoThreshold: 80, confirmThreshold: 50 };
@@ -89,8 +92,8 @@ describe('Écran Confrontation & matching (/matching)', () => {
     renderWithProviders(<MatchingPage />);
 
     await waitFor(() => expect(screen.getByText('ECN-1')).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: /^Confirmer/ })).toBeEnabled();
-    expect(screen.getByRole('button', { name: /^Rejeter/ })).toBeEnabled();
+    expect(within(panel()).getByRole('button', { name: /^Confirmer/ })).toBeEnabled();
+    expect(within(panel()).getByRole('button', { name: /^Rejeter/ })).toBeEnabled();
     expect(screen.queryByText(/n'avez pas le privilège requis/i)).not.toBeInTheDocument();
   });
 
@@ -99,9 +102,9 @@ describe('Écran Confrontation & matching (/matching)', () => {
     renderWithProviders(<MatchingPage />);
 
     await waitFor(() => expect(screen.getByText('ECN-1')).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: /^Confirmer/ })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /^Rejeter/ })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /^Complément/ })).toBeDisabled();
+    expect(within(panel()).getByRole('button', { name: /^Confirmer/ })).toBeDisabled();
+    expect(within(panel()).getByRole('button', { name: /^Rejeter/ })).toBeDisabled();
+    expect(within(panel()).getByRole('button', { name: /^Demander un complément/ })).toBeDisabled();
     expect(screen.getByText(/n'avez pas le privilège requis/i)).toBeInTheDocument();
   });
 
@@ -125,7 +128,7 @@ describe('Écran Confrontation & matching (/matching)', () => {
     renderWithProviders(<MatchingPage />);
 
     await waitFor(() => expect(screen.getByText('ECN-1')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /^Confirmer/ }));
+    fireEvent.click(within(panel()).getByRole('button', { name: /^Confirmer/ }));
 
     expect(await screen.findByText(message)).toBeInTheDocument();
   });
@@ -241,7 +244,7 @@ describe('Écran Confrontation & matching (/matching)', () => {
     renderWithProviders(<MatchingPage />);
     const user = userEvent.setup();
 
-    const exportButton = await screen.findByRole('button', { name: 'Export CSV' });
+    const exportButton = await screen.findByRole('button', { name: /Excel/ });
     await user.click(exportButton);
 
     await waitFor(() => expect(clicks).toHaveLength(1));
@@ -278,5 +281,25 @@ describe('Écran Confrontation & matching (/matching)', () => {
     expect(screen.getByText('Véhicule A')).toBeInTheDocument();
     expect(screen.getByText('Véhicule B')).toBeInTheDocument();
     expect(screen.getAllByText(item.refA).length).toBeGreaterThan(0);
+  });
+  /**
+   * Pilules d'état : statut API traduit (jamais le code brut `A_CONFIRMER`) ;
+   * une ligne sans déclaration B est « Non apparié » (même règle que l'onglet
+   * NON_APPARIES côté back : `refB` absent), score = nombre + « / 100 ».
+   */
+  it("traduit l'état (pilule) et affiche « Non apparié » pour une ligne sans partie B", async () => {
+    const appariee = queueItem(1, { status: 'A_CONFIRMER', level: 'MANUEL', score: 60 });
+    const seule = queueItem(2, { refB: undefined, companyB: undefined, plateB: undefined, status: 'A_CONFIRMER', level: 'NON', score: 0 });
+    mockQueueApi(ME_WITH_MATCH_DECIDE, [appariee, seule]);
+    renderWithProviders(<MatchingPage />);
+
+    await waitFor(() => expect(screen.getByText('ECN-1')).toBeInTheDocument());
+    const rows = screen.getAllByRole('row');
+    expect(rows[1]).toHaveTextContent('À confirmer');
+    expect(rows[1]).toHaveTextContent('60/ 100');
+    expect(rows[2]).toHaveTextContent('Non apparié');
+    expect(rows[2]).toHaveTextContent('En attente de la déclaration adverse');
+    expect(screen.queryByText('A_CONFIRMER')).not.toBeInTheDocument();
+    expect(within(panel()).getByText('ECN-1')).toBeInTheDocument();
   });
 });

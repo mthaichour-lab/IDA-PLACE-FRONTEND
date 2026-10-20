@@ -111,6 +111,27 @@ describe('Écran Commission (/commission)', () => {
     expect(within(table()).getByText('Audience')).toBeInTheDocument();
   });
 
+  /**
+   * Colonne « Conciliation (15 j) » (maquette) : délai de l'Art. 24 compté
+   * depuis la saisine réelle (`createdAt`), même constante que le back
+   * (`overdue15dCount`) — simple calcul d'affichage ; une affaire tranchée
+   * affiche sa date de décision réelle (`decidedAt`).
+   */
+  it('affiche le délai de conciliation de 15 jours (restant, dépassé) et la date de décision réelle', async () => {
+    const day = 86_400_000;
+    mockCommissionApi(ME_WITH_BOTH, [
+      commissionCase({ id: 'cc-1', recoursId: 'r-1', createdAt: new Date(Date.now() - 2 * day - 3_600_000).toISOString() }),
+      commissionCase({ id: 'cc-2', recoursId: 'r-2', createdAt: new Date(Date.now() - 20 * day).toISOString() }),
+      commissionCase({ id: 'cc-3', recoursId: 'r-3', status: 'PRONONCE', createdAt: '2026-09-01T09:00:00.000Z', decidedAt: '2026-09-15T09:00:00.000Z' }),
+    ]);
+    renderWithProviders(<CommissionPage />);
+
+    await waitFor(() => expect(within(table()).getByText('r-1')).toBeInTheDocument());
+    expect(within(table()).getByText('J-13 · 13 jours restant(s)')).toBeInTheDocument();
+    expect(within(table()).getByText('dépassé de 5 jours')).toBeInTheDocument();
+    expect(within(table()).getByText(/Décidé le .* \(14 j\)/)).toBeInTheDocument();
+  });
+
   it("refuse le prononcé d'une pénalité et la signature du PV pour AUDITEUR_CSA (lecture seule, B.7)", async () => {
     mockCommissionApi(ME_WITHOUT_PENALTY, [commissionCase()]);
     renderWithProviders(<CommissionPage />);

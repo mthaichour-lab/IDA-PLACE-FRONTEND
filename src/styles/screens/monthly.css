@@ -1,1 +1,446 @@
-/* Écran monthly — styles propres à l'écran (maquette de référence). */
+/* Écran Cycle mensuel (écran 5, Module C §6.5) — styles propres à l'écran (maquette de référence). */
+
+/* --- Sélecteur de période (pilule grise en tête de page) --- */
+.mo-period {
+  position: relative;
+}
+
+.mo-period-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.mo-period input {
+  height: 38px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: var(--k-r-pill);
+  background: var(--paper-2);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.mo-period input:focus {
+  outline: none;
+  border-color: var(--k-pri);
+}
+
+.mo-forbidden {
+  margin: -6px 0 14px;
+}
+
+/* --- Avancement du lot : cartes d'étape (style propre, pas de `.co-chip`) --- */
+.mo-steps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mo-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 13px 14px 14px;
+  background: var(--k-soft);
+  border-radius: 14px;
+}
+
+.mo-step-badge {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--paper);
+  border: 1.5px solid var(--rule-strong);
+  color: #fff;
+}
+
+.mo-step.done .mo-step-badge {
+  background: var(--k-pri);
+  border-color: var(--k-pri);
+}
+
+.mo-step.current {
+  background: var(--k-mint);
+}
+
+/* Étape en cours : anneau épais primaire, comme la capture. */
+.mo-step.current .mo-step-badge {
+  border: 5px solid var(--k-pri);
+}
+
+.mo-step-body {
+  min-width: 0;
+}
+
+.mo-step-kicker {
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  letter-spacing: 0.02em;
+}
+
+.mo-step-title {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--ink);
+}
+
+.mo-step.current .mo-step-title {
+  color: var(--k-pri);
+}
+
+.mo-step-meta {
+  margin-top: 4px;
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+/* --- Jauges sous les étapes (saisie / clôture) --- */
+.mo-meters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+  margin-top: 14px;
+}
+
+.mo-meter {
+  --meter: var(--k-pri);
+  min-width: 0;
+}
+
+.mo-meter.ok {
+  --meter: var(--ok);
+}
+
+.mo-meter.warn {
+  --meter: var(--warn);
+}
+
+.mo-meter.ko {
+  --meter: var(--ko);
+}
+
+.mo-meter-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.mo-meter-label {
+  font-size: 12px;
+  color: var(--ink-2);
+  min-width: 0;
+}
+
+.mo-meter-right {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--meter);
+  white-space: nowrap;
+}
+
+.mo-meter-track {
+  height: 5px;
+  margin-top: 5px;
+  border-radius: var(--k-r-pill);
+  background: var(--rule);
+  overflow: hidden;
+}
+
+.mo-meter-fill {
+  height: 100%;
+  border-radius: var(--k-r-pill);
+  background: var(--meter);
+}
+
+.mo-meter-dates {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.mo-gap-note {
+  margin: 14px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+.mo-kpi-state {
+  margin: 14px 0;
+}
+
+@media (max-width: 760px) {
+  .mo-steps,
+  .mo-meters {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- En-têtes de cartes : « Excel » sans cadre + pastille d'article --- */
+.mo-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mo-excel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-family: var(--f-text);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mo-excel:hover {
+  background: var(--k-soft-2);
+}
+
+.mo-excel:disabled {
+  color: var(--ink-3);
+  cursor: not-allowed;
+  background: transparent;
+}
+
+/* --- Tableaux --- */
+.mo-table .t thead th:first-child,
+.mo-table .t tbody td:first-child {
+  padding-inline-start: 20px;
+}
+
+.mo-table .t thead th:last-child,
+.mo-table .t tbody td:last-child {
+  padding-inline-end: 20px;
+}
+
+.mo-table .t tbody td {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.mo-table .mono {
+  font-size: 12.5px;
+}
+
+.mo-completeness .t thead th:nth-child(2),
+.mo-completeness .t tbody td:nth-child(2),
+.mo-completeness .t thead th:nth-child(3),
+.mo-completeness .t tbody td:nth-child(3),
+.mo-lot .t thead th:nth-child(5),
+.mo-lot .t tbody td:nth-child(5),
+.mo-annexe7 .t thead th:nth-child(3),
+.mo-annexe7 .t tbody td:nth-child(3),
+.mo-annexe7 .t thead th:nth-child(4),
+.mo-annexe7 .t tbody td:nth-child(4) {
+  text-align: end;
+  white-space: nowrap;
+}
+
+.mo-completeness .t tbody td:last-child {
+  text-align: end;
+}
+
+.mo-status {
+  white-space: nowrap;
+}
+
+.mo-date {
+  white-space: nowrap;
+}
+
+.mo-dash {
+  color: var(--ink-3);
+}
+
+.mo-ref {
+  color: var(--ink-3);
+}
+
+.btn-soft.mo-action:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mo-pair {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.mo-arrow {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.mo-table .co-chip {
+  min-width: 46px;
+  height: 24px;
+  font-size: 11.5px;
+}
+
+.mo-lot .t thead th,
+.mo-lot .t tbody td,
+.mo-annexe7 .t thead th,
+.mo-annexe7 .t tbody td {
+  padding-inline: 8px;
+}
+
+.mo-lot .t tbody td:not(:nth-child(2)) {
+  white-space: nowrap;
+}
+
+.mo-lot .mono {
+  font-size: 12px;
+}
+
+.mo-lot-state {
+  display: inline-flex;
+  color: var(--ok);
+}
+
+.mo-lot-state.warn {
+  color: var(--warn);
+}
+
+.mo-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Annexe 7 : colonnes fixes, nom de compagnie replié sur deux lignes si la carte est étroite. */
+.mo-annexe7 .t {
+  table-layout: fixed;
+}
+
+.mo-annexe7 .t th:nth-child(1),
+.mo-annexe7 .t th:nth-child(2) {
+  width: 32%;
+}
+
+.mo-annexe7 .t th:nth-child(3) {
+  width: 14%;
+}
+
+.mo-annexe7 .co-chip-wrap {
+  max-width: 100%;
+}
+
+.mo-annexe7 .co-chip-name {
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.25;
+  white-space: normal;
+  overflow: visible;
+}
+
+.mo-head-wrap {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.mo-head-wrap > span:first-child {
+  flex: 1 1 100%;
+}
+
+.mo-head-wrap > .mo-excel {
+  margin-inline-start: auto;
+}
+
+/* Bande « Total intégré à la synthèse » entre les lignes et le pied de page. */
+.mo-lot {
+  display: flex;
+  flex-direction: column;
+}
+
+.mo-lot > div:first-child {
+  display: contents;
+}
+
+.mo-lot .t-wrap {
+  order: 1;
+}
+
+.mo-total {
+  order: 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 20px;
+  background: var(--k-soft);
+  border-top: 1px solid var(--rule);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mo-total .mono {
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.mo-lot .pager {
+  order: 3;
+}
+
+.mo-trunc:empty {
+  display: none;
+}
+
+.mo-foot-note {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+/* --- Grille lot (gauche) + Annexe 7 (droite) --- */
+.mo-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  margin-top: 14px;
+}
+
+.mo-grid > .sheet + .sheet {
+  margin-top: 0;
+}
+
+@media (max-width: 1020px) {
+  .mo-grid {
+    grid-template-columns: 1fr;
+  }
+}

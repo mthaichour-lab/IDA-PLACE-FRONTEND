@@ -59,6 +59,9 @@ const HISTORY: MatchDecisionHistoryEntry[] = [
   },
 ];
 
+/** Panneau « Appariement » (aside) : les boutons de décision y sont uniques (la vue de confrontation en répète deux). */
+const panel = () => screen.getByRole('complementary', { name: 'Appariement' });
+
 function mockApi(me: MeResponse, row: MatchQueueItem, decide?: (req: FetchRequest) => { status?: number; body: unknown }) {
   const requests: FetchRequest[] = [];
   mockFetchRequests((req) => {
@@ -132,15 +135,15 @@ describe('Écran 2 — masquage, historique et re-décision motivée', () => {
 
     const reason = await screen.findByLabelText('Motif (obligatoire : confrontation déjà tranchée)');
     expect(screen.getByText('Revenir sur une décision déjà prise exige un motif.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Rejeter' })).toBeDisabled();
+    expect(within(panel()).getByRole('button', { name: "Confirmer l'appariement" })).toBeDisabled();
+    expect(within(panel()).getByRole('button', { name: 'Rejeter' })).toBeDisabled();
 
     // Raccourci clavier C ignoré tant que le motif manque.
     await user.keyboard('c');
     expect(requests.some((r) => r.method === 'POST')).toBe(false);
 
     await user.type(reason, 'Nouvelle pièce reçue');
-    await user.click(screen.getByRole('button', { name: 'Confirmer' }));
+    await user.click(within(panel()).getByRole('button', { name: "Confirmer l'appariement" }));
 
     await waitFor(() => expect(requests.find((r) => r.method === 'POST')?.body).toEqual({ action: 'confirm', reason: 'Nouvelle pièce reçue' }));
   });
@@ -151,7 +154,7 @@ describe('Écran 2 — masquage, historique et re-décision motivée', () => {
     const user = userEvent.setup();
 
     await screen.findByLabelText('Motif (facultatif)');
-    await user.click(screen.getByRole('button', { name: 'Confirmer' }));
+    await user.click(within(panel()).getByRole('button', { name: "Confirmer l'appariement" }));
     await waitFor(() => expect(requests.find((r) => r.method === 'POST')?.body).toEqual({ action: 'confirm' }));
   });
 
@@ -160,7 +163,8 @@ describe('Écran 2 — masquage, historique et re-décision motivée', () => {
     renderWithProviders(<MatchingPage />);
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Confirmer' }));
+    await screen.findByRole('complementary', { name: 'Appariement' });
+    await user.click(await within(panel()).findByRole('button', { name: "Confirmer l'appariement" }));
     expect(await screen.findByText('Cette confrontation a déjà été tranchée : indiquez le motif de la nouvelle décision.')).toBeInTheDocument();
   });
 });

@@ -136,7 +136,9 @@ describe('Écran Cycle mensuel (/monthly)', () => {
     renderWithProviders(<MonthlyPage />);
 
     await waitFor(() => expect(screen.getByText('16')).toBeInTheDocument());
-    expect(screen.getByText(/1\s?622\s?300/)).toBeInTheDocument();
+    // Montant en notation compacte (maquette « 1,62 M DA »), montant exact en infobulle.
+    expect(screen.getByText(/1,62\s?M/)).toBeInTheDocument();
+    expect(screen.getByTitle(/1\s?622\s?300\s?DA/)).toBeInTheDocument();
     expect(screen.getByText('17')).toBeInTheDocument();
   });
 
@@ -172,7 +174,7 @@ describe('Écran Cycle mensuel (/monthly)', () => {
     mockMonthlyApiWithLot(ME_WITH_SYNTH, [company()], settledOtherMonth, []);
     renderWithProviders(<MonthlyPage />);
 
-    await waitFor(() => expect(screen.getByText('Recours du lot — intégrés et en opposition (RG-06)')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Recours du lot — intégrés et exclus')).toBeInTheDocument());
     expect(screen.queryByText('Intégré')).not.toBeInTheDocument();
   });
 
