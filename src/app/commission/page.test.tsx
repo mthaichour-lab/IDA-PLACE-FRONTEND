@@ -1,8 +1,22 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { FetchRequest, mockFetchRequests, mockFetchRouter, renderWithProviders } from '@/test/render';
 import { CommissionCase, CommissionPenaltyResult, CommissionSummary, CompanyView, MeResponse, MembershipRequest, Sanction } from '@/lib/types';
 import CommissionPage from './page';
+
+/**
+ * Depuis le passage à un panneau de détail PERSISTANT (plus de `Modal`,
+ * fidélité à la capture écran 7 : rôle des affaires à gauche + détail à
+ * droite, détail toujours rempli par défaut — voir l'effet d'auto-sélection
+ * dans `page.tsx`), le n° de recours et son état apparaissent à la fois
+ * dans le registre ET dans l'en-tête du panneau de détail : les assertions
+ * qui portaient sur le registre seul sont donc scopées à la table
+ * (`within(table())`), sinon `getByText` échoue en trouvant deux
+ * correspondances légitimes.
+ */
+function table(): HTMLElement {
+  return screen.getByRole('table');
+}
 
 const ME_WITH_BOTH: MeResponse = {
   user: { id: 'dev-commission', name: 'Membre Commission (dev)', email: 'commission@uar.dz' },
@@ -89,10 +103,12 @@ describe('Écran Commission (/commission)', () => {
     mockCommissionApi(ME_WITH_BOTH, [commissionCase()]);
     renderWithProviders(<CommissionPage />);
 
-    await waitFor(() => expect(screen.getByText('r-1')).toBeInTheDocument());
+    await waitFor(() => expect(within(table()).getByText('r-1')).toBeInTheDocument());
     // EN_DELIBERE -> "Audience" (relabellisage d'affichage, voir HANDOFF.md ;
-    // la valeur `status` et la logique métier restent inchangées).
-    expect(screen.getByText('Audience')).toBeInTheDocument();
+    // la valeur `status` et la logique métier restent inchangées). Le même
+    // badge d'état apparaît aussi dans l'en-tête du panneau de détail
+    // (auto-sélectionné) — scopé à la table pour une correspondance unique.
+    expect(within(table()).getByText('Audience')).toBeInTheDocument();
   });
 
   it("refuse le prononcé d'une pénalité et la signature du PV pour AUDITEUR_CSA (lecture seule, B.7)", async () => {
@@ -136,10 +152,14 @@ describe('Écran Commission (/commission)', () => {
 
   it('affiche les KPI de synthèse (affaires pendantes, hors délai, recours/oppositions fondés)', async () => {
     mockCommissionApi(ME_WITH_BOTH, [commissionCase()]);
-    renderWithProviders(<CommissionPage />);
+    const { container } = renderWithProviders(<CommissionPage />);
+    // Le même total (`pendingCount`) est aussi repris en compteur réel sur
+    // l'onglet "Rôle des affaires" (fidélité à la capture) : les KPI sont
+    // scopés à leur bandeau (`.kpi-row`) pour une correspondance unique.
+    const kpis = () => within(container.querySelector('.kpi-row') as HTMLElement);
 
-    await waitFor(() => expect(screen.getByText('5')).toBeInTheDocument());
-    expect(screen.getAllByText('2').length).toBeGreaterThan(0);
+    await waitFor(() => expect(kpis().getByText('5')).toBeInTheDocument());
+    expect(kpis().getAllByText('2').length).toBeGreaterThan(0);
   });
 
   /**
@@ -163,7 +183,9 @@ describe('Écran Commission (/commission)', () => {
     renderWithProviders(<CommissionPage />);
 
     await waitFor(() => expect(screen.getByText('r-1')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('tab', { name: 'Sanctions' }));
+    // Le bandeau d'onglets affiche désormais un compteur réel (fidélité à la
+    // capture, écran 7) — l'intitulé exact n'est donc plus "Sanctions" seul.
+    fireEvent.click(screen.getByRole('tab', { name: /Sanctions/ }));
 
     await waitFor(() => expect(screen.getByText('Retard de saisie')).toBeInTheDocument());
     expect(screen.getByText('Membre Commission (dev)')).toBeInTheDocument();

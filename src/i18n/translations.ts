@@ -1000,8 +1000,9 @@ const fr = {
   'quarter.pipeline.close.error': "La clôture du trimestre n'a pas pu être effectuée.",
 
   // ----- Commission (écran 7, Module E §6.7) -----
-  'commission.title': 'Commission',
-  'commission.subtitle': 'File de conciliation, prononcé de pénalités/sanctions et signature des PV.',
+  'commission.title': 'Commission de Suivi et de Conciliation',
+  'commission.subtitle':
+    'Rôle des affaires contestées transmises en conciliation (Art. 24), instruction contradictoire, prononcé de pénalités/sanctions et signature des PV, adhésions et retraits.',
   'commission.kpi.pendingCount': 'Affaires pendantes',
   'commission.kpi.overdue15dCount': 'Hors délai 15 j',
   'commission.kpi.recoursFondesCount': 'Recours jugés fondés',
@@ -1052,6 +1053,16 @@ const fr = {
   'commission.forbidden.penalty': "Vous n'avez pas le privilège requis (penaltyOrder) pour prononcer une pénalité.",
   'commission.forbidden.pvSign': "Vous n'avez pas le privilège requis (pvSign) pour signer le PV.",
   'commission.detail.attachments': 'Pièces jointes (PV de commission)',
+  'commission.detail.recours': 'Recours lié',
+  'commission.detail.saisine': 'Saisine',
+  'commission.party.direct': 'Assureur direct',
+  'commission.party.tiers': 'Assureur tiers',
+  'commission.party.demandIndemnisation': 'Demande l’indemnisation (Annexe 2)',
+  'commission.party.contesteOpposition': 'et conteste l’opposition (Annexe 4)',
+  'commission.party.oppose': 'Oppose :',
+  'commission.pieces.count': 'pièce(s) au dossier',
+  'commission.thread.title': 'Pièces échangées contradictoirement',
+  'commission.thread.empty': 'Aucune pièce échangée pour le moment.',
   'commission.tab.membership': 'Adhésions & retraits',
   'commission.membership.col.type': 'Type',
   'commission.membership.col.party': 'Compagnie ou candidat',
