@@ -141,6 +141,38 @@ describe('Écran Compensation trimestrielle (/quarter)', () => {
   });
 
   /**
+   * Carte condensée "Trimestre en compensation" (additive, fidélité à la
+   * capture écran 6) — étape en cours + échéance réelle de la réunion
+   * (`/settlement/quarter/:q/pipeline`, Art. 17-18), jamais une convocation
+   * ou un ordre du jour fabriqués (aucune entité de planification côté API).
+   */
+  it('affiche la carte « Trimestre en compensation » : statut, étape en cours et échéance de la réunion (données réelles)', async () => {
+    mockQuarterApi();
+    renderWithProviders(<QuarterPage />);
+
+    await waitFor(() => expect(screen.getByText('Trimestre en compensation')).toBeInTheDocument());
+    expect(screen.getByText('En compensation')).toBeInTheDocument();
+    expect(screen.getAllByText('Saisie et validation des recours sur la plateforme').length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Synthèse globale trimestrielle et réunion au siège de l'UAR").length).toBeGreaterThan(0);
+    // Gap documenté : aucune convocation ni ordre du jour fabriqués.
+    expect(screen.getByText(/Aucune entité de planification de réunion/)).toBeInTheDocument();
+  });
+
+  it('affiche la légende de la carte thermique des positions brutes', async () => {
+    mockQuarterApi();
+    renderWithProviders(<QuarterPage />);
+
+    await waitFor(() => expect(screen.getByText('Échelle (intensité relative au maximum de la matrice)')).toBeInTheDocument());
+  });
+
+  it('propose un export Excel (CSV) des positions nettes multilatérales', async () => {
+    mockQuarterApi();
+    renderWithProviders(<QuarterPage />);
+
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Excel' }).length).toBeGreaterThan(0));
+  });
+
+  /**
    * Section additive "Flux de règlement entre les N compagnies" (2026-10-18,
    * sous la matrice des positions brutes) — titre dynamique (nombre réel de
    * compagnies de `rawMatrix.companies`, jamais un "5" en dur), bascule

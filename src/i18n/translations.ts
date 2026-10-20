@@ -1021,6 +1021,15 @@ const fr = {
   'quarter.pipeline.close.cancel': 'Annuler',
   'quarter.pipeline.close.ok': 'Trimestre clôturé.',
   'quarter.pipeline.close.error': "La clôture du trimestre n'a pas pu être effectuée.",
+  'quarter.actions.positions': 'Positions',
+  'quarter.compensation.title': 'Trimestre en compensation',
+  'quarter.compensation.status.OPEN': 'En compensation',
+  'quarter.compensation.status.CLOSED': 'Clôturé',
+  'quarter.compensation.meeting.label': 'Réunion (Art. 17-18)',
+  'quarter.compensation.deadline.label': 'Limite de clôture (Art. 17)',
+  'quarter.compensation.gap.note':
+    "Aucune entité de planification de réunion (convocation, lieu, ordre du jour) n'existe côté API pour la compensation trimestrielle : seules les échéances réelles du lot (`/settlement/quarter/:q/pipeline`, Art. 16-18) et la clôture sont affichées ci-dessus — aucune n'a été inventée.",
+  'quarter.rawMatrix.legend.title': 'Échelle (intensité relative au maximum de la matrice)',
 
   // ----- Commission (écran 7, Module E §6.7) -----
   'commission.title': 'Commission de Suivi et de Conciliation',
