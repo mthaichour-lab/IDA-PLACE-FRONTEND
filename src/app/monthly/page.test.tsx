@@ -97,7 +97,7 @@ describe('Écran Cycle mensuel (/monthly)', () => {
     mockMonthlyApi(ME_WITH_SYNTH, [company({ code: 'CAAT', claimsCount: 12, totalAmount: 800_000 })]);
     renderWithProviders(<MonthlyPage />);
 
-    await waitFor(() => expect(screen.getAllByText('CAAT').length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByAltText('CAAT').length).toBeGreaterThan(0));
     expect(screen.getByText('12')).toBeInTheDocument();
     expect(screen.getByText(/800\s?000/)).toBeInTheDocument();
     expect(screen.getByText('En cours')).toBeInTheDocument();
@@ -147,8 +147,8 @@ describe('Écran Cycle mensuel (/monthly)', () => {
     mockMonthlyApi(ME_WITH_SYNTH, [company()]);
     renderWithProviders(<MonthlyPage />);
 
-    await waitFor(() => expect(screen.getAllByText('CASH').length).toBeGreaterThan(0));
-    expect(screen.getAllByText('SAA').length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.getAllByAltText('CASH').length).toBeGreaterThan(0));
+    expect(screen.getAllByAltText('SAA').length).toBeGreaterThan(0);
     expect(screen.getByText(/311\s?550/)).toBeInTheDocument();
   });
 

@@ -172,7 +172,7 @@ describe('Écran 2 — responsabilité Art. 14 (décision PO §5)', () => {
   it('SEC-38 : rôle compagnie sans compagnie dans le jeton : aucune saisie, même avec matchDecide', async () => {
     mockApi({ me: { ...ME_CORRESPONDANT_CAAT, company: undefined }, detail: item() });
     await renderPanel();
-    await within(declaration('B')).findByText('SAA');
+    await within(declaration('B')).findByAltText('SAA');
     expect(screen.queryByRole('button', { name: 'Saisir la responsabilité' })).not.toBeInTheDocument();
   });
 
@@ -193,7 +193,7 @@ describe('Écran 2 — responsabilité Art. 14 (décision PO §5)', () => {
 
     mockApi({ me: ME_AUDITOR, detail: item() });
     await renderPanel();
-    await within(declaration('B')).findByText('SAA');
+    await within(declaration('B')).findByAltText('SAA');
     expect(screen.queryByRole('button', { name: 'Saisir la responsabilité' })).not.toBeInTheDocument();
   });
 

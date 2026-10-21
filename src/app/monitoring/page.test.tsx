@@ -103,8 +103,8 @@ describe('Écran Monitoring & scoring (/monitoring)', () => {
 
     renderWithProviders(<MonitoringPage />);
 
-    await waitFor(() => expect(screen.getAllByText('SAA').length).toBeGreaterThan(0));
-    expect(screen.getAllByText('CASH').length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.getAllByAltText('SAA').length).toBeGreaterThan(0));
+    expect(screen.getAllByAltText('CASH').length).toBeGreaterThan(0);
     // Note lettrée : B pour un score de 82 (seuil B >= 72, voir gradeFromScore back).
     expect(screen.getAllByText('• B').length).toBeGreaterThan(0);
     // Colonnes de taux bruts (profile), pas les scores composite inversés.
@@ -124,7 +124,7 @@ describe('Écran Monitoring & scoring (/monitoring)', () => {
 
     renderWithProviders(<MonitoringPage />);
 
-    await waitFor(() => expect(screen.getAllByText('CAAT').length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByAltText('CAAT').length).toBeGreaterThan(0));
     expect(screen.getAllByText('Aucune donnée.').length).toBeGreaterThan(0);
   });
 
