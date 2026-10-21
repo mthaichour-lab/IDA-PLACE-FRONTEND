@@ -1,6 +1,8 @@
-import { InMemoryWebStorage, WebStorageStateStore } from 'oidc-client-ts';
-import { describe, expect, it } from 'vitest';
-import { CALLBACK_PATH, keycloakSettings, LOGGED_OUT_PATH } from './keycloak';
+import { InMemoryWebStorage, UserManager, WebStorageStateStore } from 'oidc-client-ts';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { CALLBACK_PATH, keycloakSettings, LOGGED_OUT_PATH, resetUserManagerForTests, signinRedirectCallbackOnce } from './keycloak';
+
+afterEach(() => resetUserManagerForTests());
 
 const CONFIG = { url: 'https://auth.ida-place.example/', realm: 'ida-place', clientId: 'ida-place-web' };
 
@@ -33,5 +35,20 @@ describe('paramètres OIDC Keycloak (SEC-01)', () => {
 
   it('refuse une configuration incomplète', () => {
     expect(() => keycloakSettings({ url: CONFIG.url, realm: '', clientId: 'x' }, 'https://a', window.sessionStorage)).toThrow(/incomplète/);
+  });
+});
+
+describe('signinRedirectCallbackOnce (StrictMode, échange du code à usage unique)', () => {
+  it("n'appelle signinRedirectCallback qu'une seule fois même en cas d'appels concurrents (StrictMode : les 2 montages à vide attendent le même résultat)", async () => {
+    const user = { access_token: 'tok' } as unknown as Awaited<ReturnType<UserManager['signinRedirectCallback']>>;
+    const spy = vi.fn().mockResolvedValue(user);
+    const fakeManager = { signinRedirectCallback: spy } as unknown as UserManager;
+
+    // 2 appels "concurrents" (les 2 exécutions de l'effet sous StrictMode) : le code d'autorisation est à usage unique, un 2ᵉ appel réseau échouerait (400 côté Keycloak).
+    const [r1, r2] = await Promise.all([signinRedirectCallbackOnce(fakeManager), signinRedirectCallbackOnce(fakeManager)]);
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(r1).toBe(user);
+    expect(r2).toBe(user);
   });
 });

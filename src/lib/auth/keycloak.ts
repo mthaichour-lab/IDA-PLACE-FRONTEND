@@ -65,4 +65,27 @@ export function getUserManager(): UserManager {
 /** Réinitialise l'instance (tests). */
 export function resetUserManagerForTests(): void {
   manager = null;
+  callbackPromise = null;
+}
+
+let callbackPromise: ReturnType<UserManager['signinRedirectCallback']> | null = null;
+
+/**
+ * Échange le code d'autorisation (`/auth/callback`) — AU PLUS UNE FOIS par
+ * chargement de page, quel que soit le nombre d'appels.
+ *
+ * StrictMode (développement) monte/démonte/remonte le composant appelant à
+ * vide : ses DEUX exécutions doivent chacune pouvoir attendre puis traiter
+ * le résultat normalement (c'est leur propre `cancelled` local, pas cet
+ * appel, qui décide laquelle applique l'état) — seul l'appel réseau
+ * lui-même, à usage unique (le code d'autorisation), ne doit partir
+ * qu'une fois. D'où un cache de la PROMESSE (module, survit au montage à
+ * vide de StrictMode) plutôt qu'un verrou qui empêcherait la 2ᵉ exécution
+ * d'attendre le résultat.
+ */
+export function signinRedirectCallbackOnce(mgr: UserManager): ReturnType<UserManager['signinRedirectCallback']> {
+  if (!callbackPromise) {
+    callbackPromise = mgr.signinRedirectCallback();
+  }
+  return callbackPromise;
 }

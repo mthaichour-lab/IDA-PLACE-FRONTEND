@@ -6,7 +6,7 @@ import type { User } from 'oidc-client-ts';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '@/i18n/provider';
 import { apiGet } from './api-client';
-import { CALLBACK_PATH, getUserManager, LOGGED_OUT_PATH } from './auth/keycloak';
+import { CALLBACK_PATH, getUserManager, LOGGED_OUT_PATH, signinRedirectCallbackOnce } from './auth/keycloak';
 import { setAccessTokenGetter, setUnauthorizedHandler } from './auth/session';
 import { MeResponse } from './types';
 
@@ -130,7 +130,14 @@ function KeycloakAuthProvider({ children }: { children: React.ReactNode }) {
 
     async function init() {
       if (path === CALLBACK_PATH) {
-        const signedIn = await manager.signinRedirectCallback();
+        // StrictMode (développement) monte/démonte/remonte ce composant à
+        // vide : les deux exécutions de cet effet attendent chacune le
+        // MÊME échange de code (mémoïsé, module `keycloak.ts` — le code
+        // d'autorisation est à usage unique), puis chacune applique le
+        // résultat selon SON PROPRE `cancelled` ci-dessous, exactement
+        // comme le reste de cette fonction — la 1ʳᵉ exécution (annulée
+        // presque aussitôt) l'ignore, la 2ᵉ (qui survit) l'applique.
+        const signedIn = await signinRedirectCallbackOnce(manager);
         if (cancelled) return;
         setUser(signedIn);
         setStatus('authenticated');

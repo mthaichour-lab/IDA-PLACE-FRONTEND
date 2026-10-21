@@ -28,6 +28,8 @@ vi.mock('./auth/keycloak', () => ({
   CALLBACK_PATH: '/auth/callback',
   LOGGED_OUT_PATH: '/auth/logged-out',
   getUserManager: () => fakeManager,
+  // Même mémoïsation que la vraie implémentation (voir keycloak.ts) : un seul test de ce fichier ne fait qu'un appel, donc transparent ici.
+  signinRedirectCallbackOnce: (mgr: typeof fakeManager) => mgr.signinRedirectCallback(),
 }));
 
 const ME = { user: { id: 'u1', name: 'Nadia B.', email: 'n@caat.dz' }, role: 'TRESORIER', privileges: ['synth'], company: 'CAAT' };
