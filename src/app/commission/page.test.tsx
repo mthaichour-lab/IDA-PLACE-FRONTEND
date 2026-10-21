@@ -33,6 +33,7 @@ const ME_WITHOUT_PENALTY: MeResponse = {
 function commissionCase(overrides: Partial<CommissionCase> = {}): CommissionCase {
   return {
     id: 'cc-1',
+    reference: 'CSC-2026-011',
     recoursId: 'r-1',
     claimId: 'c-1',
     companyA: 'CAAT',
@@ -97,6 +98,16 @@ function mockCommissionApi(
 describe('Écran Commission (/commission)', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('affiche la référence CSC du dossier et la référence REC du recours, l’UUID restant en infobulle', async () => {
+    mockCommissionApi(ME_WITH_BOTH, [commissionCase({ id: '0b5f7c2e-1111-4111-8111-000000000011', recoursReference: 'REC-2026-00296' })]);
+    renderWithProviders(<CommissionPage />);
+
+    await waitFor(() => expect(within(table()).getByText('REC-2026-00296')).toBeInTheDocument());
+    expect(within(table()).getByText('REC-2026-00296')).toHaveAttribute('title', 'r-1');
+    expect(within(table()).getByText('CSC-2026-011')).toHaveAttribute('title', '0b5f7c2e-1111-4111-8111-000000000011');
+    expect(within(table()).queryByText('0b5f7c2e')).not.toBeInTheDocument();
   });
 
   it('affiche la file des dossiers en commission avec leur phase (libellé relabellisé, A.4/guide)', async () => {

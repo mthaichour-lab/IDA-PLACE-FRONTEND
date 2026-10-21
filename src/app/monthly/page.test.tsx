@@ -50,6 +50,7 @@ function mockMonthlyApi(me: MeResponse, companies: SettlementMonthlyCompany[], o
 function recours(overrides: Partial<RecoursItem> = {}): RecoursItem {
   return {
     id: 'rec-0000-aaaa-bbbb',
+    reference: 'REC-2026-00309',
     claimId: 'claim-1',
     from: 'CASH',
     to: 'SAA',

@@ -31,8 +31,12 @@ export const REALTIME_INVALIDATIONS: Record<RealtimeEventName, QueryKey[]> = {
 export interface RealtimeSignal {
   event: RealtimeEventName;
   id?: string;
+  /** Référence métier diffusée avec l'id (`REC-…`, `MAT-…`) — retenue seulement si elle en a le format. */
+  reference?: string;
   state?: string;
 }
+
+const BUSINESS_REF = /^(REC-\d{4}-\d{5,}|CSC-\d{4}-\d{3,}|MAT-\d{6}-\d{3,})$/;
 
 const SIGNAL_FIELD_MAX = 64;
 
@@ -40,12 +44,14 @@ function shortString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 && value.length <= SIGNAL_FIELD_MAX ? value : undefined;
 }
 
-/** Réduit un payload reçu à `{ event, id?, state? }` — tout autre champ est ignoré. */
+/** Réduit un payload reçu à `{ event, id?, reference?, state? }` — tout autre champ est ignoré. */
 export function toRealtimeSignal(event: RealtimeEventName, payload: unknown): RealtimeSignal {
   const record = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
   const id = shortString(record.id);
+  const ref = shortString(record.reference);
+  const reference = ref && BUSINESS_REF.test(ref) ? ref : undefined;
   const state = shortString(record.state) ?? shortString(record.status) ?? shortString(record.etat);
-  return { event, ...(id ? { id } : {}), ...(state ? { state } : {}) };
+  return { event, ...(id ? { id } : {}), ...(reference ? { reference } : {}), ...(state ? { state } : {}) };
 }
 
 /*

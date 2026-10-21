@@ -16,6 +16,7 @@ const ME: MeResponse = { user: { id: 'u-corr', name: 'Correspondant', email: 'c@
 
 const RECOURS: RecoursItem = {
   id: 'r-1',
+  reference: 'REC-2026-00296',
   claimId: 'c-1',
   from: 'CAAT',
   to: 'SAA',

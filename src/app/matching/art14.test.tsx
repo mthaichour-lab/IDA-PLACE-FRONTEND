@@ -48,6 +48,7 @@ const CATEGORIES: VehicleCategory[] = [
 function item(responsabiliteA?: DeclarationResponsabilite, responsabiliteB?: DeclarationResponsabilite, overrides: Partial<MatchQueueItem> = {}): MatchQueueItem {
   return {
     id: 'm-1',
+    reference: 'MAT-261013-001',
     refA: 'ECN-1',
     companyA: 'CAAT',
     plateA: '16001',

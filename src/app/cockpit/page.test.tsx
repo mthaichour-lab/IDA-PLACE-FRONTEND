@@ -81,9 +81,10 @@ const SUMMARY: CockpitSummary = {
     ],
   },
   alertesConventionnelles: [
-    { id: 'recours-rec-1', from: 'CASH', to: 'SAA', description: 'Délai de réponse Art.10 dépassé', article: 'Art. 10', detectedAt: '2026-10-10T00:00:00.000Z' },
+    { id: 'recours-rec-1', reference: 'REC-2026-00284', from: 'CASH', to: 'SAA', description: 'Délai de réponse Art.10 dépassé', article: 'Art. 10', detectedAt: '2026-10-10T00:00:00.000Z' },
     {
       id: 'commission-com-1',
+      reference: 'CSC-2026-014',
       from: 'CAAT',
       to: 'CASH',
       description: 'Conciliation par la Commission — dépassement du délai Art.24',
@@ -228,7 +229,7 @@ describe('Écran Cockpit de place (/cockpit)', () => {
     expect(screen.queryByText('Art. 16-17')).not.toBeInTheDocument();
   });
 
-  it('la liste des alertes conventionnelles affiche les chips compagnies et le badge article', async () => {
+  it('la liste des alertes conventionnelles affiche la référence métier, les chips compagnies et le badge article', async () => {
     mockApis(SUMMARY);
     renderWithProviders(<CockpitPage />);
 
@@ -238,7 +239,10 @@ describe('Écran Cockpit de place (/cockpit)', () => {
     expect(screen.getByText('Art. 10')).toBeInTheDocument();
     expect(screen.getByText('Art. 24')).toBeInTheDocument();
     expect(screen.getAllByText('CASH').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('CAAT').length).toBeGreaterThan(0);
+    expect(screen.getByText('REC-2026-00284')).toHaveAttribute('title', 'recours-rec-1');
+    // Dossier de commission (CSC-…) : pas de paire compagnie (maquette, écran 1).
+    expect(screen.getByText('CSC-2026-014')).toHaveAttribute('title', 'commission-com-1');
+    expect(screen.getByText('CSC-2026-014').closest('.alert-text')).not.toHaveTextContent('CAAT');
   });
 
   it('le flux temps réel ajoute un événement reçu et le bouton Pause stoppe les ajouts suivants', async () => {
@@ -268,6 +272,19 @@ describe('Écran Cockpit de place (/cockpit)', () => {
 
     expect(screen.queryByText(/MATCH-0043/)).not.toBeInTheDocument();
     expect(screen.getByText(/MATCH-0042/)).toBeInTheDocument();
+  });
+
+  it('le flux temps réel affiche la référence métier diffusée, l’identifiant restant en infobulle', async () => {
+    mockApis(SUMMARY);
+    renderWithProviders(<CockpitPage />);
+    await waitFor(() => expect(screen.getByText('Flux temps réel')).toBeInTheDocument());
+
+    act(() => {
+      triggerRealtimeEvent('match.updated', { id: '7d0c1a2b-0000-4000-8000-000000000005', reference: 'MAT-261013-005', status: 'AUTO_CONFIRME' });
+    });
+
+    expect(screen.getByText('MAT-261013-005')).toHaveAttribute('title', '7d0c1a2b-0000-4000-8000-000000000005');
+    expect(screen.queryByText('7d0c1a2b-0000-4000-8000-000000000005')).not.toBeInTheDocument();
   });
 
   it('SEC-07 : aucune donnée métier du payload n’est affichée, et le résumé est rechargé par l’API', async () => {

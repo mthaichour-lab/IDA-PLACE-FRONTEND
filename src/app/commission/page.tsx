@@ -80,7 +80,7 @@ function formatDay(iso: string, locale: string): string {
   return new Date(iso).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-/** Référence courte affichée (8 premiers caractères de l'identifiant réel, valeur complète en infobulle) — même idiome que `/monthly`. */
+/** Identifiant technique abrégé (8 premiers caractères, valeur complète en infobulle) — seulement pour les objets sans référence métier (dossier, recours d'un ancien dossier de commission). */
 function shortRef(id: string): string {
   return id.slice(0, 8);
 }
@@ -253,10 +253,10 @@ export default function CommissionPage() {
         render: (r) => (
           <span className="cm-ref">
             <span className="mono" title={r.id}>
-              {shortRef(r.id)}
+              {r.reference}
             </span>
             <span className="mono cm-ref-sub" title={r.recoursId}>
-              {shortRef(r.recoursId)}
+              {r.recoursReference ?? shortRef(r.recoursId)}
             </span>
           </span>
         ),
@@ -450,8 +450,8 @@ export default function CommissionPage() {
                     downloadCsv(
                       `role-commission-p${page}.csv`,
                       buildCsv(
-                        ['affaire', 'recours', 'compagnie_a', 'compagnie_b', 'enjeu', 'phase', 'saisine', 'seance_prevue'],
-                        pageRows.map((r) => [r.id, r.recoursId, r.companyA, r.companyB, r.amount, r.status, r.createdAt, r.scheduledAt]),
+                        ['affaire', 'reference', 'recours', 'reference_recours', 'compagnie_a', 'compagnie_b', 'enjeu', 'phase', 'saisine', 'seance_prevue'],
+                        pageRows.map((r) => [r.id, r.reference, r.recoursId, r.recoursReference ?? '', r.companyA, r.companyB, r.amount, r.status, r.createdAt, r.scheduledAt]),
                       ),
                     )
                   }
@@ -497,7 +497,7 @@ export default function CommissionPage() {
                   <>
                     {t('commission.detail.titlePrefix')}
                     <span className="mono" title={selected.id}>
-                      {shortRef(selected.id)}
+                      {selected.reference}
                     </span>
                   </>
                 ) : (

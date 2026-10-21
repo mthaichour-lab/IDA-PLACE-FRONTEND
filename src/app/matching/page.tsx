@@ -390,12 +390,13 @@ export default function MatchingPage() {
       const csv = buildCsv(
         [
           t('matching.col.ref'),
+          t('matching.confrontation.field.econstat'),
           t('matching.col.partyA'),
           t('matching.col.partyB'),
           t('matching.col.score'),
           t('matching.col.status'),
         ],
-        res.items.map((r) => [r.refA, `${r.companyA} ${r.plateA}`, r.companyB ? `${r.companyB} ${r.plateB ?? ''}` : t('matching.noPartyB'), r.score, r.status]),
+        res.items.map((r) => [r.reference, r.refA, `${r.companyA} ${r.plateA}`, r.companyB ? `${r.companyB} ${r.plateB ?? ''}` : t('matching.noPartyB'), r.score, r.status]),
       );
       downloadCsv(`file-confrontation-${filter}.csv`, csv);
       return res.items.length;
@@ -458,7 +459,9 @@ export default function MatchingPage() {
         header: t('matching.col.ref'),
         render: (r) => (
           <span className="mt-ref">
-            <span className="mono mt-ref-id">{r.refA}</span>
+            <span className="mono mt-ref-id" title={r.id}>
+              {r.reference}
+            </span>
             <span className="mono mt-ref-at">{formatStamp(r.at, locale)}</span>
           </span>
         ),
@@ -574,7 +577,9 @@ export default function MatchingPage() {
               {selected ? (
                 <>
                   {' '}
-                  <span className="mono mt-panel-id">{selected.refA}</span>
+                  <span className="mono mt-panel-id" title={selected.id}>
+                    {selected.reference}
+                  </span>
                 </>
               ) : null}
             </span>

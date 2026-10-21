@@ -270,7 +270,7 @@ export default function MonthlyPage() {
 
   const lotColumns: Column<LotRow>[] = useMemo(
     () => [
-      { key: 'ref', header: t('monthly.lot.col.ref'), render: (r) => <span className="mono" title={r.id}>{r.id.slice(0, 8)}</span> },
+      { key: 'ref', header: t('monthly.lot.col.ref'), render: (r) => <span className="mono" title={r.id}>{r.reference}</span> },
       {
         key: 'pair',
         header: t('monthly.lot.col.pair'),

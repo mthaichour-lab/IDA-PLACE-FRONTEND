@@ -16,6 +16,7 @@ function readBlob(blob: Blob): Promise<string> {
 function queueItem(i: number, overrides: Partial<MatchQueueItem> = {}): MatchQueueItem {
   return {
     id: `m-${i}`,
+    reference: `MAT-261013-${String(i).padStart(3, '0')}`,
     refA: `ECN-${i}`,
     companyA: 'CAAT',
     plateA: `1600${i}`,
@@ -82,16 +83,16 @@ describe('Écran Confrontation & matching (/matching)', () => {
 
     renderWithProviders(<MatchingPage />);
 
-    await waitFor(() => expect(screen.getByText('ECN-1')).toBeInTheDocument());
-    expect(screen.getByText('ECN-6')).toBeInTheDocument();
-    expect(screen.queryByText('ECN-7')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('MAT-261013-001')).toBeInTheDocument());
+    expect(screen.getByText('MAT-261013-006')).toBeInTheDocument();
+    expect(screen.queryByText('MAT-261013-007')).not.toBeInTheDocument();
   });
 
   it('active Confirmer/Rejeter/Complément pour un utilisateur avec le privilège matchDecide', async () => {
     mockQueueApi(ME_WITH_MATCH_DECIDE, [queueItem(1)]);
     renderWithProviders(<MatchingPage />);
 
-    await waitFor(() => expect(screen.getByText('ECN-1')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('MAT-261013-001')).toBeInTheDocument());
     expect(within(panel()).getByRole('button', { name: /^Confirmer/ })).toBeEnabled();
     expect(within(panel()).getByRole('button', { name: /^Rejeter/ })).toBeEnabled();
     expect(screen.queryByText(/n'avez pas le privilège requis/i)).not.toBeInTheDocument();
@@ -101,7 +102,7 @@ describe('Écran Confrontation & matching (/matching)', () => {
     mockQueueApi(ME_WITHOUT_MATCH_DECIDE, [queueItem(1)]);
     renderWithProviders(<MatchingPage />);
 
-    await waitFor(() => expect(screen.getByText('ECN-1')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('MAT-261013-001')).toBeInTheDocument());
     expect(within(panel()).getByRole('button', { name: /^Confirmer/ })).toBeDisabled();
     expect(within(panel()).getByRole('button', { name: /^Rejeter/ })).toBeDisabled();
     expect(within(panel()).getByRole('button', { name: /^Demander un complément/ })).toBeDisabled();
@@ -127,7 +128,7 @@ describe('Écran Confrontation & matching (/matching)', () => {
     });
     renderWithProviders(<MatchingPage />);
 
-    await waitFor(() => expect(screen.getByText('ECN-1')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('MAT-261013-001')).toBeInTheDocument());
     fireEvent.click(within(panel()).getByRole('button', { name: /^Confirmer/ }));
 
     expect(await screen.findByText(message)).toBeInTheDocument();
@@ -152,7 +153,7 @@ describe('Écran Confrontation & matching (/matching)', () => {
     mockQueueApi(ME_WITH_MATCH_DECIDE, [vrai]);
     renderWithProviders(<MatchingPage />);
 
-    await waitFor(() => expect(screen.getByText('ECN-1')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('MAT-261013-001')).toBeInTheDocument());
     expect(screen.getByText('35/35')).toBeInTheDocument();
     expect(screen.queryByText(/21\/35|67\s?%/)).not.toBeInTheDocument();
   });
@@ -162,7 +163,7 @@ describe('Écran Confrontation & matching (/matching)', () => {
     mockQueueApi(ME_WITH_MATCH_DECIDE, [faux]);
     renderWithProviders(<MatchingPage />);
 
-    await waitFor(() => expect(screen.getByText('ECN-1')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('MAT-261013-001')).toBeInTheDocument());
     expect(screen.getByText('0/35')).toBeInTheDocument();
   });
 
@@ -251,6 +252,7 @@ describe('Écran Confrontation & matching (/matching)', () => {
     expect(clicks[0].name).toBe('file-confrontation-TOUS.csv');
     const csv = await readBlob(pending!);
     expect(csv).toContain('ECN-1');
+    expect(csv).toContain('MAT-261013-001');
     expect(csv).toContain('Réf.');
 
     vi.restoreAllMocks();
@@ -293,13 +295,13 @@ describe('Écran Confrontation & matching (/matching)', () => {
     mockQueueApi(ME_WITH_MATCH_DECIDE, [appariee, seule]);
     renderWithProviders(<MatchingPage />);
 
-    await waitFor(() => expect(screen.getByText('ECN-1')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('MAT-261013-001')).toBeInTheDocument());
     const rows = screen.getAllByRole('row');
     expect(rows[1]).toHaveTextContent('À confirmer');
     expect(rows[1]).toHaveTextContent('60/ 100');
     expect(rows[2]).toHaveTextContent('Non apparié');
     expect(rows[2]).toHaveTextContent('En attente de la déclaration adverse');
     expect(screen.queryByText('A_CONFIRMER')).not.toBeInTheDocument();
-    expect(within(panel()).getByText('ECN-1')).toBeInTheDocument();
+    expect(within(panel()).getByText('MAT-261013-001')).toHaveAttribute('title', 'm-1');
   });
 });

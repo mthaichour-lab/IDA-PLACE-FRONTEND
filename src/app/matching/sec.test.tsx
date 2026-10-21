@@ -22,6 +22,7 @@ const OPERATEUR: MeResponse = { user: { id: 'u-op', name: 'Opérateur', email: '
 function item(overrides: Partial<MatchQueueItem> = {}): MatchQueueItem {
   return {
     id: 'm-1',
+    reference: 'MAT-261013-001',
     refA: 'ECN-1',
     companyA: 'CAAT',
     plateA: '16001-120-16',

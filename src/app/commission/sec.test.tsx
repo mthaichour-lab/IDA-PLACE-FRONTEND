@@ -17,6 +17,7 @@ const CORRESPONDANT: MeResponse = { user: { id: 'u-c', name: 'Corr.', email: 'c@
 function kase(overrides: Partial<CommissionCase> = {}): CommissionCase {
   return {
     id: 'cc-1',
+    reference: 'CSC-2026-011',
     recoursId: 'r-1',
     claimId: 'c-1',
     companyA: 'CAAT',

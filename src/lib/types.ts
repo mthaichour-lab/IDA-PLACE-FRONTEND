@@ -457,6 +457,8 @@ export interface CockpitCycleConventionnel {
  */
 export interface CockpitAlerteConventionnelle {
   id: string;
+  /** Référence métier lisible de l'objet en alerte (`REC-…` ou `CSC-…`). */
+  reference: string;
   from: string;
   to: string;
   description: string;
@@ -506,6 +508,8 @@ export interface MatchCriteria {
 
 export interface MatchQueueItem {
   id: string;
+  /** Référence métier immuable de la ligne (`MAT-AAMMJJ-NNN`). */
+  reference: string;
   refA: string;
   companyA: string;
   plateA: string;
@@ -705,6 +709,8 @@ export interface RecoursTimer {
 
 export interface RecoursItem {
   id: string;
+  /** Référence métier immuable (`REC-AAAA-NNNNN`). */
+  reference: string;
   claimId: string;
   from: string;
   to: string;
@@ -805,6 +811,7 @@ export interface SettlementMonthlyAnnexe7 {
  * Forme exacte de `QuarterlySettlementDto` (back `settlement.dto.ts`).
  */
 
+/** Position bilatérale nettée : `from` = créancier net (reçoit), `to` = débiteur net (paie) — même convention que `RecoursItem.from`/`to`. */
 export interface SettlementPosition {
   from: string;
   to: string;
@@ -930,7 +937,11 @@ export interface CommissionPv {
 
 export interface CommissionCase {
   id: string;
+  /** Référence métier immuable (`CSC-AAAA-NNN`). */
+  reference: string;
   recoursId: string;
+  /** Référence métier du recours (`REC-…`), dénormalisée à l'ouverture du dossier. */
+  recoursReference?: string;
   claimId: string;
   companyA: string;
   companyB: string;
@@ -1142,6 +1153,8 @@ export interface MonitoringJourneyStep {
 /** "Vue par dossier — parcours complet" (écran 8), scopée à une compagnie. */
 export interface MonitoringJourney {
   id: string;
+  /** Référence métier du recours (`REC-…`). */
+  reference: string;
   claimId: string;
   direction: 'EMIS' | 'RECU';
   counterparty: string;

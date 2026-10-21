@@ -168,7 +168,7 @@ export default function MonitoringPage() {
     const all = journeysQuery.data?.items ?? [];
     const q = journeySearch.trim().toLowerCase();
     if (!q) return all;
-    return all.filter((j) => j.id.toLowerCase().includes(q) || j.claimId.toLowerCase().includes(q) || j.counterparty.toLowerCase().includes(q));
+    return all.filter((j) => j.id.toLowerCase().includes(q) || j.reference.toLowerCase().includes(q) || j.claimId.toLowerCase().includes(q) || j.counterparty.toLowerCase().includes(q));
   }, [journeysQuery.data, journeySearch]);
   const journeyRows = filteredJourneys.slice((journeyPage - 1) * PAGE_SIZE, journeyPage * PAGE_SIZE);
 
@@ -200,7 +200,7 @@ export default function MonitoringPage() {
         render: (j) => (
           <div className="mon-ref">
             <span className="mono" title={j.id}>
-              {shortId(j.id)}
+              {j.reference}
             </span>
             <span className="mono mon-ref-sub" title={j.claimId}>
               {shortId(j.claimId)}
@@ -297,7 +297,7 @@ export default function MonitoringPage() {
       t('monitoring.journeys.col.etat'),
     ];
     const rows = filteredJourneys.map((j) => [
-      j.id,
+      j.reference,
       `${t(j.direction === 'EMIS' ? 'monitoring.journeys.direction.emisPrefix' : 'monitoring.journeys.direction.recuPrefix')} ${j.counterparty}`,
       j.amount,
       j.steps.map((s) => s.key).join(' > '),

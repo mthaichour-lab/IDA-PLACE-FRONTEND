@@ -35,6 +35,7 @@ const ME_WITHOUT_EXCHANGE: MeResponse = {
 function recoursItem(overrides: Partial<RecoursItem> = {}): RecoursItem {
   return {
     id: 'r-1',
+    reference: 'REC-2026-00296',
     claimId: 'c-1',
     from: 'CAAT',
     to: 'SAA',

@@ -546,8 +546,8 @@ function AlertsSection({ alerts, t }: { alerts: CockpitAlerteConventionnelle[]; 
         ) : (
           <div className="alert-list">
             {alerts.map((a) => {
-              // Dossiers de la Commission (CSC-…) : pas de paire compagnie, icône balance.
-              const commission = a.id.startsWith('CSC');
+              // Dossiers de la Commission (CSC-…) : pas de paire compagnie, icône balance (maquette, écran 1).
+              const commission = a.reference.startsWith('CSC');
               return (
                 // Cible `/exchanges` (registre des recours) — ces alertes mélangent recours et dossiers de commission (voir CockpitController).
                 <Link href="/exchanges" className="alert-row" key={a.id}>
@@ -555,8 +555,10 @@ function AlertsSection({ alerts, t }: { alerts: CockpitAlerteConventionnelle[]; 
                     {commission ? <Scale size={17} /> : <TriangleAlert size={17} className="ico-ko" />}
                   </span>
                   <span className="alert-text">
-                    <strong className="mono">{a.id}</strong>
-                    {a.from ? (
+                    <strong className="mono" title={a.id}>
+                      {a.reference}
+                    </strong>
+                    {a.from && !commission ? (
                       <>
                         {' '}
                         <CoChip code={a.from} /> <span aria-hidden="true">→</span> <CoChip code={a.to} />
@@ -633,7 +635,7 @@ function FeedSection({
             {feed.map((entry) => {
               // SEC-07 : seuls l'identifiant et l'état diffusés sont affichés —
               // le détail se consulte dans l'écran concerné, rechargé par l'API.
-              const { event, id, state } = entry.signal;
+              const { event, id, reference, state } = entry.signal;
               const titleKey = FEED_TITLES[event];
               const Icon = FEED_ICONS[event] ?? Link2;
               return (
@@ -647,7 +649,9 @@ function FeedSection({
                       {id ? (
                         <>
                           {' · '}
-                          <span className="mono">{id}</span>
+                          <span className="mono" title={id}>
+                            {reference ?? id}
+                          </span>
                         </>
                       ) : null}
                     </strong>

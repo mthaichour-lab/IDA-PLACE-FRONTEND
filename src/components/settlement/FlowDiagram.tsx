@@ -66,8 +66,10 @@ function formatSigned(amount: number, formatAmount: (n: number) => string): stri
  *
  * Mode "bilateral" : pas de hub, un cercle de compagnies, une flèche RÉELLE
  * par entrée `SettlementPosition` (déjà nettée par paire côté back,
- * `computeBilateralNetPositions` — `from`→`to` = la compagnie qui paie
- * (nette) → celle qui reçoit). Pas de position nette par nœud dans ce
+ * `computeBilateralNetPositions` — `from` = créancier net de la paire, `to` =
+ * débiteur net, même convention que `Recours.from`/`to`). La flèche suit le
+ * flux de règlement : du débiteur (`to`, qui paie) vers le créancier
+ * (`from`, qui reçoit). Pas de position nette par nœud dans ce
  * mode (une compagnie peut avoir plusieurs flèches, une par contrepartie) :
  * le montant est donc étiqueté sur chaque flèche, pas sous le nœud.
  *
@@ -183,8 +185,9 @@ export function FlowDiagram({ mode, net, positions, formatAmount, emptyLabel, hu
           </marker>
         </defs>
         {positions.map((p, i) => {
-          const [fx, fy] = nodePoint.get(p.from) ?? [cx, cy];
-          const [tx, ty] = nodePoint.get(p.to) ?? [cx, cy];
+          // Flux de règlement : du débiteur net (`to`) vers le créancier net (`from`).
+          const [fx, fy] = nodePoint.get(p.to) ?? [cx, cy];
+          const [tx, ty] = nodePoint.get(p.from) ?? [cx, cy];
           const [x1, y1, x2, y2] = shrinkToward(fx, fy, tx, ty, nodeRadius, nodeRadius + 10);
           const curved = hasReverse(p.from, p.to);
           const widthRatio = p.amount / maxAmount;
@@ -193,7 +196,7 @@ export function FlowDiagram({ mode, net, positions, formatAmount, emptyLabel, hu
           const midY = (y1 + y2) / 2;
           if (!curved) {
             return (
-              <g key={`edge-${p.from}-${p.to}-${i}`} data-testid={`flow-edge-${p.from}-${p.to}`}>
+              <g key={`edge-${p.from}-${p.to}-${i}`} data-testid={`flow-edge-${p.from}-${p.to}`} data-payer={p.to} data-payee={p.from}>
                 <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="var(--k-pri)" strokeWidth={strokeWidth} markerEnd="url(#fd-arrow-neutral)" />
                 <text x={midX} y={midY - 6} textAnchor="middle" fontSize={10} className="mono" fill="var(--ink-2)">
                   {formatAmount(p.amount)}
@@ -208,7 +211,7 @@ export function FlowDiagram({ mode, net, positions, formatAmount, emptyLabel, hu
           const ctrlX = midX + (nx / nlen) * offset;
           const ctrlY = midY + (ny / nlen) * offset;
           return (
-            <g key={`edge-${p.from}-${p.to}-${i}`} data-testid={`flow-edge-${p.from}-${p.to}`}>
+            <g key={`edge-${p.from}-${p.to}-${i}`} data-testid={`flow-edge-${p.from}-${p.to}`} data-payer={p.to} data-payee={p.from}>
               <path d={`M ${x1} ${y1} Q ${ctrlX} ${ctrlY} ${x2} ${y2}`} fill="none" stroke="var(--k-pri)" strokeWidth={strokeWidth} markerEnd="url(#fd-arrow-neutral)" />
               <text x={ctrlX} y={ctrlY} textAnchor="middle" fontSize={10} className="mono" fill="var(--ink-2)">
                 {formatAmount(p.amount)}

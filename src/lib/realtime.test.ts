@@ -20,6 +20,12 @@ describe('temps réel — signal réduit (SEC-07)', () => {
     expect(toRealtimeSignal('metering.tick', null)).toEqual({ event: 'metering.tick' });
   });
 
+  it('retient la référence métier seulement si elle en a le format (REC/CSC/MAT)', () => {
+    expect(toRealtimeSignal('recours.timer', { id: 'R-1', reference: 'REC-2026-00296', state: 'OPPOSITION' })).toEqual({ event: 'recours.timer', id: 'R-1', reference: 'REC-2026-00296', state: 'OPPOSITION' });
+    expect(toRealtimeSignal('match.updated', { id: 'M-1', reference: 'MAT-261013-001' })).toEqual({ event: 'match.updated', id: 'M-1', reference: 'MAT-261013-001' });
+    expect(toRealtimeSignal('recours.timer', { id: 'R-1', reference: 'Nom Assuré' })).toEqual({ event: 'recours.timer', id: 'R-1' });
+  });
+
   it('chaque événement invalide au moins une famille de requêtes', () => {
     for (const keys of Object.values(REALTIME_INVALIDATIONS)) expect(keys.length).toBeGreaterThan(0);
     expect(REALTIME_INVALIDATIONS['recours.timer']).toContainEqual(['recours']);

@@ -373,7 +373,7 @@ export default function ExchangesPage() {
         render: (r) => (
           <span className="ex-ref">
             <span className="mono ex-ref-id" title={r.id}>
-              {r.id}
+              {r.reference}
             </span>
             <span className="mono ex-ref-sub" title={r.claimId}>
               {r.claimId}
@@ -533,7 +533,9 @@ export default function ExchangesPage() {
               {current ? (
                 <>
                   {' '}
-                  <span className="mono">{current.id}</span>
+                  <span className="mono" title={current.id}>
+                    {current.reference}
+                  </span>
                 </>
               ) : null}
             </span>

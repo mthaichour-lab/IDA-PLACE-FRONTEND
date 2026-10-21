@@ -13,10 +13,11 @@ const ME: MeResponse = {
 const QUARTER: SettlementQuarter = {
   quarter: '2026-Q4',
   bordereau: 'BORD-2026-Q4',
+  // Convention du back : `from` = créancier (Recours.from). CAAT a 300 k de créances sur SAA et 50 k de dettes envers elle : créancier net de 250 k.
   positions: [{ from: 'CAAT', to: 'SAA', amount: 250_000 }],
   net: [
-    { code: 'CAAT', net: -250_000 },
-    { code: 'SAA', net: 250_000 },
+    { code: 'CAAT', net: 250_000 },
+    { code: 'SAA', net: -250_000 },
   ],
   closedAt: undefined,
 };
@@ -232,6 +233,9 @@ describe('Écran Compensation trimestrielle (/quarter)', () => {
       fireEvent.click(screen.getByRole('tab', { name: 'Bilatéral' }));
 
       await waitFor(() => expect(screen.getByTestId('flow-edge-CAAT-SAA')).toBeInTheDocument());
+      // La flèche suit le règlement : le débiteur net (SAA) paie le créancier net (CAAT).
+      expect(screen.getByTestId('flow-edge-CAAT-SAA')).toHaveAttribute('data-payer', 'SAA');
+      expect(screen.getByTestId('flow-edge-CAAT-SAA')).toHaveAttribute('data-payee', 'CAAT');
       // Une seule entrée dans `QUARTER.positions` → une seule flèche, pas de fabrication d'un ordre pair-à-pair pour le hub.
       expect(screen.queryAllByTestId(/^flow-edge-/).length).toBe(QUARTER.positions.length);
       expect(screen.queryByTestId('flow-hub')).not.toBeInTheDocument();

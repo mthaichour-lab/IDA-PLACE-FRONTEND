@@ -20,6 +20,7 @@ const DEMANDEUR: MeResponse = { user: { id: 'u-caat', name: 'Corr. CAAT', email:
 function recours(state: RecoursState, overrides: Partial<RecoursItem> = {}): RecoursItem {
   return {
     id: '11111111-1111-4111-8111-111111111111',
+    reference: 'REC-2026-00296',
     claimId: 'c-1',
     from: 'CAAT',
     to: 'SAA',

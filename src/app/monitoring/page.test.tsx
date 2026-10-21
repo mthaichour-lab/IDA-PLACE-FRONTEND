@@ -53,6 +53,7 @@ function companyScore(code: string, score: number | null, overrides: Partial<Mon
 function journey(overrides: Partial<MonitoringJourney> = {}): MonitoringJourney {
   return {
     id: 'rec-1',
+    reference: `REF-${overrides.id ?? 'rec-1'}`,
     claimId: 'SAA-2025-000160',
     direction: 'EMIS',
     counterparty: 'CAAR',
@@ -213,10 +214,10 @@ describe('Écran Monitoring & scoring (/monitoring)', () => {
 
     renderWithProviders(<MonitoringPage />);
 
-    await waitFor(() => expect(screen.getByText('rec-1')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('REF-rec-1')).toBeInTheDocument());
     expect(screen.getByText('1 étapes')).toBeInTheDocument();
     expect(screen.getByText('3 étapes')).toBeInTheDocument();
-    expect(screen.getByText('rec-2')).toBeInTheDocument();
+    expect(screen.getByText('REF-rec-2')).toBeInTheDocument();
   });
 
   it('pagine la « Vue par dossier » par 6 lignes (convention de place A.5)', async () => {
@@ -232,14 +233,14 @@ describe('Écran Monitoring & scoring (/monitoring)', () => {
 
     renderWithProviders(<MonitoringPage />);
 
-    await waitFor(() => expect(screen.getByText('rec-1')).toBeInTheDocument());
-    expect(screen.queryByText('rec-7')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('REF-rec-1')).toBeInTheDocument());
+    expect(screen.queryByText('REF-rec-7')).not.toBeInTheDocument();
 
     const journeysSheet = screen.getByText('Vue par dossier — parcours complet').closest('.sheet') as HTMLElement;
     fireEvent.click(within(journeysSheet).getByRole('button', { name: 'Suivant' }));
 
-    await waitFor(() => expect(screen.getByText('rec-7')).toBeInTheDocument());
-    expect(screen.queryByText('rec-1')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('REF-rec-7')).toBeInTheDocument());
+    expect(screen.queryByText('REF-rec-1')).not.toBeInTheDocument();
   });
   it('« Excel » du classement exporte en CSV les lignes RÉELLES chargées ; « KPI conformité » mène aux statistiques de la place', async () => {
     const scores: MonitoringScores = {
