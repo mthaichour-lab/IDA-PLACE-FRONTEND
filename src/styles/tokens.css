@@ -95,6 +95,14 @@
     --ok: #4cc38a;
     --ko: #f2766b;
     --warn: #f0a050;
+    /* Surfaces douces (tuiles, pastilles) */
+    --k-soft: #172036;
+    --k-soft-2: #182136;
+    --k-mint: #11302c;
+    --ok-soft: #12352a;
+    --ko-soft: #3a1c22;
+    --warn-soft: #3a2a16;
+    --neutral-soft: #182136;
   }
 }
 
@@ -111,4 +119,12 @@
   --ok: #4cc38a;
   --ko: #f2766b;
   --warn: #f0a050;
+  /* Surfaces douces (tuiles, pastilles) */
+  --k-soft: #172036;
+  --k-soft-2: #182136;
+  --k-mint: #11302c;
+  --ok-soft: #12352a;
+  --ko-soft: #3a1c22;
+  --warn-soft: #3a2a16;
+  --neutral-soft: #182136;
 }

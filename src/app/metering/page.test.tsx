@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { mockFetchRouter, renderWithProviders } from '@/test/render';
 import { CompanyView, MeResponse, MeteringHistory, MeteringInvoice, Paginated, PriceGrid } from '@/lib/types';
@@ -93,9 +93,10 @@ function mockMeteringApi(inv: MeteringInvoice, me: MeResponse = ME, companies: P
  * calculée (quota/dépassement/montant), grille tarifaire éditable selon le
  * privilège `grid`, et graphe "Consommation mensuelle" (historique 10 mois
  * d'une métrique sélectionnable — rapprochement de la capture de référence,
- * 2026-10-18). Le panneau "Showback — coût d'infrastructure attribué" de la
- * capture reste délibérément absent (voir HANDOFF.md back,
- * `ARCHITECTURE.md` : aucune donnée de coût d'infrastructure réelle).
+ * 2026-10-18). L'emplacement « Showback — coût d'infrastructure attribué » de la
+ * capture (r19) présente uniquement les montants réellement facturés,
+ * regroupés par ressource : l'API n'expose aucun coût d'infrastructure
+ * (voir HANDOFF.md back, `ARCHITECTURE.md`).
  */
 describe('Écran Métrologie & facturation (/metering)', () => {
   afterEach(() => {
@@ -116,7 +117,10 @@ describe('Écran Métrologie & facturation (/metering)', () => {
     renderWithProviders(<MeteringPage />);
 
     await waitFor(() => expect(screen.getAllByText('Dossiers').length).toBeGreaterThan(0));
-    expect(screen.getByText(/v1/)).toBeInTheDocument();
+    // Version de la grille affichée dans la carte « Grille tarifaire paramétrable » (et rappelée sur la facture).
+    const gridCard = (await screen.findByText('Grille tarifaire paramétrable')).closest('.sheet') as HTMLElement;
+    expect(within(gridCard).getByText('v1')).toBeInTheDocument();
+    expect(within(gridCard).getByLabelText('Appels API — Quota inclus')).toHaveValue(150_000);
   });
 
   it('affiche le sélecteur de métrique de l\'historique, par défaut sur « Dossiers ingérés »', async () => {
@@ -148,12 +152,86 @@ describe('Écran Métrologie & facturation (/metering)', () => {
     expect(historyCalls.some((url) => url.includes('/history/apiCalls'))).toBe(true);
   });
 
-  it("n'affiche pas de section Showback (hors périmètre, voir HANDOFF.md)", async () => {
+  it("ventilation infrastructure : montants réellement facturés regroupés par ressource, pas de coût d'infrastructure inventé", async () => {
+    const infraLine = (metric: string, label: string, amount: number) => ({ metric, label, unit: 'Go', includedQuota: 10, unitPrice: 1, measured: 10 + amount, facturable: amount, amount });
+    mockMeteringApi(
+      invoice({
+        lines: [
+          infraLine('cpuHours', 'Temps CPU', 420),
+          infraLine('storageGB', 'Stockage documentaire', 1020),
+          infraLine('backupsGB', 'Sauvegardes', 160),
+          infraLine('sms', 'Notifications SMS', 2700),
+          infraLine('emails', 'Notifications e-mail', 600),
+        ],
+      }),
+    );
+    renderWithProviders(<MeteringPage />);
+
+    const card = (await screen.findByText('Ventilation infrastructure — montants facturés')).closest('.sheet') as HTMLElement;
+    const rowOf = (label: string) => within(card).getByText(label).closest('tr') as HTMLElement;
+    expect(rowOf('CPU').textContent).toMatch(/420\s?DA/);
+    // Stockage + sauvegardes = 1 020 + 160 ; Messagerie = SMS + e-mails.
+    expect(rowOf('Stockage + sauvegardes').textContent).toMatch(/1\s?180\s?DA/);
+    expect(rowOf('Messagerie').textContent).toMatch(/3\s?300\s?DA/);
+    // Ressources absentes de la facture : pas de ligne (aucune donnée inventée).
+    expect(within(card).queryByText('Mémoire')).not.toBeInTheDocument();
+    expect(rowOf('Total refacturé (chargeback)').textContent).toMatch(/4\s?900\s?DA/);
+    expect(within(card).getByText(/pas encore collecté par l'API/)).toBeInTheDocument();
+    // Pas de « showback / coût d'infrastructure attribué » : l'API n'expose aucun coût d'infrastructure (voir HANDOFF.md).
+    expect(screen.queryByText(/Showback/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/coût d'infrastructure attribué/i)).not.toBeInTheDocument();
+  });
+
+  it('facture sans ligne d’infrastructure : la ventilation le dit, sans montant', async () => {
     mockMeteringApi(invoice());
     renderWithProviders(<MeteringPage />);
 
-    await waitFor(() => expect(screen.getAllByText('Dossiers').length).toBeGreaterThan(0));
-    expect(screen.queryByText(/Showback/i)).not.toBeInTheDocument();
+    expect(await screen.findByText("Aucune ligne d'infrastructure sur cette facture.")).toBeInTheDocument();
+  });
+
+  it('tuiles : dépassement en pourcentage du quota inclus, 6 tuiles au plus', async () => {
+    const lines = Array.from({ length: 8 }, (_, i) => ({
+      metric: `m${i}`,
+      label: `Inducteur ${i}`,
+      unit: 'u',
+      includedQuota: 100,
+      unitPrice: 1,
+      measured: i === 0 ? 164 : 90,
+      facturable: i === 0 ? 64 : 0,
+      amount: i === 0 ? 64 : 0,
+    }));
+    mockMeteringApi(invoice({ lines }));
+    renderWithProviders(<MeteringPage />);
+
+    const tiles = await screen.findByRole('region', { name: 'Consommation par inducteur' });
+    expect(within(tiles).getAllByText(/^quota /)).toHaveLength(6);
+    expect(within(tiles).getByText(/\+64\s?%/)).toBeInTheDocument();
+    expect(within(tiles).queryByText('Inducteur 6')).not.toBeInTheDocument();
+  });
+
+  it('facture : ligne d’abonnement + une ligne par inducteur, paginées 6 par page', async () => {
+    const lines = Array.from({ length: 7 }, (_, i) => ({
+      metric: `m${i}`,
+      label: `Inducteur ${i}`,
+      unit: '1 000 appels',
+      includedQuota: 1000,
+      unitPrice: 45,
+      measured: 3000,
+      facturable: 2000,
+      amount: 90,
+    }));
+    mockMeteringApi(invoice({ lines }));
+    renderWithProviders(<MeteringPage />);
+
+    const card = (await screen.findByText(/^Facture — /)).closest('.sheet') as HTMLElement;
+    expect(within(card).getByText('Standard')).toBeInTheDocument();
+    expect(within(card).getByText(/1–6 sur 8/)).toBeInTheDocument();
+    // Unité de prix « 1 000 appels » : facturable ramené à l'unité (2 000 ÷ 1 000 = 2).
+    expect(within(card).getAllByText(/÷\s?1\s?000\s?=\s?2$/).length).toBeGreaterThan(0);
+    expect(within(card).queryByText('Inducteur 5')).not.toBeInTheDocument();
+    fireEvent.click(within(card).getByRole('button', { name: 'Suivant' }));
+    expect(await within(card).findByText('Inducteur 5')).toBeInTheDocument();
+    expect(within(card).getByText(/7–8 sur 8/)).toBeInTheDocument();
   });
 
   describe('SEC-38 : compagnie issue de l’identité réelle, plus de CAAT par défaut', () => {

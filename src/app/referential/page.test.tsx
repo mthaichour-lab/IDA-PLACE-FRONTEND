@@ -225,4 +225,23 @@ describe('Écran Référentiel de place (/referential)', () => {
     expect(screen.getByText(/nombre de véhicules impliqués/i)).toBeInTheDocument();
     expect(screen.queryByText(/RG-01/)).not.toBeInTheDocument();
   });
+
+  it("action « Agences » d'une compagnie : section Agences filtrée par companyId (filtre réel de l'API), filtre retirable", async () => {
+    const companyIds: (string | null)[] = [];
+    const router = baseRouter();
+    mockFetchRouter((pathname, url) => {
+      if (pathname === '/api/v1/referential/agencies' && url.searchParams.get('pageSize') !== '1') companyIds.push(url.searchParams.get('companyId'));
+      return router(pathname, url);
+    });
+    const user = userEvent.setup();
+
+    renderWithProviders(<ReferentialPage />);
+
+    await user.click(await screen.findByRole('button', { name: 'Voir les agences de C001' }));
+    await waitFor(() => expect(companyIds).toContain('c-1'));
+    expect(screen.getByText('Agences', { selector: '.ref-nav-title' }).closest('button')).toHaveAttribute('aria-current', 'true');
+
+    await user.click(screen.getByRole('button', { name: /Toutes les compagnies/ }));
+    await waitFor(() => expect(companyIds.at(-1)).toBeNull());
+  });
 });

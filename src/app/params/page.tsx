@@ -1,10 +1,11 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Eye, EyeOff, Info, Lock, LockOpen, Plus, RefreshCw, Save, Settings, Table2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { TruncationNote } from '@/components/ui/TruncationNote';
 import { FolioHeader } from '@/components/FolioHeader';
-import { PriceGridEditor } from '@/components/metering/PriceGridEditor';
+import { CoChip } from '@/components/ui/CoChip';
 import { Kpi, KpiRow } from '@/components/ui/Kpi';
 import { LabeledSelect } from '@/components/referential/fields';
 import { Modal } from '@/components/ui/Modal';
@@ -18,9 +19,12 @@ import { fetchAllPages } from '@/lib/paginate';
 import { apiGet, apiPath, apiPost, apiPut } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 import { isCompanyRole } from '@/lib/auth/roles';
+import { useCompanyEntry } from '@/lib/company-directory';
+import { buildCsv, downloadCsv } from '@/lib/csv';
 import { describeApiError } from '@/lib/error-message';
 import { buildRecentPeriods } from '@/lib/period-options';
 import { CompanyListItem, Paginated, PlaceMeteringSummary, PlaceUser, PriceGrid, RolesMatrixResponse } from '@/lib/types';
+import { ParamsPriceGrid } from './ParamsPriceGrid';
 
 /** SEC-44 : `companyId` d'un utilisateur est un CODE compagnie (même espace que `Claim.company`), pas un identifiant. */
 const USER_COMPANY_CODE = /^[A-Z0-9][A-Z0-9_-]{1,15}$/;
@@ -55,22 +59,46 @@ function periodLabel(period: string, locale: string): string {
   return d.toLocaleDateString(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' });
 }
 
-/** Montant DA — même formateur que `/metering` (écran 10), dupliqué ici par cohérence avec le reste de l'app (pas de util partagé pour ça, voir HANDOFF.md). */
-function formatDzd(amount: number, locale: string): string {
+/** Espace fine insécable (séparateur de milliers `fr`) : quasi invisible en Urbanist — remplacée par une espace insécable ordinaire, comme la maquette (« 1 017 250 DA »). */
+const NARROW_NBSP = new RegExp(String.fromCharCode(0x202f), 'g');
+const NBSP = String.fromCharCode(0xa0);
+
+/** Entier localisé (séparateur de milliers), sans décimales. */
+function formatInt(amount: number, locale: string): string {
   try {
-    return new Intl.NumberFormat(locale, { style: 'currency', currency: 'DZD', maximumFractionDigits: 0 }).format(amount);
+    return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(amount).replace(NARROW_NBSP, NBSP);
   } catch {
-    return `${amount.toLocaleString()} DA`;
+    return amount.toLocaleString();
   }
 }
 
-/** Barre horizontale non colorée (pas de seuil bon/mauvais, contrairement à `ScoreBar`) — "Poids revenu" du dashboard coûts place entière, sizée directement par `revenueSharePct` (0-100). */
-function RevenueShareBar({ pct }: { pct: number }) {
+/** Montant « 1 017 250 DA » (maquette : unité DA, comme les autres écrans). */
+function formatDa(amount: number, locale: string): string {
+  return `${formatInt(amount, locale)} DA`;
+}
+
+/**
+ * Barre « Poids revenu » (maquette) : longueur relative au plus gros
+ * inducteur du mois (la ligne la plus lourde remplit la piste), la part
+ * réelle `revenueSharePct` restant affichée dans la colonne « % conso. ».
+ */
+function RevenueShareBar({ pct, max }: { pct: number; max: number }) {
+  const width = max > 0 ? Math.max(0, Math.min(100, (pct / max) * 100)) : 0;
   return (
-    <div className="score-bar-track" style={{ minWidth: 100 }}>
-      <div className="score-bar-fill" style={{ width: `${Math.max(0, Math.min(100, pct))}%`, background: 'var(--k-pri-2)' }} />
+    <div className="pa-bar" aria-hidden="true">
+      <div className="pa-bar-fill" style={{ width: `${width}%` }} />
     </div>
   );
+}
+
+/** Organisation de rattachement : la compagnie (nom du référentiel) pour un rôle compagnie, l'institution du rôle pour un rôle de place — même règle que le pied de la barre latérale (`shell.org.<ROLE>`). */
+function OrgCell({ user }: { user: PlaceUser }) {
+  const { t } = useI18n();
+  const entry = useCompanyEntry(user.companyId ?? undefined);
+  if (user.companyId) return <>{entry?.name ?? user.companyId}</>;
+  const key = `shell.org.${user.role}` as TranslationKey;
+  const label = t(key);
+  return label === key ? <span className="pa-dash">—</span> : <>{label}</>;
 }
 
 export default function ParamsPage() {
@@ -84,7 +112,7 @@ export default function ParamsPage() {
   if (isLoading && !me) {
     return (
       <>
-        <FolioHeader badge="Admin · §5.1" title={t('params.title')} subtitle={t('params.subtitle')} />
+        <FolioHeader badge="Module H · §5.1" title={t('params.title')} subtitle={t('params.subtitle')} />
         <p>{t('common.loading')}</p>
       </>
     );
@@ -93,7 +121,7 @@ export default function ParamsPage() {
   if (!hasPrivilege('admin')) {
     return (
       <>
-        <FolioHeader badge="Admin · §5.1" title={t('params.title')} subtitle={t('params.subtitle')} />
+        <FolioHeader badge="Module H · §5.1" title={t('params.title')} subtitle={t('params.subtitle')} />
         <div className="note warn" role="alert">
           <div>
             <strong style={{ display: 'block', marginBottom: 4 }}>{t('params.forbidden.title')}</strong>
@@ -105,8 +133,8 @@ export default function ParamsPage() {
   }
 
   return (
-    <>
-      <FolioHeader badge="Admin · §5.1" title={t('params.title')} subtitle={t('params.subtitle')} />
+    <div className="pa">
+      <FolioHeader badge="Module H · §5.1" title={t('params.title')} subtitle={t('params.subtitle')} />
 
       <Tabs
         items={[
@@ -119,14 +147,14 @@ export default function ParamsPage() {
       />
 
       {tab === 'users' ? <UsersTab /> : tab === 'roles' ? <RolesTab /> : <CostsTab />}
-    </>
+    </div>
   );
 }
 
 /* ===================== Utilisateurs & accès ===================== */
 
 function UsersTab() {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const { me } = useAuth();
   // SEC-38 : un rôle compagnie ne peut proposer que SA compagnie.
   const lockedCompany = isCompanyRole(me?.role) ? me?.company ?? '' : undefined;
@@ -135,6 +163,7 @@ function UsersTab() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<PlaceUser | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [showEmail, setShowEmail] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', role: '', companyId: '' });
 
   // Rôle compagnie : code compagnie obligatoire (400 sinon) ; rôle place : aucune compagnie rattachée.
@@ -155,9 +184,10 @@ function UsersTab() {
   });
 
   // KPIs (4 tuiles, capture de référence) : pas d'agrégat dédié côté API —
-  // un second appel pleine page sert uniquement au décompte actif/suspendu,
-  // jamais affiché tel quel comme liste (même idiome que `casesAllQuery` de
-  // `/fraude`, B.11 : la liste affichée reste la page courante, paginée serveur).
+  // un second appel pleine page sert uniquement au décompte actif/suspendu
+  // (et à l'export CSV), jamais affiché tel quel comme liste (même idiome que
+  // `casesAllQuery` de `/fraude`, B.11 : la liste affichée reste la page
+  // courante, paginée serveur).
   const usersAllQuery = useQuery({
     queryKey: ['admin', 'users', 'all'],
     // SEC-13 : pages successives de 100 (plafond `FETCH_ALL_MAX_ITEMS`).
@@ -236,11 +266,23 @@ function UsersTab() {
     [roles, matrixQuery.data],
   );
 
+  // Export CSV (« Export » de la maquette) — généré côté front depuis les
+  // utilisateurs RÉELLEMENT chargés (aucun endpoint d'export côté API, même
+  // convention que `/monitoring`) ; SEC-39 : échappement + neutralisation
+  // des formules dans `buildCsv`.
+  function exportUsers() {
+    const users = usersAllQuery.data?.items ?? pageRows;
+    const header = [t('params.users.col.name'), t('params.users.col.email'), t('params.users.col.role'), t('params.users.col.company'), t('params.users.col.status')];
+    const rows = users.map((u) => [u.name, u.email, u.role, u.companyId ?? '', u.active ? t('params.users.status.active') : t('params.users.status.suspended')]);
+    downloadCsv(`utilisateurs-${new Date().toISOString().slice(0, 10)}.csv`, buildCsv(header, rows));
+  }
+
   const columns: Column<PlaceUser>[] = [
-    { key: 'name', header: t('params.users.col.name'), render: (r) => r.name },
-    { key: 'email', header: t('params.users.col.email'), render: (r) => <span className="mono">{r.email}</span> },
-    { key: 'role', header: t('params.users.col.role'), render: (r) => <Tag tone="a">{roleLabel(t, r.role)}</Tag> },
-    { key: 'company', header: t('params.users.col.company'), render: (r) => r.companyId ?? '—' },
+    { key: 'name', header: t('params.users.col.name'), render: (r) => <span className="pa-strong">{r.name}</span> },
+    ...(showEmail ? [{ key: 'email', header: t('params.users.col.email'), render: (r: PlaceUser) => <span className="mono">{r.email}</span> }] : []),
+    { key: 'org', header: t('params.users.col.org'), render: (r) => <OrgCell user={r} /> },
+    { key: 'role', header: t('params.users.col.role'), render: (r) => <span className="pa-role">{roleLabel(t, r.role)}</span> },
+    { key: 'company', header: t('params.users.col.company'), render: (r) => (r.companyId ? <CoChip code={r.companyId} /> : <span className="pa-dash">—</span>) },
     {
       key: 'status',
       header: t('params.users.col.status'),
@@ -248,34 +290,39 @@ function UsersTab() {
     },
     {
       key: 'actions',
-      header: t('params.users.col.actions'),
+      header: '',
       render: (r) => (
-        <button
-          type="button"
-          disabled={toggleActiveMutation.isPending}
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleActiveMutation.mutate(r);
-          }}
-          style={{
-            padding: '4px 10px',
-            borderRadius: 'var(--k-r-s)',
-            border: `1px solid ${r.active ? 'var(--ko)' : 'var(--ok)'}`,
-            background: 'var(--paper)',
-            color: r.active ? 'var(--ko)' : 'var(--ok)',
-            font: 'inherit',
-            fontSize: 'var(--k-fs-xs)',
-            cursor: 'pointer',
-          }}
-        >
-          {r.active ? t('params.users.action.suspend') : t('params.users.action.activate')}
-        </button>
+        <div className="pa-row-actions">
+          <button
+            type="button"
+            className="pa-act"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelected(r);
+            }}
+          >
+            <Settings size={14} aria-hidden="true" />
+            {t('params.users.action.edit')}
+          </button>
+          <button
+            type="button"
+            className={r.active ? 'pa-act ko' : 'pa-act ok'}
+            disabled={toggleActiveMutation.isPending}
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleActiveMutation.mutate(r);
+            }}
+          >
+            {r.active ? <Lock size={14} aria-hidden="true" /> : <LockOpen size={14} aria-hidden="true" />}
+            {r.active ? t('params.users.action.suspend') : t('params.users.action.activate')}
+          </button>
+        </div>
       ),
     },
   ];
 
   return (
-    <div>
+    <div className={showEmail ? 'pa-users pa-users--email' : 'pa-users'}>
       <KpiRow>
         <Kpi value={kpis.total} label={t('params.users.kpi.total')} />
         <Kpi value={kpis.active} label={t('params.users.kpi.active')} />
@@ -284,22 +331,35 @@ function UsersTab() {
       </KpiRow>
       <TruncationNote truncated={usersAllQuery.data?.truncated} shown={usersAllQuery.data?.items.length ?? 0} total={usersAllQuery.data?.total ?? 0} />
 
-      <div className="sheet" style={{ marginTop: 'var(--s-5)' }}>
+      <div className="sheet">
         <div className="sheet-head">
           <span>{t('params.users.title')}</span>
-          <button
-            type="button"
-            onClick={() => setCreateOpen(true)}
-            style={{ padding: '6px 12px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--k-pri)', background: 'var(--k-pri)', color: '#fff', font: 'inherit', cursor: 'pointer' }}
-          >
-            {t('params.users.create')}
-          </button>
+          <div className="pa-head-actions">
+            <button type="button" className="btn-primary" onClick={() => setCreateOpen(true)}>
+              <Plus size={16} aria-hidden="true" />
+              {t('params.users.create')}
+            </button>
+            <button type="button" className="btn-outline" onClick={exportUsers} disabled={usersQuery.isLoading} title={t('common.exportExcel.note')}>
+              <Table2 size={16} aria-hidden="true" />
+              {t('params.export')}
+            </button>
+            <button
+              type="button"
+              className="pa-eye"
+              aria-pressed={showEmail}
+              aria-label={showEmail ? t('params.users.hideEmail') : t('params.users.showEmail')}
+              title={showEmail ? t('params.users.hideEmail') : t('params.users.showEmail')}
+              onClick={() => setShowEmail((v) => !v)}
+            >
+              {showEmail ? <EyeOff size={14} aria-hidden="true" /> : <Eye size={14} aria-hidden="true" />}
+            </button>
+          </div>
         </div>
-        <div className="sheet-body">
+        <div className="sheet-body flush">
           {usersQuery.isLoading ? (
-            <p>{t('common.loading')}</p>
+            <p className="pad">{t('common.loading')}</p>
           ) : usersQuery.error ? (
-            <div className="note ko" role="alert">
+            <div className="note ko pa-pad-note" role="alert">
               <span>{t('common.error')}</span>
               <button type="button" onClick={() => usersQuery.refetch()}>
                 {t('common.retry')}
@@ -315,19 +375,14 @@ function UsersTab() {
           title={`${t('params.users.detail.title')} — ${selected?.name ?? ''}`}
           onClose={() => setSelected(null)}
           footer={
-            <button
-              type="button"
-              disabled={updateMutation.isPending}
-              onClick={() => updateMutation.mutate({ active: editActive, grant: editGrant, revoke: editRevoke })}
-              style={{ padding: '8px 16px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--k-pri)', background: 'var(--k-pri)', color: '#fff', font: 'inherit', cursor: 'pointer' }}
-            >
+            <button type="button" className="btn-primary" disabled={updateMutation.isPending} onClick={() => updateMutation.mutate({ active: editActive, grant: editGrant, revoke: editRevoke })}>
               {t('params.users.detail.save')}
             </button>
           }
         >
           {selected ? (
             <>
-              <dl style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 'var(--s-4)' }}>
+              <dl className="pa-detail">
                 <Field label={t('params.users.col.email')}>
                   <span className="mono">{selected.email}</span>
                 </Field>
@@ -336,27 +391,27 @@ function UsersTab() {
                 </Field>
                 <Field label={t('params.users.col.company')}>{selected.companyId ?? '—'}</Field>
                 <Field label={t('params.users.col.status')}>
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                  <label className="pa-inline-check">
                     <input type="checkbox" checked={editActive} onChange={(e) => setEditActive(e.target.checked)} />
                     <Tag tone={statusTone(editActive)}>{editActive ? t('params.users.status.active') : t('params.users.status.suspended')}</Tag>
                   </label>
                 </Field>
               </dl>
 
-              <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('params.users.detail.grant')}</strong>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s-2)', marginBottom: 'var(--s-4)' }}>
+              <strong className="pa-detail-h">{t('params.users.detail.grant')}</strong>
+              <div className="pa-priv-list">
                 {privileges.map((p) => (
-                  <label key={p} className="mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--k-fs-xs)', cursor: 'pointer' }}>
+                  <label key={p} className="mono">
                     <input type="checkbox" checked={editGrant.includes(p)} onChange={() => toggleIn(editGrant, setEditGrant, p)} />
                     {p}
                   </label>
                 ))}
               </div>
 
-              <strong style={{ display: 'block', marginBottom: 'var(--s-2)', fontSize: 'var(--k-fs-s)' }}>{t('params.users.detail.revoke')}</strong>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s-2)' }}>
+              <strong className="pa-detail-h">{t('params.users.detail.revoke')}</strong>
+              <div className="pa-priv-list">
                 {privileges.map((p) => (
-                  <label key={p} className="mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--k-fs-xs)', cursor: 'pointer' }}>
+                  <label key={p} className="mono">
                     <input type="checkbox" checked={editRevoke.includes(p)} onChange={() => toggleIn(editRevoke, setEditRevoke, p)} />
                     {p}
                   </label>
@@ -373,26 +428,22 @@ function UsersTab() {
           footer={
             <button
               type="button"
+              className="btn-primary"
               disabled={createMutation.isPending || !createValid}
               onClick={() =>
                 createMutation.mutate({ name: form.name.trim(), email: form.email.trim(), role: form.role, companyId: lockedCompany ?? (formCompanyRole ? form.companyId : undefined) })
               }
-              style={{ padding: '8px 16px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--k-pri)', background: 'var(--k-pri)', color: '#fff', font: 'inherit', cursor: 'pointer' }}
             >
               {t('params.users.field.submit')}
             </button>
           }
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-3)' }}>
+          <div className="pa-form">
             <LabeledInput label={t('params.users.field.name')} value={form.name} onChange={(v) => setForm((f) => ({ ...f, name: v }))} />
             <LabeledInput label={t('params.users.field.email')} value={form.email} onChange={(v) => setForm((f) => ({ ...f, email: v }))} type="email" />
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
+            <label className="pa-field">
               {t('params.users.field.role')}
-              <select
-                value={form.role}
-                onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
-                style={{ font: 'inherit', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', padding: '6px 10px', background: 'var(--paper)', color: 'var(--ink)' }}
-              >
+              <select value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}>
                 <option value="">—</option>
                 {roles.map((r) => (
                   <option key={r} value={r}>
@@ -405,15 +456,15 @@ function UsersTab() {
               <LabeledInput label={t('params.users.field.companyRequired')} value={lockedCompany} disabled onChange={() => undefined} />
             ) : formCompanyRole ? (
               <LabeledSelect
-                  label={t('params.users.field.companyRequired')}
-                  value={form.companyId}
-                  required
-                  disabled={companiesQuery.isLoading}
-                  onChange={(v) => setForm((f) => ({ ...f, companyId: v }))}
-                  options={[{ value: '', label: '—' }, ...(companiesQuery.data?.items ?? []).map((c) => ({ value: c.code, label: `${c.code} — ${c.name}` }))]}
-                />
+                label={t('params.users.field.companyRequired')}
+                value={form.companyId}
+                required
+                disabled={companiesQuery.isLoading}
+                onChange={(v) => setForm((f) => ({ ...f, companyId: v }))}
+                options={[{ value: '', label: '—' }, ...(companiesQuery.data?.items ?? []).map((c) => ({ value: c.code, label: `${c.code} — ${c.name}` }))]}
+              />
             ) : form.role ? (
-              <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', margin: 0 }}>{t('params.users.field.placeNoCompany')}</p>
+              <p className="pa-hint">{t('params.users.field.placeNoCompany')}</p>
             ) : null}
           </div>
         </Modal>
@@ -473,40 +524,41 @@ function RolesTab() {
   }
 
   return (
-    <div className="sheet">
+    <div className="sheet pa-roles">
       <div className="sheet-head">
         <span>{t('params.roles.title')}</span>
-        <div style={{ display: 'flex', gap: 'var(--s-2)' }}>
-          <button
-            type="button"
-            disabled={!dirty || saveMutation.isPending}
-            onClick={() => setDraft(structuredClone(matrixQuery.data!.matrix))}
-            style={{ padding: '6px 12px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--rule-strong)', background: 'var(--paper)', color: 'var(--ink)', font: 'inherit', cursor: dirty ? 'pointer' : 'not-allowed' }}
-          >
-            {t('params.roles.reset')}
+        <div className="pa-head-actions">
+          {/* Enregistrement explicite de la matrice (PUT /admin/roles/matrix) : n'apparaît qu'en présence de modifications. */}
+          {dirty ? (
+            <button type="button" className="btn-primary" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate(draft)}>
+              <Save size={16} aria-hidden="true" />
+              {t('params.roles.save')}
+            </button>
+          ) : null}
+          {/* La liste des rôles est figée côté API (aucun endpoint de création) : le bouton de la maquette l'explique au lieu d'agir. */}
+          <button type="button" className="btn-primary" aria-disabled="true" title={t('params.roles.custom.note')} onClick={() => toast(t('params.roles.custom.note'), 'warn')}>
+            <Plus size={16} aria-hidden="true" />
+            {t('params.roles.custom')}
           </button>
-          <button
-            type="button"
-            disabled={!dirty || saveMutation.isPending}
-            onClick={() => saveMutation.mutate(draft)}
-            style={{ padding: '6px 12px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--k-pri)', background: 'var(--k-pri)', color: '#fff', font: 'inherit', cursor: dirty ? 'pointer' : 'not-allowed' }}
-          >
-            {t('params.roles.save')}
+          <button type="button" className="btn-soft" disabled={saveMutation.isPending} onClick={() => setDraft(structuredClone(matrixQuery.data!.matrix))}>
+            <RefreshCw size={14} aria-hidden="true" />
+            {t('params.roles.reset')}
           </button>
         </div>
       </div>
-      <div className="sheet-body">
-        <p className="note warn" style={{ fontSize: 'var(--k-fs-xs)' }}>
-          {t('params.roles.auditorNote')}
-        </p>
+      <div className="sheet-body flush">
+        <div className="pa-info">
+          <Info size={14} aria-hidden="true" />
+          <span>{t('params.roles.auditorNote')}</span>
+        </div>
         <div className="t-wrap">
-          <table className="t">
+          <table className="t pa-matrix">
             <thead>
               <tr>
-                <th>{t('params.roles.col.privilege')}</th>
+                <th className="pa-matrix-priv">{t('params.roles.col.privilege')}</th>
                 {roles.map((role) => (
-                  <th key={role} style={{ textAlign: 'center' }}>
-                    {roleLabel(t, role)}
+                  <th key={role} className="pa-matrix-role">
+                    <span className="pa-vert">{roleLabel(t, role)}</span>
                   </th>
                 ))}
               </tr>
@@ -515,15 +567,14 @@ function RolesTab() {
               {privileges.map((p) => (
                 <tr key={p}>
                   <td>
-                    <strong style={{ display: 'block' }}>{privilegeLabel(t, p)}</strong>
-                    <span className="mono" style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}>
-                      {p}
-                    </span>
+                    <span className="pa-strong pa-block">{privilegeLabel(t, p)}</span>
+                    <span className="pa-code">{p}</span>
                   </td>
                   {roles.map((role) => (
-                    <td key={role} style={{ textAlign: 'center' }}>
+                    <td key={role} className="pa-center">
                       <input
                         type="checkbox"
+                        className="pa-check"
                         checked={!!draft[role]?.[p]}
                         disabled={role === 'AUDITEUR_CSA'}
                         onChange={() => toggle(role, p)}
@@ -536,16 +587,6 @@ function RolesTab() {
             </tbody>
           </table>
         </div>
-
-        <button
-          type="button"
-          disabled
-          title={t('params.roles.custom.note')}
-          style={{ marginTop: 'var(--s-4)', padding: '6px 12px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--rule-strong)', background: 'var(--paper)', color: 'var(--ink-3)', font: 'inherit', cursor: 'not-allowed' }}
-        >
-          {t('params.roles.custom')}
-        </button>
-        <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)', marginTop: 'var(--s-2)' }}>{t('params.roles.custom.note')}</p>
       </div>
     </div>
   );
@@ -553,12 +594,16 @@ function RolesTab() {
 
 /* ===================== Coûts & tarification ===================== */
 
+/** `simulated` est renvoyé par `GET /metering/place-summary/:period` (consommation simulée côté back) sans figurer dans le type partagé. */
+type PlaceSummaryWithSource = PlaceMeteringSummary & { simulated?: boolean };
+
 function CostsTab() {
   const { t, locale } = useI18n();
   const { hasPrivilege } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [period, setPeriod] = useState(PERIODS[0]);
+  const [showSource, setShowSource] = useState(false);
   const canEditGrid = hasPrivilege('grid');
 
   // Dashboard place entière (pas de sélecteur compagnie, écran 14,
@@ -569,7 +614,7 @@ function CostsTab() {
   // (toujours utilisé par `/metering`, pas retiré du composant partagé).
   const summaryQuery = useQuery({
     queryKey: ['metering', 'place-summary', period],
-    queryFn: () => apiGet<PlaceMeteringSummary>(apiPath`/metering/place-summary/${period}`),
+    queryFn: () => apiGet<PlaceSummaryWithSource>(apiPath`/metering/place-summary/${period}`),
     enabled: !!period,
   });
 
@@ -589,35 +634,58 @@ function CostsTab() {
   });
 
   const summary = summaryQuery.data;
+  // Maquette : inducteurs classés par revenu décroissant (simple tri d'affichage).
+  const lines = useMemo(() => [...(summary?.lines ?? [])].sort((a, b) => b.amountHT - a.amountHT), [summary]);
+  const maxShare = lines.reduce((m, l) => Math.max(m, l.revenueSharePct), 0);
+
+  // Export CSV des lignes réellement affichées (même convention que l'onglet Utilisateurs).
+  function exportSummary() {
+    if (!summary) return;
+    const header = [t('params.costs.col.inducer'), t('metering.grid.col.unit'), t('params.costs.col.measured'), t('params.costs.col.billable'), t('params.costs.col.revenue'), t('params.costs.col.share')];
+    const rows = lines.map((l) => [l.label, l.unit, l.measured, l.facturable, l.amountHT, l.revenueSharePct]);
+    downloadCsv(`couts-utilisation-${summary.period}.csv`, buildCsv(header, rows));
+  }
 
   return (
-    <>
-      <div className="sheet" style={{ marginBottom: 'var(--s-5)' }}>
+    <div className="pa-costs">
+      <div className="sheet">
         <div className="sheet-head">
-          <span>
-            {t('params.costs.dashboard.title')}
-            {summary ? ` (${periodLabel(summary.period, locale)})` : null}
+          <span className="pa-dash-title">
+            {t('params.costs.dashboard.title')}{' '}
+            <span className="pa-period-wrap">
+              (
+              <select className="pa-period" aria-label={t('metering.selector.period')} title={t('metering.selector.period')} value={period} onChange={(e) => setPeriod(e.target.value)}>
+                {PERIODS.map((p) => (
+                  <option key={p} value={p}>
+                    {periodLabel(p, locale)}
+                  </option>
+                ))}
+              </select>
+              )
+            </span>
           </span>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
-            {t('metering.selector.period')}
-            <select
-              value={period}
-              onChange={(e) => setPeriod(e.target.value)}
-              style={{ font: 'inherit', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', padding: '6px 10px', background: 'var(--paper)', color: 'var(--ink)' }}
+          <div className="pa-head-actions">
+            <button type="button" className="btn-outline" onClick={exportSummary} disabled={!summary} title={t('common.exportExcel.note')}>
+              <Table2 size={16} aria-hidden="true" />
+              {t('params.export')}
+            </button>
+            <button
+              type="button"
+              className="pa-eye"
+              aria-pressed={showSource}
+              aria-label={showSource ? t('params.costs.hideSource') : t('params.costs.showSource')}
+              title={showSource ? t('params.costs.hideSource') : t('params.costs.showSource')}
+              onClick={() => setShowSource((v) => !v)}
             >
-              {PERIODS.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </label>
+              {showSource ? <EyeOff size={14} aria-hidden="true" /> : <Eye size={14} aria-hidden="true" />}
+            </button>
+          </div>
         </div>
-        <div className="sheet-body">
+        <div className="sheet-body flush">
           {summaryQuery.isLoading ? (
-            <p>{t('common.loading')}</p>
+            <p className="pad">{t('common.loading')}</p>
           ) : summaryQuery.error || !summary ? (
-            <div className="note ko" role="alert">
+            <div className="note ko pa-pad-note" role="alert">
               <span>{t('common.error')}</span>
               <button type="button" onClick={() => summaryQuery.refetch()}>
                 {t('common.retry')}
@@ -625,50 +693,67 @@ function CostsTab() {
             </div>
           ) : (
             <>
+              {/* Consommation simulée : toujours signalée (même règle que la facture SIMULÉE de /metering). */}
+              {showSource || summary.simulated ? (
+                <div className="pa-info">
+                  <Info size={14} aria-hidden="true" />
+                  <span>
+                    {t('params.costs.source')} <span className="mono">{summary.gridVersion}</span>
+                    {summary.simulated ? ` · ${t('params.costs.simulated')}` : null}
+                  </span>
+                </div>
+              ) : null}
               <KpiRow>
-                <Kpi value={formatDzd(summary.revenueTotal, locale)} label={t('params.costs.kpi.revenue')} />
-                <Kpi value={formatDzd(summary.subscriptionTotal, locale)} label={t('params.costs.kpi.subscription')} extra={`${summary.adherentCount} ${t('params.costs.kpi.adherents')}`} />
-                <Kpi value={formatDzd(summary.consumptionTotal, locale)} label={t('params.costs.kpi.consumption')} />
-                <Kpi value={summary.inducerCount} label={t('params.costs.kpi.inducers')} />
+                <Kpi
+                  value={<>{formatDa(summary.revenueTotal, locale)}</>}
+                  label={t('params.costs.kpi.revenue')}
+                  title={summary.simulated ? t('params.costs.simulated') : undefined}
+                  extra={<span className="pa-kchip">{periodLabel(summary.period, locale)}</span>}
+                />
+                <Kpi
+                  value={<>{formatDa(summary.subscriptionTotal, locale)}</>}
+                  label={t('params.costs.kpi.subscription')}
+                  extra={<span className="pa-kchip">{`${summary.adherentCount} ${t('params.costs.kpi.adherents')}`}</span>}
+                />
+                <Kpi value={<>{formatDa(summary.consumptionTotal, locale)}</>} label={t('params.costs.kpi.consumption')} />
+                <Kpi
+                  value={summary.inducerCount}
+                  label={t('params.costs.kpi.inducers')}
+                  extra={<span className="pa-kchip">{summary.lines.map((l) => l.label).join(' · ')}</span>}
+                />
               </KpiRow>
 
-              <div className="t-wrap" style={{ marginTop: 'var(--s-4)' }}>
-                <table className="t">
+              <div className="t-wrap">
+                <table className="t pa-cost-t">
                   <thead>
                     <tr>
                       <th>{t('params.costs.col.inducer')}</th>
-                      <th>{t('params.costs.col.measured')}</th>
-                      <th>{t('params.costs.col.billable')}</th>
+                      <th className="pa-end">{t('params.costs.col.measured')}</th>
+                      <th className="pa-end">{t('params.costs.col.billable')}</th>
                       <th>{t('params.costs.col.weight')}</th>
-                      <th>{t('params.costs.col.revenue')}</th>
-                      <th>{t('params.costs.col.share')}</th>
+                      <th className="pa-end">{t('params.costs.col.revenue')}</th>
+                      <th className="pa-end">{t('params.costs.col.share')}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {summary.lines.map((l) => (
+                    {lines.map((l) => (
                       <tr key={l.metric}>
                         <td>
-                          <strong style={{ display: 'block' }}>{l.label}</strong>
-                          <span className="mono" style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-3)' }}>
-                            {l.unit}
-                          </span>
+                          <span className="pa-strong pa-block">{l.label}</span>
+                          <span className="pa-unit">{l.unit}</span>
                         </td>
-                        <td className="mono">{l.measured.toLocaleString(locale)}</td>
-                        <td className="mono">{l.facturable.toLocaleString(locale)}</td>
-                        <td>
-                          <RevenueShareBar pct={l.revenueSharePct} />
+                        <td className="mono pa-end">{l.measured.toLocaleString(locale)}</td>
+                        <td className="mono pa-end">{l.facturable.toLocaleString(locale)}</td>
+                        <td className="pa-bar-cell">
+                          <RevenueShareBar pct={l.revenueSharePct} max={maxShare} />
                         </td>
-                        <td className="mono">{formatDzd(l.amountHT, locale)}</td>
-                        <td className="mono">{l.revenueSharePct} %</td>
+                        <td className="mono pa-end">{formatDa(l.amountHT, locale)}</td>
+                        <td className="mono pa-end pa-share">{l.revenueSharePct.toLocaleString(locale, { maximumFractionDigits: 1 })} %</td>
                       </tr>
                     ))}
-                    <tr>
-                      <td colSpan={4} style={{ fontWeight: 600 }}>
-                        {t('params.costs.totalRow')}
-                      </td>
-                      <td className="mono" style={{ fontWeight: 600 }}>
-                        {formatDzd(summary.consumptionTotal, locale)}
-                      </td>
+                    <tr className="pa-total">
+                      <td colSpan={4}>{t('params.costs.totalRow')}</td>
+                      <td className="mono pa-end">{formatDa(summary.consumptionTotal, locale)}</td>
                       <td />
                     </tr>
                   </tbody>
@@ -680,7 +765,7 @@ function CostsTab() {
       </div>
 
       {gridQuery.data ? (
-        <PriceGridEditor grid={gridQuery.data} canEdit={canEditGrid} onSave={(next) => saveGridMutation.mutateAsync(next)} saving={saveGridMutation.isPending} />
+        <ParamsPriceGrid grid={gridQuery.data} canEdit={canEditGrid} onSave={(next) => saveGridMutation.mutateAsync(next)} saving={saveGridMutation.isPending} />
       ) : gridQuery.isLoading ? (
         <p>{t('common.loading')}</p>
       ) : (
@@ -691,30 +776,24 @@ function CostsTab() {
           </button>
         </div>
       )}
-    </>
+    </div>
   );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <dt style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>{label}</dt>
-      <dd style={{ margin: 0 }}>{children}</dd>
+      <dt className="pa-dt">{label}</dt>
+      <dd className="pa-dd">{children}</dd>
     </div>
   );
 }
 
 function LabeledInput({ label, value, onChange, type = 'text', disabled = false }: { label: string; value: string; onChange: (v: string) => void; type?: string; disabled?: boolean }) {
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)' }}>
+    <label className="pa-field">
       {label}
-      <input
-        type={type}
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-        style={{ padding: '6px 10px', border: '1px solid var(--rule-strong)', borderRadius: 'var(--k-r-s)', font: 'inherit', background: 'var(--paper)', color: 'var(--ink)' }}
-      />
+      <input type={type} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} />
     </label>
   );
 }

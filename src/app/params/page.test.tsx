@@ -117,7 +117,7 @@ describe('Écran Paramétrage (/params)', () => {
     mockParamsApi(correspondantAdmin, [placeUser()]);
     renderWithProviders(<ParamsPage />);
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Créer un utilisateur' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Nouvel utilisateur' }));
     const companyInput = screen.getByLabelText('Compagnie (code, obligatoire pour un rôle compagnie)') as HTMLInputElement;
     expect(companyInput.value).toBe('CAAT');
     expect(companyInput).toBeDisabled();
@@ -181,6 +181,27 @@ describe('Écran Paramétrage (/params)', () => {
     expect(screen.getByText('rôles')).toBeInTheDocument();
   });
 
+  it('ouvre la fiche utilisateur depuis le bouton « Modifier » de la ligne', async () => {
+    mockParamsApi(ME_ADMIN, [placeUser()]);
+    renderWithProviders(<ParamsPage />);
+
+    await waitFor(() => expect(screen.getByText('Nadia')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Modifier' }));
+    await waitFor(() => expect(screen.getByText('Détail utilisateur — Nadia')).toBeInTheDocument());
+  });
+
+  it('affiche l’organisation (institution du rôle de place) et la colonne e-mail à la demande (bouton œil)', async () => {
+    mockParamsApi(ME_ADMIN, [placeUser({ id: 'u-2', name: 'Souad', email: 'souad@finlab.dz', role: 'OPERATEUR_PLACE', companyId: undefined })]);
+    renderWithProviders(<ParamsPage />);
+
+    await waitFor(() => expect(screen.getByText('Souad')).toBeInTheDocument());
+    expect(screen.getByText('GIE Algeria FinLab')).toBeInTheDocument();
+    expect(screen.queryByText('souad@finlab.dz')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Afficher les e-mails' }));
+    expect(screen.getByText('souad@finlab.dz')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Masquer les e-mails' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('permet de suspendre/activer un utilisateur directement depuis la ligne du tableau', async () => {
     const user = placeUser({ active: true });
     mockParamsApi(ME_ADMIN, [user], (id, _body) => ({ ...user, id, active: false }));
@@ -215,6 +236,24 @@ describe('Écran Paramétrage (/params)', () => {
     await waitFor(() => expect(screen.getByText('Matrice des privilèges mise à jour.')).toBeInTheDocument());
   });
 
+  it('matrice : « Enregistrer » n’apparaît qu’après une modification ; « Créer un rôle » explique que l’API ne le permet pas', async () => {
+    mockParamsApi(ME_ADMIN, []);
+    renderWithProviders(<ParamsPage />);
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Rôles & privilèges' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Créer un rôle' })).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Enregistrer la matrice' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Créer un rôle' }));
+    expect(await screen.findByText(/Création de rôle non supportée par l'API actuelle/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'CORRESPONDANT_IDA × admin' }));
+    expect(screen.getByRole('button', { name: 'Enregistrer la matrice' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Réinitialiser' }));
+    expect(screen.getByRole('checkbox', { name: 'CORRESPONDANT_IDA × admin' })).not.toBeChecked();
+    expect(screen.queryByRole('button', { name: 'Enregistrer la matrice' })).not.toBeInTheDocument();
+  });
+
   it('affiche les 4 KPI place entière et le tableau des inducteurs de coût (Coûts & tarification)', async () => {
     mockParamsApi(ME_ADMIN, []);
     renderWithProviders(<ParamsPage />);
@@ -228,10 +267,28 @@ describe('Écran Paramétrage (/params)', () => {
     expect(screen.getByText('consommation hors forfait')).toBeInTheDocument();
     expect(screen.getByText('inducteurs de coût')).toBeInTheDocument();
     expect(screen.getByText('Traitements OCR / IA')).toBeInTheDocument();
-    expect(screen.getByText(/43\.5\s?%/)).toBeInTheDocument();
+    expect(screen.getByText(/43[.,]5\s?%/)).toBeInTheDocument();
     expect(screen.getByText('Consommation hors forfait')).toBeInTheDocument();
     // Grille tarifaire paramétrable toujours présente, inchangée (plus de sélecteur de compagnie).
     expect(screen.getByText('Dossiers ingérés')).toBeInTheDocument();
     expect(screen.queryByLabelText('Compagnie')).not.toBeInTheDocument();
+  });
+
+  it('grille tarifaire (SEC-37) : une saisie exige une NOUVELLE version et une date d’effet avant PUT /pricing/grid', async () => {
+    mockParamsApi(ME_ADMIN, []);
+    renderWithProviders(<ParamsPage />);
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Coûts & tarification' }));
+    const quota = await screen.findByLabelText('Dossiers ingérés — Quota inclus');
+    expect(screen.queryByLabelText('Nouvelle version (TARIF-AAAA.NN)')).not.toBeInTheDocument();
+    fireEvent.change(quota, { target: { value: '700' } });
+
+    const version = screen.getByLabelText('Nouvelle version (TARIF-AAAA.NN)') as HTMLInputElement;
+    expect(version.value).not.toBe('TARIF-2026.01');
+    fireEvent.change(version, { target: { value: 'TARIF-2026.01' } });
+    expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Annuler' }));
+    expect(screen.queryByLabelText('Nouvelle version (TARIF-AAAA.NN)')).not.toBeInTheDocument();
+    expect((screen.getByLabelText('Dossiers ingérés — Quota inclus') as HTMLInputElement).value).toBe('600');
   });
 });

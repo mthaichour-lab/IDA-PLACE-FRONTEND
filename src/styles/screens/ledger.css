@@ -1,1 +1,261 @@
-/* Écran ledger — styles propres à l'écran (maquette de référence). */
+/* Écran ledger — styles propres à l'écran (maquette de référence r22). */
+
+/* --- En-tête : actions alignées en bas du sous-titre, comme la maquette --- */
+.lg-screen .folio-h {
+  margin-bottom: 14px;
+}
+
+.lg-screen .folio-sub {
+  max-width: 630px;
+}
+
+.lg-screen .folio-actions {
+  align-self: flex-end;
+  padding-top: 0;
+}
+
+.lg-verify.btn-primary {
+  height: 38px;
+  padding: 0 18px;
+  border-radius: 12px;
+  font-size: 13.5px;
+}
+
+/* « Page du journal » : même pilule bordée que les autres actions d'en-tête,
+   désactivée (aucune page dédiée côté API) sans être grisée au point de
+   disparaître. */
+.lg-screen .folio-actions > button.lg-page {
+  font-size: 13.5px;
+}
+
+.lg-screen .folio-actions > button.lg-page:disabled {
+  cursor: not-allowed;
+  color: var(--ink-2);
+  background: var(--paper);
+}
+
+/* --- Registre --- */
+.lg-sheet .sheet-head {
+  padding: 18px 20px 12px;
+}
+
+.lg-sheet .sheet-head .tag {
+  font-size: 11.5px;
+  font-family: var(--f-text);
+  letter-spacing: 0;
+}
+
+.lg-sheet .sheet-body.flush {
+  padding: 0;
+}
+
+.lg-sheet .sheet-body.flush > .note {
+  margin: 0 20px 10px;
+}
+
+/* Filtres : sélecteur et recherche en pilules grises, sans bordure. */
+.lg-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 20px 12px;
+  flex-wrap: wrap;
+}
+
+.lg-select {
+  height: 36px;
+  min-width: 200px;
+  width: 270px;
+  padding: 0 14px 0 18px;
+  border: 0;
+  border-radius: var(--k-r-pill);
+  background: var(--paper-2);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.lg-search {
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: var(--k-r-pill);
+  background: var(--paper-2);
+  color: var(--ink-3);
+}
+
+.lg-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.lg-search input::placeholder {
+  color: var(--ink-3);
+}
+
+.lg-search:focus-within,
+.lg-select:focus-visible,
+.lg-range input:focus-visible {
+  outline: 2px solid var(--k-pri);
+  outline-offset: 1px;
+}
+
+/* Période (Du / Au) et export : conservés (comportements existants), en pilules discrètes. */
+.lg-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 6px 0 14px;
+  border-radius: var(--k-r-pill);
+  background: var(--paper-2);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.lg-range input {
+  height: 28px;
+  border: 0;
+  border-radius: var(--k-r-pill);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  padding: 0 8px;
+}
+
+.lg-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--k-r-pill);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.lg-export:hover:not(:disabled) {
+  background: var(--k-soft-2);
+}
+
+.lg-export:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Liste : lignes pleine largeur à icône ronde, filet entre lignes. */
+.lg-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.lg-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 65px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--rule);
+}
+
+.lg-icon {
+  background: var(--paper-2);
+  color: var(--ink-2);
+}
+
+.lg-icon.lg-ingest {
+  color: var(--k-pri);
+}
+
+.lg-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.lg-title {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lg-seq {
+  color: var(--ink-3);
+  font-weight: 400;
+}
+
+.lg-title strong {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.lg-title .mono {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.lg-summary {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lg-meta {
+  flex-shrink: 0;
+  text-align: end;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ink-3);
+}
+
+.lg-meta .mono {
+  font-size: 12px;
+}
+
+.lg-empty {
+  margin: 0;
+  padding: 18px 20px;
+  text-align: center;
+  color: var(--ink-3);
+  border-top: 1px solid var(--rule);
+}
+
+.lg-sheet .pager {
+  padding: 14px 20px;
+}
+
+.lg-pager-btns {
+  display: flex;
+  gap: 8px;
+}
+
+.lg-note {
+  margin-top: 10px;
+  font-size: var(--k-fs-xs);
+  color: var(--ink-3);
+}

@@ -48,14 +48,15 @@ describe('Écran 11 — répartition barème Art. 14 (décision PO §5)', () => 
     mockStats({ ...BASE, baremeCodes: { items: [{ code: 'X1', count: 4 }, { code: 'X2', count: 3 }], sansValeur: 3 }, vehicleCategories: { items: [{ code: 'VL', count: 6 }], sansValeur: 4 } }, [PUBLISHED]);
     renderWithProviders(<StatsPage />);
 
-    const byCode = await screen.findByRole('region', { name: 'Par code de barème' });
-    expect(within(byCode).getByText('X1').parentElement).toHaveTextContent('X14');
-    expect(within(byCode).getByText('X2').parentElement).toHaveTextContent('X23');
+    const byCode = await screen.findByRole('region', { name: 'Cas de barème (Art. 14)' });
+    // Ligne « code + libellé publié · barre · compte ».
+    await waitFor(() => expect(within(byCode).getByText('X1').closest('.st-hbar-row')).toHaveTextContent('X1 Choc arrière4'));
+    expect(within(byCode).getByText('X2').closest('.st-hbar-row')).toHaveTextContent('X23');
     expect(byCode).toHaveTextContent('Sans valeur : 3');
     expect(within(byCode).queryByText('Barème non publié')).not.toBeInTheDocument();
 
-    const byCategory = screen.getByRole('region', { name: 'Par catégorie de véhicule (véhicule assuré)' });
-    expect(within(byCategory).getByText('VL').parentElement).toHaveTextContent('VL6');
+    const byCategory = screen.getByRole('region', { name: 'Catégories de véhicules' });
+    expect(within(byCategory).getByText('VL').closest('.st-hbar-row')).toHaveTextContent('VL6');
     expect(byCategory).toHaveTextContent('Sans valeur : 4');
   });
 
@@ -63,10 +64,11 @@ describe('Écran 11 — répartition barème Art. 14 (décision PO §5)', () => 
     mockStats(BASE);
     renderWithProviders(<StatsPage />);
 
-    const byCode = await screen.findByRole('region', { name: 'Par code de barème' });
-    expect(within(byCode).getByText('Barème non publié')).toBeInTheDocument();
+    const byCode = await screen.findByRole('region', { name: 'Cas de barème (Art. 14)' });
+    // La carte existe dès le chargement (état vide propre) : on attend le résumé.
+    expect(await within(byCode).findByText('Barème non publié')).toBeInTheDocument();
     expect(byCode).toHaveTextContent('Sans valeur : 10');
-    const byCategory = screen.getByRole('region', { name: 'Par catégorie de véhicule (véhicule assuré)' });
+    const byCategory = screen.getByRole('region', { name: 'Catégories de véhicules' });
     expect(byCategory).toHaveTextContent('Sans valeur : 10');
     expect(within(byCategory).getByText('Catégories de véhicule non publiées')).toBeInTheDocument();
     expect(within(byCategory).queryByText('Barème non publié')).not.toBeInTheDocument();
@@ -76,7 +78,7 @@ describe('Écran 11 — répartition barème Art. 14 (décision PO §5)', () => 
     mockStats(BASE, [PUBLISHED]);
     renderWithProviders(<StatsPage />);
 
-    const byCode = await screen.findByRole('region', { name: 'Par code de barème' });
+    const byCode = await screen.findByRole('region', { name: 'Cas de barème (Art. 14)' });
     await waitFor(() => expect(within(byCode).queryByText('Barème non publié')).not.toBeInTheDocument());
     expect(byCode).toHaveTextContent('Sans valeur : 10');
   });

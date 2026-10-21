@@ -3,17 +3,18 @@
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
+import { Link2, Table2 } from 'lucide-react';
 import { TruncationNote } from '@/components/ui/TruncationNote';
 import { FolioHeader } from '@/components/FolioHeader';
 import { CoChip } from '@/components/ui/CoChip';
 import { Kpi, KpiRow } from '@/components/ui/Kpi';
-import { ScoreBar } from '@/components/ui/ScoreBar';
 import { Table, Column } from '@/components/ui/Table';
 import { Tag, TagTone } from '@/components/ui/Tag';
 import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { fetchAllPages } from '@/lib/paginate';
 import { apiGet, apiPath } from '@/lib/api-client';
+import { buildCsv, downloadCsv } from '@/lib/csv';
 import { useAuth } from '@/lib/auth-context';
 import { isCompanyRole } from '@/lib/auth/roles';
 import { FraudAction, FraudCase, FraudCasesPage, FraudSeverity, FraudSignalGroup, FraudSignalGroupResult, Paginated } from '@/lib/types';
@@ -43,12 +44,24 @@ const SIGNAL_GROUP_LABEL: Record<FraudSignalGroup, TranslationKey> = {
   VELOCITE: 'fraude.signal.group.VELOCITE',
 };
 
+/** Ordre d'affichage des sections du panneau (celui du dossier technique §9 et de la maquette). */
+const SIGNAL_GROUP_ORDER: FraudSignalGroup[] = ['DOUBLONS_ECONSTAT', 'RESEAU_RECURRENCE', 'MONTANTS_PLAFOND', 'INCOHERENCES_AB', 'VELOCITE'];
+
 function formatDzd(amount: number, locale: string): string {
   try {
     return new Intl.NumberFormat(locale, { style: 'currency', currency: 'DZD', maximumFractionDigits: 0 }).format(amount);
   } catch {
     return `${amount.toLocaleString()} DA`;
   }
+}
+
+/** Date courte « 5 juil. 2026 09:57 » de la maquette (journal des actions). */
+function formatDateTime(iso: string, locale: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const date = d.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
+  const time = d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+  return `${date} ${time}`;
 }
 
 function asNum(v: unknown): number | undefined {
@@ -108,12 +121,30 @@ function describeDominantCase(c: FraudCase, locale: string): string {
   }
 }
 
+/**
+ * Barre de score d'un cas (maquette : piste grise, remplissage teinté, score
+ * en gras). Propre à l'écran : le `ScoreBar` partagé colore en vert les
+ * scores élevés (score d'appariement), alors qu'ici un score élevé est un
+ * risque — la teinte suit donc la gravité renvoyée par l'API.
+ */
+function CaseScore({ score, severity }: { score: number; severity: FraudSeverity }) {
+  return (
+    <span className={`fr-score sev-${severity}`}>
+      <span className="fr-score-track" aria-hidden="true">
+        <span className="fr-score-fill" style={{ width: `${Math.max(0, Math.min(100, score))}%` }} />
+      </span>
+      <span className="fr-score-val">{score}</span>
+    </span>
+  );
+}
+
 export default function FraudePage() {
   const { t, locale } = useI18n();
   const { me } = useAuth();
   const [casesPage, setCasesPage] = useState(1);
   const [actionsPage, setActionsPage] = useState(1);
   const [selectedCase, setSelectedCase] = useState<FraudCase | null>(null);
+  const [exportingActions, setExportingActions] = useState(false);
 
   // SEC-21/SEC-26 : le journal des actions suspectes est l'audit trail de la
   // place (403 pour un rôle compagnie) ; un rôle compagnie ne voit des cas que
@@ -134,22 +165,14 @@ export default function FraudePage() {
 
   // KPIs (écran 9) : pas d'endpoint d'agrégat dédié (voir rapport de
   // livraison) — un second appel pleine page sert uniquement au décompte
-  // (gravité élevée, compagnies concernées), jamais affiché tel quel comme
-  // liste (la liste affichée reste la page courante, paginée serveur).
+  // (gravité élevée, compagnies concernées) et à l'export CSV, jamais
+  // affiché tel quel comme liste (la liste affichée reste la page courante,
+  // paginée serveur).
   const casesAllQuery = useQuery({
     queryKey: ['fraud', 'cases', 'all'],
     // SEC-13 : pages successives de 100 (plafond `FETCH_ALL_MAX_ITEMS`).
     queryFn: () => fetchAllPages<FraudCase>('/fraud/cases'),
   });
-
-  // Rôle compagnie : uniquement SA compagnie (le backend refuse toute autre, SEC-38).
-  const primaryCompany = companyRole ? me?.company : selectedCase?.companiesInvolved[0];
-  const signalsQuery = useQuery({
-    queryKey: ['fraud', 'adherents', primaryCompany, 'signals'],
-    queryFn: () => apiGet<FraudSignalGroupResult[]>(apiPath`/fraud/adherents/${primaryCompany!}/signals`),
-    enabled: !!selectedCase && !!primaryCompany,
-  });
-  const analysis = casesQuery.data?.analysis;
 
   // Tri d'affichage par gravité ("file priorisée par gravité", écran 9) — la
   // gravité elle-même est renvoyée par l'API, on ne fait que l'ordonner ici.
@@ -158,6 +181,24 @@ export default function FraudePage() {
     [casesQuery.data],
   );
   const actionPage = actionsQuery.data?.items ?? [];
+
+  // Maquette : le panneau de détail est ouvert sur le premier cas de la file
+  // tant qu'aucun cas n'a été choisi (clic sur une ligne pour en changer).
+  const currentCase = selectedCase ?? casePage[0] ?? null;
+
+  // Rôle compagnie : uniquement SA compagnie (le backend refuse toute autre, SEC-38).
+  const primaryCompany = companyRole ? me?.company : currentCase?.companiesInvolved[0];
+  const signalsQuery = useQuery({
+    queryKey: ['fraud', 'adherents', primaryCompany, 'signals'],
+    queryFn: () => apiGet<FraudSignalGroupResult[]>(apiPath`/fraud/adherents/${primaryCompany!}/signals`),
+    enabled: !!currentCase && !!primaryCompany,
+  });
+  const analysis = casesQuery.data?.analysis;
+
+  const signalGroups = useMemo(
+    () => [...(signalsQuery.data ?? [])].sort((a, b) => SIGNAL_GROUP_ORDER.indexOf(a.group as FraudSignalGroup) - SIGNAL_GROUP_ORDER.indexOf(b.group as FraudSignalGroup)),
+    [signalsQuery.data],
+  );
 
   const kpis = useMemo(() => {
     const allCases = casesAllQuery.data?.items ?? [];
@@ -171,11 +212,59 @@ export default function FraudePage() {
     };
   }, [casesAllQuery.data, casesQuery.data, actionsQuery.data]);
 
+  // Export CSV côté front (aucun endpoint d'export côté API) : la population
+  // déjà lue pour les KPI, telle que renvoyée par l'API (filtrée par rôle côté
+  // back, SEC-26) — jamais enrichie.
+  function exportCases() {
+    const items = casesAllQuery.data?.items ?? [];
+    if (items.length === 0) return;
+    const header = [
+      t('fraude.col.declaration'),
+      t('fraude.col.type'),
+      t('fraude.col.score'),
+      t('fraude.col.severity'),
+      t('fraude.col.companies'),
+      t('fraude.col.plate'),
+      t('fraude.col.detectedAt'),
+    ];
+    const rows = items.map((c) => [c.id, c.type, c.score, c.severity, c.companiesInvolved.join(' '), c.plateA ?? '', c.detectedAt]);
+    downloadCsv(`cas-suspects-${new Date().toISOString().slice(0, 10)}.csv`, buildCsv(header, rows));
+  }
+
+  async function exportActions() {
+    setExportingActions(true);
+    try {
+      // SEC-13 : pages successives de 100 ; SEC-21 : bouton absent pour un rôle compagnie.
+      const all = await fetchAllPages<FraudAction>('/fraud/actions');
+      const header = [t('fraude.action.col.ref'), t('fraude.action.col.type'), t('fraude.action.col.actor'), t('fraude.action.col.at')];
+      const rows = all.items.map((a) => [a.claimId ?? a.matchId ?? a.id, a.type, a.actor, a.at]);
+      downloadCsv(`actions-suspectes-${new Date().toISOString().slice(0, 10)}.csv`, buildCsv(header, rows));
+    } finally {
+      setExportingActions(false);
+    }
+  }
+
   const caseColumns: Column<FraudCase>[] = [
-    { key: 'id', header: t('fraude.col.declaration'), render: (r) => <span className="mono">{r.id}</span> },
+    {
+      key: 'id',
+      header: t('fraude.col.declaration'),
+      render: (r) => (
+        <span className="mono fr-id" title={r.id}>
+          {r.id}
+        </span>
+      ),
+    },
     { key: 'adherent', header: t('fraude.col.adherent'), render: (r) => <CoChip code={r.companiesInvolved[0] ?? '—'} /> },
-    { key: 'score', header: t('fraude.col.score'), render: (r) => <ScoreBar score={r.score} /> },
-    { key: 'severity', header: t('fraude.col.severity'), render: (r) => <Tag tone={SEVERITY_TONE[r.severity]}>{t(SEVERITY_LABEL[r.severity])}</Tag> },
+    { key: 'score', header: t('fraude.col.score'), render: (r) => <CaseScore score={r.score} severity={r.severity} /> },
+    {
+      key: 'severity',
+      header: t('fraude.col.severity'),
+      render: (r) => (
+        <span className="fr-sev">
+          <Tag tone={SEVERITY_TONE[r.severity]}>{t(SEVERITY_LABEL[r.severity])}</Tag>
+        </span>
+      ),
+    },
     { key: 'plate', header: t('fraude.col.plate'), render: (r) => <span className="mono">{r.plateA ?? '—'}</span> },
     ...(companyRole
       ? [
@@ -184,11 +273,11 @@ export default function FraudePage() {
             header: t('fraude.col.counterpart'),
             render: (r: FraudCase) =>
               r.counterpartClaims || r.counterpartCompanies ? (
-                <span style={{ fontSize: 'var(--k-fs-xs)' }}>
+                <span className="fr-counterpart">
                   {r.counterpartClaims ?? 0} {t('fraude.counterpart.claims')} · {r.counterpartCompanies ?? 0} {t('fraude.counterpart.companies')}
                 </span>
               ) : (
-                <span style={{ color: 'var(--ink-3)' }}>—</span>
+                <span className="fr-muted">—</span>
               ),
           } satisfies Column<FraudCase>,
         ]
@@ -202,39 +291,59 @@ export default function FraudePage() {
   // back ne porte de pondération par action (voir HANDOFF.md).
   const actionColumns: Column<FraudAction>[] = [
     { key: 'ref', header: t('fraude.action.col.ref'), render: (r) => <span className="mono">{r.claimId ?? r.matchId ?? r.id}</span> },
-    { key: 'type', header: t('fraude.action.col.type'), render: (r) => <Tag tone="a">{t(ACTION_LABEL[r.type])}</Tag> },
-    { key: 'actor', header: t('fraude.action.col.actor'), render: (r) => <span className="mono">{r.actor}</span> },
-    { key: 'at', header: t('fraude.action.col.at'), render: (r) => new Date(r.at).toLocaleString(locale) },
+    { key: 'type', header: t('fraude.action.col.type'), render: (r) => t(ACTION_LABEL[r.type]) },
+    { key: 'actor', header: t('fraude.action.col.actor'), render: (r) => r.actor },
+    { key: 'at', header: t('fraude.action.col.at'), render: (r) => <span className="mono">{formatDateTime(r.at, locale)}</span> },
   ];
 
   return (
-    <>
-      <FolioHeader badge="Module G · §6.9" title={t('fraude.title')} subtitle={t('fraude.subtitle')} />
+    <div className="fr-screen">
+      <FolioHeader
+        badge="Module G · §6.9"
+        title={t('fraude.title')}
+        subtitle={t('fraude.subtitle')}
+        actions={
+          <button
+            type="button"
+            className="btn-outline"
+            onClick={exportCases}
+            disabled={(casesAllQuery.data?.items.length ?? 0) === 0}
+            title={t('fraude.export.cases.title')}
+          >
+            <Table2 size={16} aria-hidden="true" />
+            {t('fraude.export.cases')}
+          </button>
+        }
+      />
 
       <KpiRow>
-        <Kpi value={kpis.cases} label={t('fraude.kpi.cases')} />
-        <Kpi value={kpis.severe} label={t('fraude.kpi.severe')} />
-        {showActions ? <Kpi value={kpis.actions} label={t('fraude.kpi.actions')} /> : null}
+        <Kpi
+          value={kpis.cases}
+          label={t('fraude.kpi.cases')}
+          extra={analysis ? <span className="fr-kpi-chip">{`${analysis.claimsAnalyzed} ${t('fraude.analysis.claims')}`}</span> : undefined}
+        />
+        <Kpi value={kpis.severe} label={t('fraude.kpi.severe')} extra={<span className="fr-kpi-chip">{t('fraude.kpi.severe.extra')}</span>} />
+        {showActions ? <Kpi value={kpis.actions} label={t('fraude.kpi.actions')} extra={<span className="fr-kpi-chip">{t('fraude.kpi.actions.extra')}</span>} /> : null}
         {/* Rôle compagnie : les autres compagnies ne sont que dénombrées par cas (SEC-26), pas identifiables. */}
         {companyRole ? null : <Kpi value={kpis.companies} label={t('fraude.kpi.companies')} />}
       </KpiRow>
       <TruncationNote truncated={casesAllQuery.data?.truncated} shown={casesAllQuery.data?.items.length ?? 0} total={casesAllQuery.data?.total ?? 0} />
       {analysis?.truncated ? (
-        <p className="note warn" role="status" style={{ fontSize: 'var(--k-fs-xs)' }}>
+        <p className="note warn fr-note" role="status">
           {t('fraude.analysis.truncated')} ({analysis.claimsAnalyzed} {t('fraude.analysis.claims')})
         </p>
       ) : null}
 
-      <div className="grid g-side" style={{ marginTop: 'var(--s-5)' }}>
-        <div className="sheet">
+      <div className="grid fr-grid">
+        <div className="sheet fr-queue">
           <div className="sheet-head">
             <span>{t('fraude.panel.queueTitle')}</span>
           </div>
-          <div className="sheet-body">
+          <div className="sheet-body flush">
             {casesQuery.isLoading ? (
-              <p>{t('common.loading')}</p>
+              <p className="fr-pad">{t('common.loading')}</p>
             ) : casesQuery.error ? (
-              <div className="note ko" role="alert">
+              <div className="note ko fr-pad" role="alert">
                 <span>{t('common.error')}</span>
                 <button type="button" onClick={() => casesQuery.refetch()}>
                   {t('common.retry')}
@@ -247,36 +356,49 @@ export default function FraudePage() {
                 page={casesPage}
                 total={casesQuery.data?.total ?? 0}
                 pageSize={PAGE_SIZE}
-                onPageChange={setCasesPage}
+                onPageChange={(p) => {
+                  setCasesPage(p);
+                  setSelectedCase(null);
+                }}
                 onRowClick={setSelectedCase}
                 getRowKey={(r) => r.id}
+                selectedKey={currentCase?.id}
               />
             )}
           </div>
         </div>
 
-        <aside className="sheet" aria-label={t('fraude.panel.title')}>
+        <aside className="sheet fr-panel" aria-label={t('fraude.panel.title')}>
           <div className="sheet-head">
-            <span>{selectedCase ? `${t('fraude.col.id')} ${selectedCase.id}` : t('fraude.panel.title')}</span>
+            {currentCase ? (
+              <span className="fr-panel-title" title={currentCase.id}>
+                {t('fraude.col.id')} <span className="mono">{currentCase.id}</span>
+              </span>
+            ) : (
+              <span>{t('fraude.panel.title')}</span>
+            )}
           </div>
           <div className="sheet-body">
-            {!selectedCase ? (
-              <p style={{ color: 'var(--ink-3)' }}>{t('fraude.panel.empty')}</p>
+            {!currentCase ? (
+              <p className="fr-muted">{t('fraude.panel.empty')}</p>
             ) : (
               <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 'var(--s-4)', flexWrap: 'wrap' }}>
+                <div className="fr-ident">
                   <CoChip code={primaryCompany ?? '—'} />
-                  <span className="mono" style={{ fontSize: 'var(--k-fs-s)' }}>
-                    {selectedCase.plateA ?? '—'}
+                  <span className="fr-ident-text">
+                    {primaryCompany ?? '—'}
+                    <span className="mono"> · {currentCase.plateA ?? '—'}</span>
                   </span>
-                  <Tag tone={SEVERITY_TONE[selectedCase.severity]}>
-                    {t(SEVERITY_LABEL[selectedCase.severity])} · {selectedCase.score}/100
-                  </Tag>
+                  <span className="fr-sev fr-ident-sev">
+                    <Tag tone={SEVERITY_TONE[currentCase.severity]}>
+                      {t(SEVERITY_LABEL[currentCase.severity])} · {currentCase.score}/100
+                    </Tag>
+                  </span>
                 </div>
-                {selectedCase.counterpartClaims || selectedCase.counterpartCompanies ? (
-                  <p style={{ fontSize: 'var(--k-fs-xs)', color: 'var(--ink-2)', marginTop: 0 }}>
-                    {t('fraude.counterpart.note')} {selectedCase.counterpartClaims ?? 0} {t('fraude.counterpart.claims')} ·{' '}
-                    {selectedCase.counterpartCompanies ?? 0} {t('fraude.counterpart.companies')}
+                {currentCase.counterpartClaims || currentCase.counterpartCompanies ? (
+                  <p className="fr-counterpart-note">
+                    {t('fraude.counterpart.note')} {currentCase.counterpartClaims ?? 0} {t('fraude.counterpart.claims')} ·{' '}
+                    {currentCase.counterpartCompanies ?? 0} {t('fraude.counterpart.companies')}
                   </p>
                 ) : null}
 
@@ -284,43 +406,41 @@ export default function FraudePage() {
                   <p>{t('common.loading')}</p>
                 ) : signalsQuery.error ? (
                   <p className="note ko">{t('fraude.panel.signalsError')}</p>
-                ) : (signalsQuery.data ?? []).length === 0 ? (
-                  <p style={{ color: 'var(--ink-3)' }}>{t('fraude.panel.empty')}</p>
+                ) : signalGroups.length === 0 ? (
+                  <p className="fr-muted">{t('fraude.panel.empty')}</p>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-4)', marginBottom: 'var(--s-4)' }}>
-                    {(signalsQuery.data ?? []).map((group) => {
+                  <div className="fr-sections">
+                    {signalGroups.map((group) => {
                       const dominant = group.cases[0];
+                      const score = dominant?.score ?? group.maxScore;
                       return (
-                        <div key={group.group} style={{ borderBottom: '1px solid var(--rule)', paddingBottom: 'var(--s-3)' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                            <strong style={{ fontSize: 'var(--k-fs-s)' }}>{t(SIGNAL_GROUP_LABEL[group.group])}</strong>
-                            {group.count > 1 ? <Tag tone="a">+{group.count - 1}</Tag> : null}
+                        <section key={group.group} className="fr-section">
+                          <div className="fr-section-head">
+                            <strong>{t(SIGNAL_GROUP_LABEL[group.group as FraudSignalGroup])}</strong>
+                            {group.count > 1 ? <span title={t('fraude.signal.more.title')}>+{group.count - 1}</span> : null}
                           </div>
                           {dominant ? (
-                            <p style={{ margin: 0, fontSize: 'var(--k-fs-s)', color: 'var(--ink-2)' }}>{describeDominantCase(dominant, locale)}</p>
+                            <div className={`fr-signal sev-${dominant.severity}`}>
+                              <div className="fr-signal-row">
+                                <span className="fr-signal-label">{describeDominantCase(dominant, locale)}</span>
+                                <span className="fr-signal-score" title={t('fraude.signal.score.title')}>
+                                  {score}
+                                </span>
+                              </div>
+                              <span className="fr-signal-bar" aria-hidden="true">
+                                <span style={{ width: `${Math.max(0, Math.min(100, score))}%` }} />
+                              </span>
+                            </div>
                           ) : null}
-                        </div>
+                        </section>
                       );
                     })}
                   </div>
                 )}
 
-                <Link
-                  href="/matching"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    border: '1px solid var(--rule-strong)',
-                    borderRadius: 'var(--k-r-s)',
-                    padding: '8px 14px',
-                    textDecoration: 'none',
-                    color: 'var(--k-pri)',
-                    fontWeight: 600,
-                    fontSize: 'var(--k-fs-s)',
-                  }}
-                >
-                  {t('fraude.panel.matchingLink')}
+                <Link href="/matching" className="fr-matching-link">
+                  <Link2 size={14} aria-hidden="true" />
+                  <span>{t('fraude.panel.matchingLink')}</span>
                 </Link>
               </>
             )}
@@ -329,36 +449,46 @@ export default function FraudePage() {
       </div>
 
       {showActions ? (
-      <div className="sheet" style={{ marginTop: 'var(--s-5)' }}>
-        <div className="sheet-head">
-          <span>
-            {t('fraude.actions.title')} ({actionsQuery.data?.total ?? 0})
-          </span>
+        <div className="sheet fr-journal">
+          <div className="sheet-head">
+            <span>
+              {t('fraude.actions.title')} ({actionsQuery.data?.total ?? 0})
+            </span>
+            <button
+              type="button"
+              className="btn-outline fr-export"
+              onClick={() => void exportActions()}
+              disabled={exportingActions || (actionsQuery.data?.total ?? 0) === 0}
+              title={t('fraude.export.actions.title')}
+            >
+              <Table2 size={15} aria-hidden="true" />
+              {t('fraude.export.actions')}
+            </button>
+          </div>
+          <div className="sheet-body flush">
+            {actionsQuery.isLoading ? (
+              <p className="fr-pad">{t('common.loading')}</p>
+            ) : actionsQuery.error ? (
+              <div className="note ko fr-pad" role="alert">
+                <span>{t('common.error')}</span>
+                <button type="button" onClick={() => actionsQuery.refetch()}>
+                  {t('common.retry')}
+                </button>
+              </div>
+            ) : (
+              <Table
+                columns={actionColumns}
+                rows={actionPage}
+                page={actionsPage}
+                total={actionsQuery.data?.total ?? 0}
+                pageSize={PAGE_SIZE}
+                onPageChange={setActionsPage}
+                getRowKey={(r) => r.id}
+              />
+            )}
+          </div>
         </div>
-        <div className="sheet-body">
-          {actionsQuery.isLoading ? (
-            <p>{t('common.loading')}</p>
-          ) : actionsQuery.error ? (
-            <div className="note ko" role="alert">
-              <span>{t('common.error')}</span>
-              <button type="button" onClick={() => actionsQuery.refetch()}>
-                {t('common.retry')}
-              </button>
-            </div>
-          ) : (
-            <Table
-              columns={actionColumns}
-              rows={actionPage}
-              page={actionsPage}
-              total={actionsQuery.data?.total ?? 0}
-              pageSize={PAGE_SIZE}
-              onPageChange={setActionsPage}
-              getRowKey={(r) => r.id}
-            />
-          )}
-        </div>
-      </div>
       ) : null}
-    </>
+    </div>
   );
 }

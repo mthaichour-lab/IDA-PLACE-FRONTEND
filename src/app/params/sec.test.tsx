@@ -59,7 +59,7 @@ function mockApi(onWrite: (req: FetchRequest) => { status?: number; body: unknow
 
 async function openCreate() {
   const user = userEvent.setup();
-  await user.click(await screen.findByRole('button', { name: 'Créer un utilisateur' }));
+  await user.click(await screen.findByRole('button', { name: 'Nouvel utilisateur' }));
   const dialog = screen.getByRole('dialog');
   await user.type(within(dialog).getByLabelText(/Nom/), 'Karim');
   await user.type(within(dialog).getByLabelText(/E-mail|Email|Courriel/i), 'karim@saa.dz');

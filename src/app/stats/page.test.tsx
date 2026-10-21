@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { mockFetchJson, renderWithProviders } from '@/test/render';
 import { MeResponse, MonthlyActivity, StatsSummary, WilayaStat } from '@/lib/types';
@@ -53,10 +53,15 @@ describe('Écran Statistiques de la place (/stats)', () => {
     renderWithProviders(<StatsPage />);
 
     await waitFor(() => expect(screen.getByText('200')).toBeInTheDocument());
-    expect(screen.getByText('16%')).toBeInTheDocument();
-    expect(screen.getByText(/8\s?220\s?000/)).toBeInTheDocument();
+    expect(screen.getByText('16 %')).toBeInTheDocument();
+    // Compensé en format compact (maquette « 8,22 M DA »), montant exact en infobulle.
+    const settled = screen.getByText(/^8,22\s?M$/).closest('.kpi');
+    expect(settled).toHaveTextContent(/8,22\s?M\s?DA/);
+    expect(settled?.getAttribute('title')).toMatch(/8\s?220\s?000/);
+    // Adoption e-constat = part réelle du canal ECONSTAT (155 / 200).
+    expect(screen.getByText('78 %').closest('.kpi')).toHaveTextContent('Adoption e-constat');
     // Unité affichée en petit (`.kpi-unit`) : valeur et unité dans deux nœuds.
-    expect(screen.getByText('24.5').closest('.kpi')).toHaveTextContent('24.5 j');
+    expect(screen.getByText('24,5').closest('.kpi')).toHaveTextContent('24,5 j');
   });
 
   it('affiche "n/d" pour le délai moyen de règlement si aucun recours n’est encore réglé', async () => {
@@ -89,8 +94,9 @@ describe('Écran Statistiques de la place (/stats)', () => {
     mockStatsApi();
     renderWithProviders(<StatsPage />);
 
-    await waitFor(() => expect(screen.getByText('Alger')).toBeInTheDocument());
-    const items = screen.getAllByRole('listitem');
+    const zones = await screen.findByRole('region', { name: 'Zones à forte sinistralité' });
+    await waitFor(() => expect(within(zones).getByText('Alger')).toBeInTheDocument());
+    const items = within(zones).getAllByRole('listitem');
     expect(items[0]).toHaveTextContent('Alger');
     expect(items[1]).toHaveTextContent('Oran');
   });
@@ -115,7 +121,8 @@ describe('Écran Statistiques de la place (/stats)', () => {
     mockStatsApi();
     renderWithProviders(<StatsPage />);
 
-    await waitFor(() => expect(screen.getByText('70 / 20')).toBeInTheDocument());
-    expect(screen.getByText('85 / 25')).toBeInTheDocument();
+    // Barres empilées : part e-constat (%) dans la barre, comptes réels en infobulle.
+    await waitFor(() => expect(screen.getByTitle(/E-constat \(%\) 70 \/ Autres canaux \(ERP\/import\/API\) 20/)).toHaveTextContent('78'));
+    expect(screen.getByTitle(/E-constat \(%\) 85 \/ Autres canaux \(ERP\/import\/API\) 25/)).toHaveTextContent('77');
   });
 });

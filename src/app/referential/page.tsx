@@ -2,6 +2,25 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
+import type { LucideIcon } from 'lucide-react';
+import {
+  Building2,
+  CalendarDays,
+  Car,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  FileCheck2,
+  Gauge,
+  MapPin,
+  Plus,
+  Scale,
+  Settings,
+  ShieldCheck,
+  UserSearch,
+  UsersRound,
+  X,
+} from 'lucide-react';
 import { FolioHeader } from '@/components/FolioHeader';
 import { BaremeSection } from '@/components/referential/BaremeSection';
 import { CalendarSection } from '@/components/referential/CalendarSection';
@@ -19,6 +38,7 @@ import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { apiGet, apiPath, apiPost, apiPut } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
+import { buildCsv, downloadCsv } from '@/lib/csv';
 import { isCompanyActor } from '@/lib/recours-actions';
 import { AgencyView, CompanyKind, CompanyListItem, CompanyStatus, CompanyView, ConventionParams, EligibilityMotif, ExpertView, FeedMode, Paginated } from '@/lib/types';
 
@@ -120,6 +140,8 @@ export default function ReferentialPage() {
   const [companiesPage, setCompaniesPage] = useState(1);
   const [agenciesPage, setAgenciesPage] = useState(1);
   const [expertsPage, setExpertsPage] = useState(1);
+  /** Action « Agences » d'une compagnie : section Agences filtrée sur cette compagnie (`?companyId=`, filtre réel de l'API). */
+  const [agencyCompany, setAgencyCompany] = useState<CompanyListItem | null>(null);
 
   const [editCompany, setEditCompany] = useState<CompanyListItem | null>(null);
   const [governanceCompany, setGovernanceCompany] = useState<CompanyListItem | null>(null);
@@ -140,8 +162,15 @@ export default function ReferentialPage() {
   });
 
   const agenciesQuery = useQuery({
-    queryKey: ['referential', 'agencies', agenciesPage],
-    queryFn: () => apiGet<Paginated<AgencyView>>('/referential/agencies', { page: agenciesPage, pageSize: PAGE_SIZE }),
+    queryKey: ['referential', 'agencies', agenciesPage, agencyCompany?.id ?? null],
+    queryFn: () => apiGet<Paginated<AgencyView>>('/referential/agencies', { page: agenciesPage, pageSize: PAGE_SIZE, companyId: agencyCompany?.id }),
+  });
+
+  // Total non filtré pour le sous-titre de navigation pendant qu'un filtre compagnie est actif.
+  const agenciesTotalQuery = useQuery({
+    queryKey: ['referential', 'agencies', 'total'],
+    queryFn: () => apiGet<Paginated<AgencyView>>('/referential/agencies', { page: 1, pageSize: 1 }),
+    enabled: !!agencyCompany,
   });
 
   const expertsQuery = useQuery({
@@ -206,58 +235,58 @@ export default function ReferentialPage() {
   const canSeeGovernance = !!me && !companyActor;
   const canDecideGovernance = canSeeGovernance && hasPrivilege('validateRef');
 
-  const navItems: { key: SectionKey; mono: string; title: string; subtitle: string }[] = [
+  const navItems: { key: SectionKey; icon: LucideIcon; title: string; subtitle: string }[] = [
     {
       key: 'companies',
-      mono: 'CO',
+      icon: Building2,
       title: t('referential.nav.companies.title'),
       subtitle: `${companiesQuery.data?.total ?? '…'} ${t('referential.nav.companies.unit')} · ${t('referential.nav.companies.subtitleSuffix')}`,
     },
     {
       key: 'agencies',
-      mono: 'AG',
+      icon: MapPin,
       title: t('referential.nav.agencies.title'),
-      subtitle: `${agenciesQuery.data?.total ?? '…'} ${t('referential.nav.agencies.unit')} · ${t('referential.nav.agencies.subtitleSuffix')}`,
+      subtitle: `${(agencyCompany ? agenciesTotalQuery.data?.total : agenciesQuery.data?.total) ?? '…'} ${t('referential.nav.agencies.unit')} · ${t('referential.nav.agencies.subtitleSuffix')}`,
     },
     {
       key: 'experts',
-      mono: 'EX',
+      icon: UserSearch,
       title: t('referential.nav.experts.title'),
       subtitle: `${expertsQuery.data?.total ?? '…'} ${t('referential.nav.experts.unit')} · ${t('referential.nav.experts.subtitleSuffix')}`,
     },
     {
       key: 'convention',
-      mono: 'CV',
+      icon: Settings,
       title: t('referential.nav.convention.title'),
       subtitle: `${t('referential.nav.convention.subtitleSuffix')} · ${conventionQuery.data?.version ?? '…'}`,
     },
     {
       key: 'calendar',
-      mono: 'CA',
+      icon: CalendarDays,
       title: t('referential.nav.calendar.title'),
       subtitle: t('referential.nav.calendar.subtitleSuffix'),
     },
     {
       key: 'motifs',
-      mono: 'BM',
+      icon: Scale,
       title: t('referential.nav.motifs.title'),
       subtitle: `${motifsQuery.data?.length ?? '…'} ${t('referential.nav.motifs.unit')} · ${t('referential.nav.motifs.subtitleSuffix')}`,
     },
     {
       key: 'bareme',
-      mono: 'BA',
+      icon: Car,
       title: t('referential.nav.bareme.title'),
       subtitle: t('referential.nav.bareme.subtitleSuffix'),
     },
     {
       key: 'population',
-      mono: 'PO',
+      icon: UsersRound,
       title: t('referential.nav.population.title'),
       subtitle: t('referential.nav.population.subtitleSuffix'),
     },
     {
       key: 'irsam',
-      mono: 'IR',
+      icon: Gauge,
       title: t('referential.nav.irsam.title'),
       subtitle: t('referential.nav.irsam.subtitleSuffix'),
     },
@@ -265,34 +294,49 @@ export default function ReferentialPage() {
 
   return (
     <>
-      <FolioHeader badge="Module X" title={t('referential.title')} subtitle={t('referential.subtitle')} />
+      <FolioHeader badge="§3.1" title={t('referential.title')} subtitle={t('referential.subtitle')} />
 
-      <div className="grid g-ref">
-        <div className="sheet">
-          <div className="sheet-head">
-            <span>{t('referential.title')}</span>
+      <div className="grid g-ref rf-layout">
+        <div className="sheet rf-nav-card">
+          <div className="rf-nav-head">
+            <span className="rf-nav-logo" aria-hidden="true">
+              <FileCheck2 size={26} strokeWidth={2} />
+            </span>
+            <span className="rf-nav-head-text">
+              <span className="rf-nav-head-title">{t('referential.title')}</span>
+              <span className="rf-nav-head-sub">{t('referential.nav.header.sub')}</span>
+            </span>
           </div>
-          <nav className="ref-nav" aria-label={t('referential.title')}>
-            {navItems.map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                className={`ref-nav-item${section === item.key ? ' active' : ''}`}
-                onClick={() => setSection(item.key)}
-                aria-current={section === item.key ? 'true' : undefined}
-              >
-                <span className="ref-nav-icon mono" aria-hidden="true">
-                  {item.mono}
-                </span>
-                <span className="ref-nav-text">
-                  <span className="ref-nav-title">{item.title}</span>
-                  <span className="ref-nav-sub">{item.subtitle}</span>
-                </span>
-                <span className="ref-nav-chevron" aria-hidden="true">
-                  ›
-                </span>
-              </button>
-            ))}
+          <nav className="ref-nav rf-nav" aria-label={t('referential.title')}>
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={`ref-nav-item${section === item.key ? ' active' : ''}`}
+                  onClick={() => {
+                    if (item.key === 'agencies' && section !== 'agencies') {
+                      setAgencyCompany(null);
+                      setAgenciesPage(1);
+                    }
+                    setSection(item.key);
+                  }}
+                  aria-current={section === item.key ? 'true' : undefined}
+                >
+                  <span className="ref-nav-icon" aria-hidden="true">
+                    <Icon size={16} strokeWidth={1.8} />
+                  </span>
+                  <span className="ref-nav-text">
+                    <span className="ref-nav-title">{item.title}</span>
+                    <span className="ref-nav-sub">{item.subtitle}</span>
+                  </span>
+                  <span className="ref-nav-chevron" aria-hidden="true">
+                    <ChevronRight size={16} strokeWidth={2} />
+                  </span>
+                </button>
+              );
+            })}
           </nav>
         </div>
 
@@ -309,9 +353,25 @@ export default function ReferentialPage() {
             }}
             onEdit={setEditCompany}
             onGovernance={canSeeGovernance ? setGovernanceCompany : undefined}
+            onAgencies={(c) => {
+              setAgencyCompany(c);
+              setAgenciesPage(1);
+              setSection('agencies');
+            }}
+            exportRows={companiesMapQuery.data?.items}
           />
         ) : section === 'agencies' ? (
-          <AgenciesPanel query={agenciesQuery} page={agenciesPage} onPageChange={setAgenciesPage} companyById={companyById} />
+          <AgenciesPanel
+            query={agenciesQuery}
+            page={agenciesPage}
+            onPageChange={setAgenciesPage}
+            companyById={companyById}
+            filterCompany={agencyCompany}
+            onClearFilter={() => {
+              setAgencyCompany(null);
+              setAgenciesPage(1);
+            }}
+          />
         ) : section === 'experts' ? (
           <ExpertsPanel query={expertsQuery} page={expertsPage} onPageChange={setExpertsPage} showRib={!companyActor} />
         ) : section === 'convention' ? (
@@ -387,6 +447,8 @@ function CompaniesPanel({
   onCreate,
   onEdit,
   onGovernance,
+  onAgencies,
+  exportRows,
 }: {
   query: ReturnType<typeof useQuery<Paginated<CompanyListItem>>>;
   page: number;
@@ -396,14 +458,21 @@ function CompaniesPanel({
   onCreate: () => void;
   onEdit: (c: CompanyListItem) => void;
   onGovernance?: (c: CompanyListItem) => void;
+  onAgencies: (c: CompanyListItem) => void;
+  /** Toutes les compagnies visibles (toutes pages) pour l'export « Excel ». */
+  exportRows?: CompanyListItem[];
 }) {
   const { t, locale } = useI18n();
+
+  function sinceLabel(c: CompanyListItem): string | null {
+    return c.createdAt ? new Date(c.createdAt).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' }) : null;
+  }
 
   /** SEC-26 : projection publique d'une concurrente — date d'adhésion, réseau et correspondant absents. */
   function metaLine(c: CompanyListItem): string {
     const parts: string[] = [];
-    if (c.nameAr) parts.push(c.nameAr);
-    if (c.createdAt) parts.push(`${t('referential.company.card.since')} ${new Date(c.createdAt).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' })}`);
+    const since = sinceLabel(c);
+    if (since) parts.push(`${t('referential.company.card.since')} ${since}`);
     if (c.agencyCounts) {
       parts.push(`${c.agencyCounts.DG} DG`);
       parts.push(`${c.agencyCounts.DR} DR`);
@@ -414,72 +483,131 @@ function CompaniesPanel({
     return parts.join(' · ');
   }
 
+  // Export CSV (« ⤓ Excel » de la maquette) — généré côté front depuis les seules
+  // données renvoyées par l'API (projection publique SEC-26 : champs absents laissés vides).
+  function exportCsv() {
+    const rows = exportRows ?? query.data?.items ?? [];
+    const header = [
+      t('referential.company.col.code'),
+      t('referential.company.col.name'),
+      t('referential.company.col.nameAr'),
+      t('referential.company.status'),
+      t('referential.company.col.since'),
+      'DG',
+      'DR',
+      t('referential.company.card.agenciesBadge'),
+      t('referential.company.col.correspondent'),
+    ];
+    downloadCsv(
+      t('referential.company.export.file'),
+      buildCsv(
+        header,
+        rows.map((c) => [
+          c.code,
+          c.name,
+          c.nameAr ?? '',
+          statusLabel(c.status, t),
+          c.createdAt ? c.createdAt.slice(0, 10) : '',
+          c.agencyCounts?.DG ?? '',
+          c.agencyCounts?.DR ?? '',
+          c.agencyCounts?.AG ?? '',
+          c.correspondentName ?? '',
+        ]),
+      ),
+    );
+  }
+
   return (
-    <div className="sheet">
+    <div className="sheet rf-panel">
       <div className="sheet-head">
         <span>{t('referential.nav.companies.title')}</span>
-        {canCreate ? (
-          <button
-            type="button"
-            onClick={onCreate}
-            style={{ padding: '6px 12px', borderRadius: 'var(--k-r-s)', border: '1px solid var(--k-pri)', background: 'var(--k-pri)', color: '#fff', font: 'inherit', cursor: 'pointer' }}
-          >
-            {t('referential.company.create')}
-          </button>
-        ) : null}
-      </div>
-      <div className="sheet-body">
-        {query.isLoading ? (
-          <p>{t('common.loading')}</p>
-        ) : query.error || !query.data ? (
-          <div className="note ko" role="alert">
-            <span>{t('common.error')}</span>
-            <button type="button" onClick={() => query.refetch()}>
-              {t('common.retry')}
+        <span className="rf-head-actions">
+          {query.data && query.data.items.length > 0 ? (
+            <button type="button" className="rf-xl" onClick={exportCsv}>
+              <Download size={15} strokeWidth={2} aria-hidden="true" />
+              {t('common.exportExcel')}
             </button>
+          ) : null}
+          {canCreate ? (
+            <button type="button" className="btn-primary" onClick={onCreate}>
+              <Plus size={16} strokeWidth={2.2} aria-hidden="true" />
+              {t('referential.company.create')}
+            </button>
+          ) : null}
+        </span>
+      </div>
+      <div className="sheet-body flush">
+        {query.isLoading ? (
+          <p className="pad">{t('common.loading')}</p>
+        ) : query.error || !query.data ? (
+          <div className="pad">
+            <div className="note ko" role="alert">
+              <span>{t('common.error')}</span>
+              <button type="button" onClick={() => query.refetch()}>
+                {t('common.retry')}
+              </button>
+            </div>
           </div>
         ) : (
           <>
             <div className="co-card-list">
               {query.data.items.length === 0 ? (
-                <p style={{ color: 'var(--ink-3)' }}>{t('common.noData')}</p>
+                <p className="pad" style={{ color: 'var(--ink-3)' }}>
+                  {t('common.noData')}
+                </p>
               ) : (
                 query.data.items.map((c) => (
                   <div className="co-card" key={c.id}>
-                    <CoChip code={c.code} color={c.color} />
+                    <span className="rf-logo">
+                      <CoChip code={c.code} color={c.color} />
+                    </span>
                     <div className="co-card-id">
                       <div className="co-card-name">
-                        {c.name} <span className="mono">{c.code}</span>
+                        {c.name} <span className="rf-code">{c.code}</span>
                       </div>
-                      <div className="co-card-meta">{metaLine(c)}</div>
+                      <div className="co-card-meta">
+                        {c.nameAr ? (
+                          <span dir="rtl" lang="ar">
+                            {c.nameAr}
+                          </span>
+                        ) : null}
+                        {c.nameAr ? ' · ' : null}
+                        {metaLine(c)}
+                      </div>
                     </div>
-                    <span className="co-card-agencies">{c.agencyCounts ? `${c.agencyCounts.AG} ${t('referential.company.card.agenciesBadge')}` : '—'}</span>
+                    {c.agencyCounts ? (
+                      <button type="button" className="rf-act" onClick={() => onAgencies(c)} aria-label={`${t('referential.company.agencies.open')} ${c.code}`}>
+                        <MapPin size={14} strokeWidth={2} aria-hidden="true" />
+                        {c.agencyCounts.AG} {t('referential.company.card.agenciesBadge')}
+                      </button>
+                    ) : (
+                      <span className="rf-act rf-act-muted">—</span>
+                    )}
                     {canEdit(c) ? (
-                      <button
-                        type="button"
-                        onClick={() => onEdit(c)}
-                        aria-label={`${t('referential.company.edit')} ${c.code}`}
-                        style={{ border: 'none', background: 'none', font: 'inherit', color: 'var(--ink-2)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                      >
+                      <button type="button" className="rf-act" onClick={() => onEdit(c)} aria-label={`${t('referential.company.edit')} ${c.code}`}>
+                        <Settings size={14} strokeWidth={2} aria-hidden="true" />
                         {t('referential.company.edit')}
                       </button>
                     ) : null}
                     {onGovernance ? (
                       <button
                         type="button"
+                        className="rf-act rf-icon-btn"
                         onClick={() => onGovernance(c)}
                         aria-label={`${t('referential.governance.open')} ${c.code}`}
-                        style={{ border: 'none', background: 'none', font: 'inherit', color: 'var(--ink-2)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                        title={t('referential.governance.open')}
                       >
-                        {t('referential.governance.open')}
+                        <ShieldCheck size={15} strokeWidth={2} aria-hidden="true" />
                       </button>
                     ) : null}
-                    <Tag tone={statusTone(c.status)}>{statusLabel(c.status, t)}</Tag>
+                    <span className="rf-status">
+                      <Tag tone={statusTone(c.status)}>{statusLabel(c.status, t)}</Tag>
+                    </span>
                   </div>
                 ))
               )}
             </div>
-            <Pager page={page} total={query.data.total} pageSize={PAGE_SIZE} onPageChange={onPageChange} t={t} />
+            {query.data.total > PAGE_SIZE ? <Pager page={page} total={query.data.total} pageSize={PAGE_SIZE} onPageChange={onPageChange} t={t} /> : null}
           </>
         )}
       </div>
@@ -529,11 +657,15 @@ function AgenciesPanel({
   page,
   onPageChange,
   companyById,
+  filterCompany,
+  onClearFilter,
 }: {
   query: ReturnType<typeof useQuery<Paginated<AgencyView>>>;
   page: number;
   onPageChange: (p: number) => void;
   companyById: Map<string, CompanyListItem>;
+  filterCompany: CompanyListItem | null;
+  onClearFilter: () => void;
 }) {
   const { t } = useI18n();
 
@@ -554,9 +686,20 @@ function AgenciesPanel({
   ];
 
   return (
-    <div className="sheet">
+    <div className="sheet rf-panel">
       <div className="sheet-head">
         <span>{t('referential.nav.agencies.title')}</span>
+        {filterCompany ? (
+          <span className="rf-head-actions">
+            <span className="rf-filter" aria-label={`${t('referential.agency.filter.company')} ${filterCompany.code}`}>
+              <CoChip code={filterCompany.code} color={filterCompany.color} />
+            </span>
+            <button type="button" className="rf-xl" onClick={onClearFilter}>
+              <X size={14} strokeWidth={2} aria-hidden="true" />
+              {t('referential.agency.filter.clear')}
+            </button>
+          </span>
+        ) : null}
       </div>
       <div className="sheet-body">
         {query.isLoading ? (
@@ -602,7 +745,7 @@ function ExpertsPanel({
   ];
 
   return (
-    <div className="sheet">
+    <div className="sheet rf-panel">
       <div className="sheet-head">
         <span>{t('referential.nav.experts.title')}</span>
       </div>
@@ -630,7 +773,7 @@ function ConventionPanel({ query }: { query: ReturnType<typeof useQuery<Conventi
   const { t, locale } = useI18n();
 
   return (
-    <div className="sheet">
+    <div className="sheet rf-panel">
       <div className="sheet-head">
         <span>{t('referential.nav.convention.title')}</span>
       </div>
@@ -673,14 +816,14 @@ function Pager({ page, total, pageSize, onPageChange, t }: { page: number; total
   return (
     <div className="pager">
       <span>
-        {t('common.page')} {page} {t('common.of')} {pageCount} · {total}
+        {total === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} {t('common.of')} {total} · {t('common.page')} {page} / {pageCount}
       </span>
       <div style={{ display: 'flex', gap: 8 }}>
-        <button type="button" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
-          {t('common.previous')}
+        <button type="button" aria-label={t('common.previous')} disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
+          <ChevronLeft size={16} strokeWidth={2} aria-hidden="true" />
         </button>
-        <button type="button" disabled={page >= pageCount} onClick={() => onPageChange(page + 1)}>
-          {t('common.next')}
+        <button type="button" aria-label={t('common.next')} disabled={page >= pageCount} onClick={() => onPageChange(page + 1)}>
+          <ChevronRight size={16} strokeWidth={2} aria-hidden="true" />
         </button>
       </div>
     </div>

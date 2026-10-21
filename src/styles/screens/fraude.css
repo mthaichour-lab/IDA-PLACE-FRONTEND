@@ -1,1 +1,396 @@
-/* Écran fraude — styles propres à l'écran (maquette de référence). */
+/* Écran fraude — styles propres à l'écran (maquette de référence r18). */
+
+/* --- En-tête : action alignée en bas du sous-titre, comme la maquette --- */
+.fr-screen .folio-h {
+  margin-bottom: 8px;
+}
+
+.fr-screen .folio-sub {
+  max-width: 665px;
+}
+
+.fr-screen .folio-actions {
+  align-self: flex-end;
+  padding-top: 0;
+}
+
+/* --- KPI : pastille mono sous le libellé (« score ≥ 70 », « chaîne de place ») --- */
+.fr-screen .kpi-row {
+  margin: 12px 0 0;
+}
+
+.fr-screen .kpi {
+  padding: 13px 15px 12px;
+}
+
+.fr-screen .kpi-extra {
+  margin-top: 6px;
+}
+
+.fr-kpi-chip {
+  display: block;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--ink) 3.5%, transparent);
+  border-radius: 6px;
+  padding: 1px 7px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fr-note {
+  margin: 12px 0 0;
+  font-size: var(--k-fs-xs);
+}
+
+.fr-pad {
+  margin: 0;
+  padding: 12px 20px 20px;
+}
+
+.fr-muted {
+  color: var(--ink-3);
+}
+
+/* --- Grille file / panneau de détail (≈ 585 px / 500 px à 1366 px) --- */
+.grid.fr-grid {
+  grid-template-columns: minmax(0, 1.17fr) minmax(0, 1fr);
+  align-items: start;
+  margin-top: 2px;
+}
+
+.fr-grid > .sheet + .sheet {
+  margin-top: 0;
+}
+
+@media (max-width: 1020px) {
+  .grid.fr-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- File des cas suspects --- */
+.fr-queue .sheet-head {
+  padding-bottom: 12px;
+}
+
+.fr-queue .sheet-body.flush,
+.fr-journal .sheet-body.flush {
+  padding: 0;
+}
+
+.fr-queue .t thead th,
+.fr-journal .t thead th {
+  font-size: 12px;
+  padding: 8px 14px;
+}
+
+.fr-queue .t tbody td {
+  height: 42px;
+  padding: 6px 14px;
+  white-space: nowrap;
+}
+
+.fr-queue .t th:first-child,
+.fr-queue .t td:first-child,
+.fr-journal .t th:first-child,
+.fr-journal .t td:first-child {
+  padding-inline-start: 20px;
+}
+
+.fr-queue .t th:last-child,
+.fr-queue .t td:last-child,
+.fr-journal .t th:last-child,
+.fr-journal .t td:last-child {
+  padding-inline-end: 20px;
+}
+
+.fr-queue .pager,
+.fr-journal .pager {
+  padding: 14px 20px;
+}
+
+.fr-id {
+  display: inline-block;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  font-size: 12.5px;
+}
+
+.fr-queue .t td .mono {
+  font-size: 12.5px;
+}
+
+.fr-queue .co-chip {
+  min-width: 52px;
+}
+
+.fr-counterpart {
+  font-size: var(--k-fs-xs);
+}
+
+/* Barre de score : piste grise, remplissage teinté par la gravité, score en gras. */
+.fr-score {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fr-score-track {
+  display: block;
+  width: 64px;
+  height: 6px;
+  border-radius: var(--k-r-pill);
+  background: var(--rule);
+  overflow: hidden;
+}
+
+.fr-score-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--k-r-pill);
+  background: var(--warn);
+}
+
+.fr-score-val {
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--ink);
+  font-feature-settings: 'tnum';
+}
+
+.sev-ELEVEE .fr-score-fill,
+.fr-signal.sev-ELEVEE .fr-signal-bar > span {
+  background: var(--ko);
+}
+
+.sev-FAIBLE .fr-score-fill,
+.fr-signal.sev-FAIBLE .fr-signal-bar > span {
+  background: var(--neutral);
+}
+
+/* Pastille de gravité : fond gris clair, texte teinté (maquette). */
+.fr-sev .tag.tag {
+  background: var(--paper-2);
+  font-weight: 500;
+  padding: 1px 10px;
+}
+
+/* --- Panneau de détail « Cas … » --- */
+.fr-panel .sheet-head {
+  padding-bottom: 10px;
+}
+
+.fr-panel-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fr-panel-title .mono {
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.fr-panel .sheet-body {
+  padding-top: 4px;
+}
+
+.fr-ident {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fr-ident-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fr-ident-text .mono {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.fr-ident-sev {
+  flex-shrink: 0;
+}
+
+.fr-ident-sev .tag {
+  font-size: 11px;
+}
+
+.fr-counterpart-note {
+  margin: 8px 0 0;
+  font-size: var(--k-fs-xs);
+  color: var(--ink-2);
+}
+
+.fr-sections {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+}
+
+/* Section de signaux : titre, puis libellé du signal sur une ligne avec son
+   score à droite, petite barre dessous ; filet entre les sections. */
+.fr-section {
+  padding: 10px 0 12px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.fr-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.fr-section-head strong {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.fr-section-head > span {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.fr-signal-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fr-signal-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.fr-signal-score {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--warn);
+  font-feature-settings: 'tnum';
+}
+
+.fr-signal.sev-ELEVEE .fr-signal-score {
+  color: var(--ko);
+}
+
+.fr-signal.sev-FAIBLE .fr-signal-score {
+  color: var(--neutral);
+}
+
+.fr-signal-bar {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin-top: 6px;
+  border-radius: var(--k-r-pill);
+  background: var(--rule);
+  overflow: hidden;
+}
+
+.fr-signal-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: var(--k-r-pill);
+  background: var(--warn);
+}
+
+/* Lien « Ouvrir l'appariement » : pilule grise, texte souligné. */
+.fr-matching-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: var(--paper-2);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.fr-matching-link span {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.fr-matching-link:hover {
+  background: var(--rule);
+}
+
+/* --- Journal des actions suspectes --- */
+.fr-journal {
+  margin-top: 14px;
+}
+
+.fr-journal .sheet-head {
+  padding: 14px 20px 10px;
+}
+
+.fr-export.btn-outline {
+  height: 34px;
+  padding: 0 14px;
+  font-family: var(--f-text);
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+.fr-export.btn-outline:disabled,
+.fr-screen .folio-actions > button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.fr-journal .sheet-body.flush {
+  padding: 0 20px;
+}
+
+.fr-journal .t th:first-child,
+.fr-journal .t td:first-child {
+  padding-inline-start: 19px;
+}
+
+.fr-journal .t th:last-child,
+.fr-journal .t td:last-child {
+  padding-inline-end: 19px;
+}
+
+.fr-journal .pager {
+  padding-inline: 0;
+}
+
+.fr-journal .t tbody td {
+  height: 40px;
+  padding: 6px 14px;
+  font-size: 12.5px;
+}
+
+.fr-journal .t td .mono {
+  font-size: 12.5px;
+}
+

@@ -65,7 +65,7 @@ describe('Écran Journal scellé (/ledger)', () => {
 
     await waitFor(() => expect(screen.getByText(fullText('#1 Recours Transition · r-1'))).toBeInTheDocument());
     expect(screen.getByText('Transition recours — dev-op')).toBeInTheDocument();
-    expect(screen.getByText('11112222…77778888 ← —')).toBeInTheDocument();
+    expect(screen.getByText('1111222233 ← —')).toBeInTheDocument();
   });
 
   it('numérote les entrées en séquence décroissante (la plus récente en tête, #total en premier)', async () => {
@@ -202,14 +202,26 @@ describe('Écran Journal scellé (/ledger)', () => {
     // Liste triée seq ASC côté API → affichage le plus récent en tête : la
     // page 1 montre #7 à #2, la 7ᵉ entrée (#1, la plus ancienne) est reléguée
     // en page 2.
-    await waitFor(() => expect(screen.getByText('Page 1 sur 2 · 7')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('1–6 sur 7 · Page 1 / 2')).toBeInTheDocument());
     expect(screen.getByText(fullText('#7 Recours Transition · r-7'))).toBeInTheDocument();
     expect(screen.queryByText(fullText('#1 Recours Transition · r-1'))).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Suivant' }));
 
     await waitFor(() => expect(screen.getByText(fullText('#1 Recours Transition · r-1'))).toBeInTheDocument());
-    expect(screen.getByText('Page 2 sur 2 · 7')).toBeInTheDocument();
+    expect(screen.getByText('7–7 sur 7 · Page 2 / 2')).toBeInTheDocument();
     expect(screen.queryByText(fullText('#7 Recours Transition · r-7'))).not.toBeInTheDocument();
+  });
+
+  it('met en forme un résumé JSON du back en « clé valeur · clé valeur » (aucune valeur ajoutée)', async () => {
+    mockFetchJson({
+      '/api/v1/me': ME,
+      '/api/v1/ledger': ledgerPage([entry({ summary: '{"type":"RETRAIT","state":"ANNULEE","company":"SAA"}' })]),
+      '/api/v1/ledger/verify': { valid: true } as LedgerVerifyResult,
+    });
+
+    renderWithProviders(<LedgerPage />);
+
+    await waitFor(() => expect(screen.getByText('type RETRAIT · state ANNULEE · company SAA — dev-op')).toBeInTheDocument());
   });
 });

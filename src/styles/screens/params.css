@@ -1,1 +1,752 @@
-/* Écran params — styles propres à l'écran (maquette de référence). */
+/* Écran params — styles propres à l'écran (maquette de référence r23/r24/r25). */
+
+/* --- Communs --- */
+.pa .folio-sub {
+  max-width: 660px;
+}
+
+.pa-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.pa-head-actions .btn-outline {
+  height: 34px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+.pa-head-actions .btn-primary {
+  height: 38px;
+  padding: 0 16px;
+  font-size: 13.5px;
+}
+
+.pa-head-actions .btn-soft {
+  height: 32px;
+  font-size: 12px;
+}
+
+/* Bouton « voir » rond (maquette : œil à droite d'Export). */
+.pa-eye {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--rule-strong);
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.pa-eye:hover,
+.pa-eye[aria-pressed='true'] {
+  background: var(--k-soft-2);
+  color: var(--ink);
+}
+
+.pa .sheet-head {
+  padding: 16px 20px 10px;
+}
+
+.pa .sheet-body.flush {
+  padding: 0;
+}
+
+.pa .sheet-body.flush > .pad {
+  padding: 14px 20px;
+}
+
+.pa-pad-note {
+  margin: 10px 20px;
+}
+
+/* Bandeau d'information (maquette : fond menthe, icône « i », bord à bord de la carte). */
+.pa-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 2px 1px 0;
+  padding: 10px 18px;
+  border-radius: 12px;
+  background: var(--k-mint);
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.pa-info svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--ink-2);
+}
+
+.pa-strong {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.pa-block {
+  display: block;
+}
+
+.pa-dash {
+  color: var(--ink-3);
+}
+
+.pa-unit {
+  display: block;
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+
+.pa-code {
+  display: block;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.pa .t thead th.pa-end,
+.pa .t tbody td.pa-end {
+  text-align: end;
+}
+
+.pa .t tbody td.pa-center {
+  text-align: center;
+}
+
+.pa .t thead th {
+  font-size: 11.5px;
+  padding: 9px 20px 8px;
+}
+
+.pa .t tbody td {
+  padding: 10px 20px;
+  font-size: 13px;
+}
+
+/* --- Utilisateurs & accès --- */
+.pa-users .kpi-row {
+  margin: 18px 0 3px;
+}
+
+.pa-users .kpi-row + .sheet,
+.pa-users .note + .sheet {
+  margin-top: 3px;
+}
+
+.pa-users .kpi {
+  padding: 12px 15px 12px;
+}
+
+.pa-users .kpi-value {
+  font-size: 26px;
+}
+
+.pa-users .t tbody td {
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+
+/* Largeurs de colonnes de la maquette (sans la colonne e-mail optionnelle). */
+.pa-users:not(.pa-users--email) .t th:nth-child(1) {
+  width: 15%;
+}
+
+.pa-users:not(.pa-users--email) .t th:nth-child(2) {
+  width: 28%;
+}
+
+.pa-users:not(.pa-users--email) .t th:nth-child(3) {
+  width: 17%;
+}
+
+.pa-users:not(.pa-users--email) .t th:nth-child(4) {
+  width: 9.5%;
+}
+
+.pa-users .t tbody td:last-child {
+  text-align: end;
+  white-space: nowrap;
+}
+
+/* Rôle : pastille menthe à texte teal (maquette), distincte des pastilles d'état. */
+.pa-role {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--k-r-pill);
+  padding: 2px 10px;
+  background: var(--k-mint);
+  color: var(--k-pri);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.pa-users .tag {
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.pa-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Boutons de ligne : « Modifier » gris, « Suspendre » rouge clair, « Activer » vert clair. */
+.pa-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--k-soft-2);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pa-act:hover {
+  background: var(--rule);
+}
+
+.pa-act.ko {
+  background: var(--ko-soft);
+  color: var(--ko);
+}
+
+.pa-act.ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.pa-act.ko:hover,
+.pa-act.ok:hover {
+  filter: brightness(0.97);
+}
+
+.pa-act:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Modales (fiche utilisateur, création). */
+.pa-detail {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 0 0 var(--s-4);
+}
+
+.pa-dt {
+  font-size: var(--k-fs-xs);
+  color: var(--ink-2);
+}
+
+.pa-dd {
+  margin: 0;
+}
+
+.pa-inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.pa-detail-h {
+  display: block;
+  margin-bottom: var(--s-2);
+  font-size: var(--k-fs-s);
+}
+
+.pa-priv-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-bottom: var(--s-4);
+}
+
+.pa-priv-list label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--k-fs-xs);
+  cursor: pointer;
+}
+
+.pa-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.pa-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--k-fs-xs);
+  color: var(--ink-2);
+}
+
+.pa-field input,
+.pa-field select {
+  padding: 7px 10px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 13px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.pa-hint {
+  font-size: var(--k-fs-xs);
+  color: var(--ink-3);
+  margin: 0;
+}
+
+/* --- Rôles & privilèges --- */
+.pa-roles .sheet-head {
+  padding-top: 16px;
+  padding-bottom: 10px;
+}
+
+.pa-matrix thead th {
+  vertical-align: bottom;
+}
+
+.pa-matrix thead th.pa-matrix-priv {
+  vertical-align: middle;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.pa-matrix thead th.pa-matrix-role {
+  width: 11%;
+  padding: 12px 4px 6px;
+  text-align: center;
+}
+
+/* En-têtes de rôles verticaux (maquette), tronqués au-delà de la hauteur d'en-tête. */
+.pa-vert {
+  display: inline-block;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  max-height: 110px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-align: start;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.pa .pa-matrix tbody td {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  line-height: 1.3;
+}
+
+.pa-matrix tbody td .pa-strong {
+  font-size: 13px;
+}
+
+/* Case à cocher teal (maquette) : carré arrondi, coche blanche sur fond plein. */
+.pa-check {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-block;
+  width: 25px;
+  height: 25px;
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--rule-strong) 60%, var(--rule));
+  border-radius: 7px;
+  background: var(--paper);
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.pa-check:checked {
+  border-color: var(--k-pri);
+  background-color: var(--k-pri);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 12.5l3.2 3L17 9'/%3E%3C/svg%3E");
+  background-size: 18px 18px;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.pa-check:focus-visible {
+  outline: 2px solid var(--k-pri-2);
+  outline-offset: 2px;
+}
+
+.pa-check:disabled {
+  cursor: not-allowed;
+}
+
+.pa-roles .btn-primary[aria-disabled='true'] {
+  cursor: help;
+}
+
+/* --- Coûts & tarification --- */
+.pa-costs .sheet + .sheet {
+  margin-top: 8px;
+}
+
+.pa-dash-title {
+  font-family: var(--f-display);
+}
+
+.pa-period-wrap {
+  font-family: var(--f-mono);
+  font-weight: 600;
+  font-size: 16px;
+  white-space: nowrap;
+}
+
+/* Mois du dashboard : sélecteur réel (12 derniers mois) présenté comme le texte mono de la maquette. */
+.pa-period {
+  appearance: none;
+  -webkit-appearance: none;
+  field-sizing: content;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  border-bottom: 1px dashed transparent;
+}
+
+.pa-period:hover,
+.pa-period:focus-visible {
+  border-bottom-color: var(--ink-3);
+  outline: none;
+}
+
+.pa-period option {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--f-text);
+}
+
+.pa-costs .kpi-row {
+  margin: 0 0 4px;
+  gap: 12px;
+}
+
+.pa-costs .kpi {
+  padding: 13px 15px 10px;
+  min-width: 0;
+}
+
+.pa-costs .kpi-value {
+  font-size: 26px;
+  white-space: nowrap;
+}
+
+.pa-costs .kpi-label {
+  font-size: 11.5px;
+}
+
+.pa-costs .kpi-extra {
+  margin-top: 4px;
+}
+
+.pa-kchip {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  border-radius: 6px;
+  padding: 1px 8px;
+}
+
+.pa-cost-t thead th {
+  padding-top: 7px;
+}
+
+.pa .pa-cost-t tbody td {
+  padding-top: 9px;
+  padding-bottom: 9px;
+  line-height: 1.3;
+}
+
+/* Largeurs de colonnes de la maquette (Inducteur, Mesuré, Facturable, Poids revenu, Revenu HT, % conso.). */
+.pa-cost-t th:nth-child(1) {
+  width: 26%;
+}
+
+.pa-cost-t th:nth-child(2),
+.pa-cost-t th:nth-child(3) {
+  width: 12.5%;
+}
+
+.pa-cost-t th:nth-child(5) {
+  width: 15%;
+}
+
+.pa-cost-t th:nth-child(6) {
+  width: 12%;
+}
+
+.pa-cost-t td.mono {
+  font-size: 13px;
+}
+
+.pa-cost-t td.pa-bar-cell {
+  padding-inline-end: 6px;
+}
+
+.pa-bar {
+  height: 7px;
+  min-width: 120px;
+  border-radius: var(--k-r-pill);
+  background: var(--rule);
+  overflow: hidden;
+}
+
+.pa-bar-fill {
+  height: 100%;
+  border-radius: var(--k-r-pill);
+  background: var(--k-pri);
+}
+
+.pa .t tbody td.pa-share {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+/* Ligne de total « Consommation hors forfait » : fond gris, libellé et montant en gras, bas de carte arrondi. */
+.pa-cost-t tbody tr.pa-total td {
+  background: var(--paper-2);
+  font-weight: 700;
+  border-bottom: none;
+}
+
+.pa-cost-t tbody tr.pa-total td:first-child {
+  border-end-start-radius: 18px;
+}
+
+.pa-cost-t tbody tr.pa-total td:last-child {
+  border-end-end-radius: 18px;
+}
+
+/* Grille tarifaire : champs quota/prix gris arrondis, alignés à droite en mono. */
+.pa-grid .sheet-head .head-chip {
+  font-family: var(--f-mono);
+}
+
+.pa-grid .pa-info {
+  margin-bottom: 0;
+}
+
+.pa-readonly {
+  margin: 10px 20px 0;
+  font-size: var(--k-fs-xs);
+  color: var(--ink-3);
+}
+
+/* Largeurs de colonnes de la maquette (Inducteur de coût, Unité, Quota inclus, Prix unitaire). */
+.pa-grid-t th:nth-child(1) {
+  width: 47%;
+}
+
+.pa-grid-t th:nth-child(2) {
+  width: 16%;
+}
+
+.pa-grid-t th:nth-child(3) {
+  width: 15%;
+}
+
+.pa .pa-grid-t tbody td {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.pa-grid-t tbody td.pa-unit {
+  display: table-cell;
+  font-size: 12px;
+}
+
+.pa-num {
+  width: 104px;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--k-soft-2);
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: 13px;
+  text-align: end;
+  -moz-appearance: textfield;
+}
+
+.pa-num-quota {
+  width: 114px;
+  text-align: center;
+}
+
+.pa-num::-webkit-outer-spin-button,
+.pa-num::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.pa-num:hover:not(:disabled) {
+  border-color: var(--rule-strong);
+}
+
+.pa-num:focus-visible {
+  outline: none;
+  border-color: var(--k-pri);
+  background: var(--paper);
+}
+
+.pa-num:disabled {
+  color: var(--ink-2);
+  cursor: not-allowed;
+}
+
+/* Barre d'enregistrement (SEC-37) : n'apparaît qu'après une modification. */
+.pa-grid-save {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 14px 20px 16px;
+  border-top: 1px solid var(--rule);
+  background: var(--k-soft);
+  border-end-start-radius: 18px;
+  border-end-end-radius: 18px;
+}
+
+.pa-grid-save label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--k-fs-xs);
+  color: var(--ink-2);
+}
+
+.pa-grid-save input {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: 13px;
+}
+
+.pa-grid-save-actions {
+  display: flex;
+  gap: 8px;
+  margin-inline-start: auto;
+}
+
+.pa-grid-save-actions .btn-primary {
+  height: 34px;
+  font-size: 13px;
+}
+
+.pa-grid-hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: var(--k-fs-xs);
+  color: var(--ink-3);
+}
+
+.pa-grid-hint.ko {
+  color: var(--ko);
+}
+
+/* --- Thème sombre : --k-mint / --k-soft / --k-soft-2 / --ok-soft / --ko-soft restent clairs (tokens non
+   redéfinis) ; les surfaces propres à l'écran passent sur des teintes sombres lisibles. --- */
+:root[data-theme='dark'] .pa .kpi {
+  background: var(--sheet);
+}
+
+:root[data-theme='dark'] .pa-info,
+:root[data-theme='dark'] .pa-role {
+  background: color-mix(in srgb, var(--k-pri) 22%, var(--paper));
+}
+
+:root[data-theme='dark'] .pa-role {
+  color: var(--k-acc-2);
+}
+
+:root[data-theme='dark'] .pa-act,
+:root[data-theme='dark'] .pa-num,
+:root[data-theme='dark'] .pa-grid-save {
+  background: var(--paper-2);
+}
+
+:root[data-theme='dark'] .pa-act.ko {
+  background: color-mix(in srgb, var(--ko) 18%, var(--paper));
+}
+
+:root[data-theme='dark'] .pa-act.ok {
+  background: color-mix(in srgb, var(--ok) 18%, var(--paper));
+}
+
+:root[data-theme='dark'] .pa-eye:hover,
+:root[data-theme='dark'] .pa-eye[aria-pressed='true'] {
+  background: var(--paper-2);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .pa .kpi {
+    background: var(--sheet);
+  }
+
+  :root:not([data-theme='light']) .pa-info,
+  :root:not([data-theme='light']) .pa-role {
+    background: color-mix(in srgb, var(--k-pri) 22%, var(--paper));
+  }
+
+  :root:not([data-theme='light']) .pa-role {
+    color: var(--k-acc-2);
+  }
+
+  :root:not([data-theme='light']) .pa-act,
+  :root:not([data-theme='light']) .pa-num,
+  :root:not([data-theme='light']) .pa-grid-save {
+    background: var(--paper-2);
+  }
+
+  :root:not([data-theme='light']) .pa-act.ko {
+    background: color-mix(in srgb, var(--ko) 18%, var(--paper));
+  }
+
+  :root:not([data-theme='light']) .pa-act.ok {
+    background: color-mix(in srgb, var(--ok) 18%, var(--paper));
+  }
+
+  :root:not([data-theme='light']) .pa-eye:hover,
+  :root:not([data-theme='light']) .pa-eye[aria-pressed='true'] {
+    background: var(--paper-2);
+  }
+}

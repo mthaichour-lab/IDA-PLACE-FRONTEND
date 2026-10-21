@@ -36,6 +36,14 @@ function fraudAction(i: number, overrides: Partial<FraudAction> = {}): FraudActi
   };
 }
 
+/**
+ * Requêtes limitées à la file des cas : le panneau de détail, ouvert d'office
+ * sur le premier cas de la file (état de la maquette), en répète l'identifiant.
+ */
+function queue() {
+  return within(document.querySelector('.fr-queue') as HTMLElement);
+}
+
 function mockFraudeApi(cases: FraudCase[], actions: FraudAction[] = [], signalsByCompany: Record<string, FraudSignalGroupResult[]> = {}) {
   mockFetchRouter((pathname, url) => {
     if (pathname === '/api/v1/me') return ME;
@@ -69,7 +77,7 @@ describe('Écran Anti-fraude (/fraude)', () => {
 
     renderWithProviders(<FraudePage />);
 
-    await waitFor(() => expect(screen.getByText('fc-1')).toBeInTheDocument());
+    await waitFor(() => expect(queue().getByText('fc-1')).toBeInTheDocument());
     const rows = screen.getAllByRole('row').slice(1); // sans l'en-tête
     expect(rows[0]).toHaveTextContent('fc-2'); // ÉLEVÉE en premier
     expect(rows[1]).toHaveTextContent('fc-3'); // MOYENNE
@@ -81,7 +89,7 @@ describe('Écran Anti-fraude (/fraude)', () => {
 
     renderWithProviders(<FraudePage />);
 
-    await waitFor(() => expect(screen.getByText('fc-1')).toBeInTheDocument());
+    await waitFor(() => expect(queue().getByText('fc-1')).toBeInTheDocument());
     expect(screen.getByText('Plaque')).toBeInTheDocument();
     expect(screen.getByText('05875-309-31')).toBeInTheDocument();
   });
@@ -91,8 +99,8 @@ describe('Écran Anti-fraude (/fraude)', () => {
 
     renderWithProviders(<FraudePage />);
 
-    await waitFor(() => expect(screen.getByText('fc-1')).toBeInTheDocument());
-    const row = screen.getByText('fc-1').closest('tr')!;
+    await waitFor(() => expect(queue().getByText('fc-1')).toBeInTheDocument());
+    const row = queue().getByText('fc-1').closest('tr')!;
     expect(within(row).getByText('—')).toBeInTheDocument();
   });
 
@@ -120,12 +128,13 @@ describe('Écran Anti-fraude (/fraude)', () => {
 
     renderWithProviders(<FraudePage />);
 
-    await waitFor(() => expect(screen.getByText('fc-1')).toBeInTheDocument());
-    const row = screen.getByText('fc-1').closest('tr');
+    await waitFor(() => expect(queue().getByText('fc-1')).toBeInTheDocument());
+    const row = queue().getByText('fc-1').closest('tr');
     if (row) fireEvent.click(row);
 
-    // Panneau docké à côté du tableau (pas une modale) : titre "Cas fc-1".
-    await waitFor(() => expect(screen.getByText('Cas fc-1')).toBeInTheDocument());
+    // Panneau docké à côté du tableau (pas une modale) : titre "Cas fc-1"
+    // (identifiant en mono dans un span imbriqué, comparé sur textContent).
+    await waitFor(() => expect(screen.getByText((_c, el) => !!el?.classList.contains('fr-panel-title') && el.textContent === 'Cas fc-1')).toBeInTheDocument());
 
     // Attend la résolution de `GET /fraud/adherents/CAAT/signals` (panneau en
     // "Chargement…" jusque-là) avant d'inspecter les sections.
@@ -153,5 +162,28 @@ describe('Écran Anti-fraude (/fraude)', () => {
     await waitFor(() => expect(screen.getByText('Réf.')).toBeInTheDocument());
     expect(screen.getByText('c-ref-1')).toBeInTheDocument();
     expect(screen.getByText('m-99')).toBeInTheDocument();
+  });
+
+  it('ouvre d’office le panneau sur le premier cas de la file (ligne surlignée), comme la maquette', async () => {
+    mockFraudeApi([fraudCase(1, { severity: 'MOYENNE' }), fraudCase(2, { severity: 'ELEVEE' })]);
+
+    renderWithProviders(<FraudePage />);
+
+    // Tri par gravité : fc-2 (ÉLEVÉE) en tête de file, donc au panneau sans clic.
+    await waitFor(() => expect(screen.getByText((_c, el) => !!el?.classList.contains('fr-panel-title') && el.textContent === 'Cas fc-2')).toBeInTheDocument());
+    expect(queue().getByText('fc-2').closest('tr')).toHaveClass('selected');
+
+    fireEvent.click(queue().getByText('fc-1').closest('tr')!);
+    await waitFor(() => expect(screen.getByText((_c, el) => !!el?.classList.contains('fr-panel-title') && el.textContent === 'Cas fc-1')).toBeInTheDocument());
+    expect(queue().getByText('fc-1').closest('tr')).toHaveClass('selected');
+  });
+
+  it('propose l’export CSV de la file et du journal (rôle place)', async () => {
+    mockFraudeApi([fraudCase(1)], [fraudAction(1)]);
+
+    renderWithProviders(<FraudePage />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cas suspects' })).not.toBeDisabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Export' })).not.toBeDisabled());
   });
 });

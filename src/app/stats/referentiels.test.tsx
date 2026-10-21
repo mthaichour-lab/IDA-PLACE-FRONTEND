@@ -166,7 +166,9 @@ describe('Écran 11 — « Pour 100 000 hab. » et comparatif IRSAM', () => {
       });
       renderWithProviders(<StatsPage />);
 
-      const extra = await screen.findByText(/vs IRSAM : 30 j/);
+      // Tuile « vs IRSAM (30 j) » : écart relatif en valeur ; période, source et écart en jours en détail.
+      const extra = (await screen.findByText(/vs IRSAM \(30 j\)/)).closest('.kpi');
+      expect(extra).toHaveTextContent('−18 %');
       expect(extra).toHaveTextContent('E-Recours 2025');
       expect(extra).toHaveTextContent('2025');
       expect(extra).toHaveTextContent('écart -5.5 j');
@@ -184,7 +186,7 @@ describe('Écran 11 — « Pour 100 000 hab. » et comparatif IRSAM', () => {
       });
       renderWithProviders(<StatsPage />);
 
-      const extra = await screen.findByText(/vs IRSAM : 30 j/);
+      const extra = (await screen.findByText(/vs IRSAM \(30 j\)/)).closest('.kpi');
       expect(extra).not.toHaveTextContent('écart');
     });
   });

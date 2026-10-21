@@ -1,1 +1,633 @@
-/* Écran metering — styles propres à l'écran (maquette de référence). */
+/* Écran metering — styles propres à l'écran (maquette de référence r19). */
+
+/* --- En-tête : sous-titre sur toute la largeur, sélecteurs sur leur propre ligne à droite --- */
+.mtr .folio-h {
+  margin-bottom: 14px;
+}
+
+.mtr .folio-h > div:first-child {
+  flex: 1 1 100%;
+}
+
+.mtr .folio-sub {
+  max-width: 590px;
+}
+
+.mtr .folio-actions {
+  margin-inline-start: auto;
+  margin-top: -10px;
+  padding-top: 0;
+  gap: 10px;
+}
+
+/* Sélecteur en pastille grise (compagnie, mois, métrique) + chevron lucide superposé. */
+.mtr-sel {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.mtr-sel > svg {
+  position: absolute;
+  inset-inline-end: 14px;
+  color: var(--ink);
+  pointer-events: none;
+}
+
+.mtr-select {
+  height: 38px;
+  padding-block: 0;
+  padding-inline: 18px 38px;
+  border: 0;
+  border-radius: var(--k-r-pill);
+  background: var(--paper-2);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  appearance: none;
+  cursor: pointer;
+}
+
+.mtr .folio-actions .mtr-sel:first-child .mtr-select {
+  min-width: 190px;
+}
+
+.mtr .folio-actions .mtr-sel:last-child .mtr-select {
+  min-width: 268px;
+}
+
+.mtr-select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.mtr-select:disabled {
+  color: var(--ink-2);
+  cursor: not-allowed;
+}
+
+.mtr-select option {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+/* --- 6 tuiles de consommation --- */
+.mtr-tiles {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.mtr-tile {
+  padding: 13px 15px 12px;
+  min-height: 124px;
+}
+
+.mtr-tile .kpi-value {
+  font-size: 27px;
+  line-height: 1.1;
+}
+
+.mtr-tile .kpi-label {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.mtr-over {
+  display: inline-block;
+  margin-inline-start: 4px;
+  padding: 0 7px;
+  border-radius: var(--k-r-pill);
+  background: var(--ko-soft);
+  color: var(--ko);
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 17px;
+  white-space: nowrap;
+}
+
+.mtr-gauge {
+  height: 6px;
+  margin-top: 7px;
+  border-radius: 3px;
+  background: var(--paper-2);
+  overflow: hidden;
+}
+
+.mtr-gauge > div {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--k-pri);
+}
+
+.mtr-gauge.over > div {
+  background: var(--k-red);
+}
+
+.mtr-quota-txt {
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* --- Rangées de deux cartes (graphe | ventilation, facture | grille) --- */
+.mtr-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.155fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.mtr-row > .sheet + .sheet {
+  margin-top: 0;
+}
+
+.mtr-row + .mtr-row {
+  margin-top: 16px;
+}
+
+.mtr-row-bottom {
+  align-items: start;
+}
+
+.mtr-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.mtr-col > .sheet + .sheet {
+  margin-top: 0;
+}
+
+.mtr .sheet-head {
+  padding-top: 20px;
+}
+
+/* --- Graphe « Consommation mensuelle » --- */
+.mtr-metric {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  margin: 2px 0 10px;
+}
+
+.mtr-metric .mtr-select {
+  min-width: 190px;
+}
+
+.mtr-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.mtr-gridline {
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+
+.mtr-axis {
+  stroke: var(--rule-strong);
+  stroke-width: 1;
+}
+
+.mtr-tick {
+  fill: var(--ink-3);
+  font-family: var(--f-mono);
+  font-size: 9px;
+}
+
+.mtr-bar {
+  fill: var(--k-pri);
+  opacity: 0.88;
+}
+
+.mtr-bar.partial {
+  opacity: 0.42;
+}
+
+.mtr-quota {
+  stroke: var(--k-red);
+  stroke-width: 1.2;
+  stroke-dasharray: 5 4;
+}
+
+.mtr-quota-label {
+  fill: var(--k-red);
+  font-size: 9px;
+}
+
+.mtr-caption {
+  margin: 2px 0 0 36px;
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+/* --- Ventilation infrastructure (emplacement du showback) --- */
+.mtr-stack {
+  display: flex;
+  height: 26px;
+  margin: 4px 0 12px;
+  overflow: hidden;
+  background: var(--paper-2);
+}
+
+.mtr-c0 {
+  background: color-mix(in srgb, var(--k-pri) 72%, #000);
+}
+
+.mtr-c1 {
+  background: var(--k-pri);
+}
+
+.mtr-c2 {
+  background: var(--k-acc);
+}
+
+.mtr-c3 {
+  background: color-mix(in srgb, var(--k-acc-2) 55%, var(--paper));
+}
+
+.mtr-c4 {
+  background: color-mix(in srgb, var(--ink-3) 40%, var(--paper));
+}
+
+.mtr-infra-t {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.mtr-infra-t td {
+  padding: 8px 12px;
+  line-height: 20px;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--rule);
+}
+
+.mtr-infra-lbl {
+  display: inline-flex;
+  vertical-align: middle;
+  align-items: center;
+  gap: 8px;
+}
+
+.mtr-infra-t td.num {
+  text-align: end;
+  white-space: nowrap;
+}
+
+.mtr-infra-t .mtr-share {
+  color: var(--ink-3);
+  font-size: 11.5px;
+  width: 64px;
+}
+
+.mtr-infra-t tfoot td {
+  background: var(--paper-2);
+  border-bottom: 0;
+  font-weight: 700;
+}
+
+.mtr-sw {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.mtr-note {
+  margin: 12px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+
+/* --- Facture --- */
+.mtr-inv-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 20px 8px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.mtr-inv-co {
+  text-align: end;
+}
+
+.mtr-status {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 1px 10px;
+}
+
+.mtr-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.mtr-sim {
+  margin: 0 20px 8px;
+  font-size: 11.5px;
+}
+
+.mtr .t th.num,
+.mtr .t td.num {
+  text-align: end;
+}
+
+.mtr-inv-t {
+  font-size: 13px;
+}
+
+.mtr-inv-t thead th,
+.mtr-inv-t tbody td {
+  padding-inline: 10px;
+}
+
+.mtr-inv-t thead th:first-child,
+.mtr-inv-t tbody td:first-child {
+  padding-inline-start: 20px;
+  width: 26%;
+}
+
+.mtr-inv-t thead th:last-child,
+.mtr-inv-t tbody td:last-child {
+  padding-inline-end: 20px;
+}
+
+.mtr-inv-t tbody td {
+  padding-block: 14px;
+}
+
+.mtr .t tbody tr.mtr-overrow {
+  background: var(--warn-soft);
+}
+
+.mtr-strong {
+  font-weight: 700;
+}
+
+.mtr-units {
+  font-size: 10.5px;
+  color: var(--ink-3);
+  line-height: 1.35;
+  min-width: 56px;
+}
+
+.mtr-pager-btns {
+  display: flex;
+  gap: 8px;
+}
+
+.mtr-invoice .pager {
+  padding-inline: 20px;
+}
+
+.mtr-totals {
+  margin: 0;
+  padding: 4px 20px 16px;
+}
+
+.mtr-totals > div {
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.mtr-totals dt {
+  color: var(--ink-2);
+}
+
+.mtr-totals dd {
+  margin: 0;
+}
+
+.mtr-totals > .ttc {
+  border-bottom: 0;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.mtr-totals > .ttc dt {
+  color: var(--ink);
+}
+
+.mtr-pay-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+/* --- Grille tarifaire --- */
+.mtr-head-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.mtr-edit {
+  height: 34px;
+  font-size: 13px;
+}
+
+.mtr-save {
+  height: 34px;
+  font-size: 13px;
+}
+
+.mtr-grid-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 2px 20px 6px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.mtr-grid-ro {
+  flex-basis: 100%;
+}
+
+.mtr-grid-edit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 6px 20px 12px;
+}
+
+.mtr-grid-edit label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ink-2);
+  min-width: 180px;
+}
+
+.mtr-grid-edit input {
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-family: var(--f-mono);
+  font-size: 13px;
+}
+
+.mtr-hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.mtr-hint.ko {
+  color: var(--ko);
+}
+
+.mtr-grid-t {
+  font-size: 13px;
+}
+
+.mtr-grid-t thead th,
+.mtr-grid-t tbody td {
+  padding-inline: 10px;
+}
+
+.mtr-grid-t thead th:first-child,
+.mtr-grid-t tbody td:first-child {
+  padding-inline-start: 20px;
+}
+
+.mtr-grid-t thead th:last-child,
+.mtr-grid-t tbody td:last-child {
+  padding-inline-end: 20px;
+}
+
+.mtr-grid-t tbody td {
+  padding-block: 9px;
+  height: 58px;
+}
+
+.mtr-unit {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  max-width: 70px;
+}
+
+.mtr-dash {
+  color: var(--ink-3);
+}
+
+.mtr-field {
+  width: 100%;
+  max-width: 104px;
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--paper-2);
+  color: var(--ink);
+  font: inherit;
+  font-family: var(--f-mono);
+  font-size: 13px;
+  text-align: end;
+  -moz-appearance: textfield;
+}
+
+.mtr-field::-webkit-outer-spin-button,
+.mtr-field::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.mtr-field:disabled {
+  color: var(--ink);
+  opacity: 1;
+  cursor: default;
+}
+
+.mtr-field:not(:disabled) {
+  border-color: var(--rule-strong);
+  background: var(--paper);
+}
+
+.mtr-field:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+/* --- Thème sombre : --k-soft / --warn-soft / --ko-soft restent clairs (tokens non redéfinis) --- */
+:root[data-theme='dark'] .mtr-tile {
+  background: var(--paper-2);
+}
+
+:root[data-theme='dark'] .mtr .t tbody tr.mtr-overrow {
+  background: color-mix(in srgb, var(--warn) 14%, var(--paper));
+}
+
+:root[data-theme='dark'] .mtr-status.warn,
+:root[data-theme='dark'] .mtr-over {
+  background: color-mix(in srgb, var(--ko) 18%, var(--paper));
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .mtr-tile {
+    background: var(--paper-2);
+  }
+
+  :root:not([data-theme='light']) .mtr .t tbody tr.mtr-overrow {
+    background: color-mix(in srgb, var(--warn) 14%, var(--paper));
+  }
+
+  :root:not([data-theme='light']) .mtr-status.warn,
+  :root:not([data-theme='light']) .mtr-over {
+    background: color-mix(in srgb, var(--ko) 18%, var(--paper));
+  }
+}
+
+@media (max-width: 1180px) {
+  .mtr-tiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1020px) {
+  .mtr-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .mtr-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mtr .folio-actions .mtr-sel {
+    flex: 1 1 100%;
+  }
+
+  .mtr .folio-actions .mtr-sel .mtr-select {
+    min-width: 0;
+    width: 100%;
+  }
+}

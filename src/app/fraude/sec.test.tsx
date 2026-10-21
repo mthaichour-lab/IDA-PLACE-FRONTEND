@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FraudCase, FraudCasesPage, MeResponse } from '@/lib/types';
 import { renderWithProviders } from '@/test/render';
@@ -55,8 +55,8 @@ describe('Écran 9 — rôles compagnie et couverture de l’analyse', () => {
     renderWithProviders(<FraudePage />);
 
     await screen.findByText('16001-120-16');
-    expect(screen.queryByText(/Journal des actions suspectes|Actions suspectes/)).not.toBeInTheDocument();
-    expect(screen.queryByText('Adhérents concernés')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Journal des actions suspectes|Actions suspectes/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Adhérents concernés/i)).not.toBeInTheDocument();
     expect(calls).not.toContain('/api/v1/fraud/actions');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
@@ -66,7 +66,9 @@ describe('Écran 9 — rôles compagnie et couverture de l’analyse', () => {
     renderWithProviders(<FraudePage />);
 
     expect(await screen.findByText('Autres parties')).toBeInTheDocument();
-    expect(screen.getByText(/2 dossier\(s\) d’autres compagnies · 1 autre\(s\) compagnie\(s\)/)).toBeInTheDocument();
+    // Colonne de la file (le panneau, ouvert d'office sur le premier cas, répète ce décompte).
+    const queue = within(document.querySelector('.fr-queue') as HTMLElement);
+    expect(queue.getByText(/2 dossier\(s\) d’autres compagnies · 1 autre\(s\) compagnie\(s\)/)).toBeInTheDocument();
     fireEvent.click(screen.getByText('16001-120-16'));
     expect(await screen.findByText(/Parties non publiées/)).toBeInTheDocument();
     await waitFor(() => expect(calls).toContain('/api/v1/fraud/adherents/CAAT/signals'));
@@ -76,7 +78,7 @@ describe('Écran 9 — rôles compagnie et couverture de l’analyse', () => {
     const calls = mockApi(OPERATEUR);
     renderWithProviders(<FraudePage />);
 
-    await screen.findByText('Actions suspectes');
+    await screen.findByText('actions suspectes');
     await waitFor(() => expect(calls).toContain('/api/v1/fraud/actions'));
     expect(screen.queryByText('Autres parties')).not.toBeInTheDocument();
   });
