@@ -286,3 +286,342 @@ button.rf-act:hover {
 .rf-panel .co-card:first-child {
   border-top: 0;
 }
+
+/* ===================== Organigramme d'une compagnie (DG > DR > agences) ===================== */
+
+.org-view {
+  display: inline-flex;
+  gap: 2px;
+  margin-inline-start: auto;
+  margin-inline-end: 12px;
+  padding: 2px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 10px;
+  background: var(--paper);
+}
+
+.org-view button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.org-view button.on {
+  background: var(--k-mint);
+  color: var(--k-pri);
+  font-weight: 600;
+}
+
+.org-picker {
+  max-width: 420px;
+  margin-bottom: 16px;
+}
+
+.org {
+  display: grid;
+  gap: 18px;
+}
+
+.org-company {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--sheet);
+}
+
+.org-company strong {
+  display: block;
+  font-size: 15px;
+}
+
+.org-company-meta {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.org-root {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  position: relative;
+}
+
+.org-root .org-node {
+  min-width: 300px;
+  border-color: var(--k-pri);
+  background: var(--k-mint);
+}
+
+.org-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.org-empty {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 24px;
+  border: 1px dashed var(--rule-strong);
+  border-radius: 12px;
+  color: var(--ink-2);
+  text-align: center;
+}
+
+.org-branches {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 18px 0 0;
+  border-top: 2px solid var(--k-acc-2);
+  list-style: none;
+}
+
+.org-branch {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--paper);
+  position: relative;
+}
+
+.org-branch::before {
+  content: '';
+  position: absolute;
+  top: -19px;
+  left: 50%;
+  width: 2px;
+  height: 18px;
+  background: var(--k-acc-2);
+}
+
+.org-branch-direct {
+  background: var(--paper-2);
+}
+
+.org-branch-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.org-leaves {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0 0 0 12px;
+  border-inline-start: 2px solid var(--rule);
+  list-style: none;
+}
+
+.org-none {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.org-node {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  text-align: start;
+}
+
+button.org-node {
+  cursor: pointer;
+}
+
+button.org-node:hover,
+button.org-node:focus-visible {
+  border-color: var(--k-pri);
+}
+
+.org-node.compact {
+  padding: 7px 10px;
+}
+
+.org-node.inactive {
+  opacity: 0.6;
+}
+
+.org-node-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.org-node-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 13.5px;
+}
+
+.org-node-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.org-node-status {
+  margin-inline-start: auto;
+  font-size: 11px;
+  color: var(--warn);
+}
+
+.org-node-type {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  min-width: 30px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.org-type-DG {
+  background: var(--k-pri);
+  color: var(--paper);
+}
+
+.org-type-DR {
+  background: var(--k-acc-2);
+  color: var(--k-head);
+}
+
+.org-type-AG {
+  background: var(--k-soft-2);
+  color: var(--ink-2);
+  border: 1px solid var(--rule-strong);
+}
+
+.org-add {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px dashed var(--k-pri);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--k-pri);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.org-add:hover {
+  background: var(--k-mint);
+}
+
+.org-unattached {
+  display: grid;
+  gap: 8px;
+}
+
+/* --- Formulaire : niveau dans l'organisation --- */
+
+.org-level {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.org-level legend {
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.org-level-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.org-level-opt input {
+  margin-top: 4px;
+}
+
+.org-level-opt strong {
+  display: block;
+  font-size: 13px;
+}
+
+.org-level-opt small {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.org-level-opt.on {
+  border-color: var(--k-pri);
+  background: var(--k-mint);
+}
+
+.org-level-opt.off {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.org-path {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--sheet);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.org-path-new {
+  color: var(--k-pri);
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .org-root .org-node {
+    min-width: 0;
+  }
+
+  .org-branch::before {
+    display: none;
+  }
+}

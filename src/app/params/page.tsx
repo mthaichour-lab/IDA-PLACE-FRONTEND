@@ -153,6 +153,8 @@ export default function ParamsPage() {
 
 /* ===================== Utilisateurs & accès ===================== */
 
+type UserScope = 'TOUS' | 'PLACE' | 'COMPAGNIE';
+
 function UsersTab() {
   const { t } = useI18n();
   const { me } = useAuth();
@@ -161,6 +163,8 @@ function UsersTab() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
+  // Séparation des comptes : la place (opérateur, Admin FinLab/UAR, commission, audit) / les assurances (correspondants, trésoriers).
+  const [scope, setScope] = useState<UserScope>('TOUS');
   const [selected, setSelected] = useState<PlaceUser | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [showEmail, setShowEmail] = useState(false);
@@ -179,8 +183,8 @@ function UsersTab() {
   });
 
   const usersQuery = useQuery({
-    queryKey: ['admin', 'users', page],
-    queryFn: () => apiGet<Paginated<PlaceUser>>('/admin/users', { page, pageSize: PAGE_SIZE }),
+    queryKey: ['admin', 'users', scope, page],
+    queryFn: () => apiGet<Paginated<PlaceUser>>('/admin/users', { page, pageSize: PAGE_SIZE, ...(scope === 'TOUS' ? {} : { scope }) }),
   });
 
   // KPIs (4 tuiles, capture de référence) : pas d'agrégat dédié côté API —
@@ -206,6 +210,8 @@ function UsersTab() {
       active: allUsers.filter((u) => u.active).length,
       suspended: allUsers.filter((u) => !u.active).length,
       roles: matrixQuery.data?.roles.length ?? 0,
+      place: allUsers.filter((u) => !isCompanyRole(u.role)).length,
+      companies: allUsers.filter((u) => isCompanyRole(u.role)).length,
     };
   }, [usersAllQuery.data, usersQuery.data, matrixQuery.data]);
 
@@ -354,6 +360,21 @@ function UsersTab() {
               {showEmail ? <EyeOff size={14} aria-hidden="true" /> : <Eye size={14} aria-hidden="true" />}
             </button>
           </div>
+        </div>
+        <div className="pa-scope">
+          <Tabs
+            items={[
+              { key: 'TOUS', label: t('params.users.scope.all'), count: kpis.total },
+              { key: 'PLACE', label: t('params.users.scope.place'), count: kpis.place },
+              { key: 'COMPAGNIE', label: t('params.users.scope.companies'), count: kpis.companies },
+            ]}
+            activeKey={scope}
+            onChange={(k) => {
+              setScope(k as UserScope);
+              setPage(1);
+            }}
+          />
+          <p className="pa-scope-note">{t(`params.users.scope.note.${scope}` as TranslationKey)}</p>
         </div>
         <div className="sheet-body flush">
           {usersQuery.isLoading ? (

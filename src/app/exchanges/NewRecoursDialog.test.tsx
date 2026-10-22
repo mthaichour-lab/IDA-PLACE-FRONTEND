@@ -28,6 +28,7 @@ const EXISTING: RecoursItem = {
   requestSentAt: '2026-10-01T00:00:00.000Z',
   amount: 10_000,
   createdAt: '2026-10-01T00:00:00.000Z',
+  timer: { timerType: 'AUCUN', remainingDays: 0, expired: false },
 };
 
 function mockApi() {

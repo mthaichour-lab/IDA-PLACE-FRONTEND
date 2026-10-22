@@ -40,6 +40,7 @@ const RECOURS: RecoursItem = {
   requestSentAt: '2026-10-22T07:49:00.000Z',
   amount: 187_500,
   createdAt: '2026-10-22T07:49:00.000Z',
+  timer: { timerType: 'AUCUN', remainingDays: 0, expired: false },
 };
 
 function mockApi(me: MeResponse, cases: CommissionCase[] = []) {

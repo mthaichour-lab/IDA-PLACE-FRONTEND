@@ -12,7 +12,9 @@ import {
   Download,
   FileCheck2,
   Gauge,
+  List,
   MapPin,
+  Network,
   Plus,
   Scale,
   Settings,
@@ -23,6 +25,7 @@ import {
 } from 'lucide-react';
 import { FolioHeader } from '@/components/FolioHeader';
 import { AgencyDialog, AgencyDialogTarget } from '@/components/referential/AgencyDialog';
+import { AgencyOrgChart, OrgAddRequest } from '@/components/referential/AgencyOrgChart';
 import { BaremeSection } from '@/components/referential/BaremeSection';
 import { CalendarSection } from '@/components/referential/CalendarSection';
 import { ExpertDialog, ExpertDialogTarget, useExpertStatusMutation } from '@/components/referential/ExpertDialog';
@@ -151,6 +154,8 @@ export default function ReferentialPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState<CompanyForm>(EMPTY_FORM);
   const [agencyTarget, setAgencyTarget] = useState<AgencyDialogTarget | null>(null);
+  /** Compagnie de l'organigramme d'où part un ajout (rôle place) — pré-sélectionnée dans le formulaire. */
+  const [agencyDialogCompanyId, setAgencyDialogCompanyId] = useState<string | undefined>(undefined);
   const [expertTarget, setExpertTarget] = useState<ExpertDialogTarget | null>(null);
 
   const companiesQuery = useQuery({
@@ -389,6 +394,13 @@ export default function ReferentialPage() {
             onCreate={canCreateAgency ? () => setAgencyTarget({ mode: 'create' }) : undefined}
             canEdit={canEditAgency}
             onEdit={(agency) => setAgencyTarget({ mode: 'edit', agency })}
+            companies={companiesMapQuery.data?.items ?? []}
+            lockedCompany={companyActor ? ownCompany : undefined}
+            canEditOrg={(c) => canRefEdit && (!companyActor || c.id === ownCompany?.id)}
+            onAddInOrg={(companyId, preset) => {
+              setAgencyDialogCompanyId(companyId);
+              setAgencyTarget({ mode: 'create', preset });
+            }}
           />
         ) : section === 'experts' ? (
           <ExpertsPanel
@@ -464,8 +476,11 @@ export default function ReferentialPage() {
         target={agencyTarget}
         companies={companiesMapQuery.data?.items ?? []}
         lockedCompanyId={companyActor ? ownCompany?.id : undefined}
-        defaultCompanyId={agencyCompany?.id}
-        onClose={() => setAgencyTarget(null)}
+        defaultCompanyId={agencyDialogCompanyId ?? agencyCompany?.id}
+        onClose={() => {
+          setAgencyTarget(null);
+          setAgencyDialogCompanyId(undefined);
+        }}
       />
 
       <ExpertDialog
@@ -704,7 +719,16 @@ function AgenciesPanel({
   onCreate,
   canEdit,
   onEdit,
+  companies,
+  lockedCompany,
+  canEditOrg,
+  onAddInOrg,
 }: {
+  companies: CompanyListItem[];
+  /** Rôle compagnie : l'organigramme est celui de SA compagnie. */
+  lockedCompany?: CompanyListItem;
+  canEditOrg: (c: CompanyListItem) => boolean;
+  onAddInOrg: (companyId: string, preset: OrgAddRequest) => void;
   query: ReturnType<typeof useQuery<Paginated<AgencyView>>>;
   page: number;
   onPageChange: (p: number) => void;
@@ -718,6 +742,10 @@ function AgenciesPanel({
 }) {
   const { t } = useI18n();
   const editable = (query.data?.items ?? []).some(canEdit);
+  // Correspondant : son organigramme d'abord ; place : la liste, puis l'organigramme d'une compagnie choisie.
+  const [view, setView] = useState<'list' | 'chart'>(lockedCompany ? 'chart' : 'list');
+  const [orgCompanyId, setOrgCompanyId] = useState<string>('');
+  const orgCompany = lockedCompany ?? filterCompany ?? companies.find((c) => c.id === orgCompanyId);
 
   const columns: Column<AgencyView>[] = [
     { key: 'code', header: t('referential.agency.col.code'), render: (r) => r.code },
@@ -753,6 +781,14 @@ function AgenciesPanel({
     <div className="sheet rf-panel">
       <div className="sheet-head">
         <span>{t('referential.nav.agencies.title')}</span>
+        <span className="org-view" role="group" aria-label={t('referential.org.title')}>
+          {(['list', 'chart'] as const).map((v) => (
+            <button key={v} type="button" className={view === v ? 'on' : ''} aria-pressed={view === v} onClick={() => setView(v)}>
+              {v === 'list' ? <List size={14} aria-hidden="true" /> : <Network size={14} aria-hidden="true" />}
+              {t(`referential.org.view.${v}` as TranslationKey)}
+            </button>
+          ))}
+        </span>
         {filterCompany || onCreate ? (
           <span className="rf-head-actions">
             {filterCompany ? (
@@ -786,7 +822,27 @@ function AgenciesPanel({
             </button>
           </div>
         ) : (
-          <Table columns={columns} rows={query.data.items} page={page} total={query.data.total} pageSize={PAGE_SIZE} onPageChange={onPageChange} getRowKey={(r) => r.id} />
+          view === 'chart' ? (
+            <>
+              {!lockedCompany && !filterCompany ? (
+                <div className="org-picker">
+                  <LabeledSelect
+                    label={t('referential.org.chooseCompany')}
+                    value={orgCompanyId}
+                    options={[{ value: '', label: '—', disabled: true }, ...companies.map((c) => ({ value: c.id, label: `${c.code} — ${c.name}` }))]}
+                    onChange={setOrgCompanyId}
+                  />
+                </div>
+              ) : null}
+              {orgCompany ? (
+                <AgencyOrgChart company={orgCompany} canEdit={canEditOrg(orgCompany)} onAdd={(req) => onAddInOrg(orgCompany.id, req)} onEdit={onEdit} />
+              ) : (
+                <p className="muted">{t('referential.org.pickCompany')}</p>
+              )}
+            </>
+          ) : (
+            <Table columns={columns} rows={query.data.items} page={page} total={query.data.total} pageSize={PAGE_SIZE} onPageChange={onPageChange} getRowKey={(r) => r.id} />
+          )
         )}
       </div>
     </div>

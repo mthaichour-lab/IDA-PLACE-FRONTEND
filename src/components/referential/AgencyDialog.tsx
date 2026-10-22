@@ -8,10 +8,13 @@ import { useI18n } from '@/i18n/provider';
 import type { TranslationKey } from '@/i18n/translations';
 import { apiGet, apiPath, apiPost, apiPut } from '@/lib/api-client';
 import { useApiErrorMessage } from '@/lib/error-message';
-import { AgencyType, AgencyView, CompanyListItem, CompanyStatus, Paginated, WilayaRef } from '@/lib/types';
+import { ancestry, parentCandidates } from '@/lib/agency-org';
+import { fetchAllPages } from '@/lib/paginate';
+import { AgencyType, AgencyView, CompanyListItem, CompanyStatus, WilayaRef } from '@/lib/types';
 import { FormStack, Hint, LabeledInput, LabeledSelect, PrimaryButton } from './fields';
 
-export type AgencyDialogTarget = { mode: 'create' } | { mode: 'edit'; agency: AgencyView };
+/** Création : `preset` positionne l'entité dans l'organisation (niveau, rattachement) depuis l'organigramme. */
+export type AgencyDialogTarget = { mode: 'create'; preset?: { type: AgencyType; parentId?: string } } | { mode: 'edit'; agency: AgencyView };
 
 export interface AgencyForm {
   companyId: string;
@@ -120,7 +123,8 @@ export function AgencyDialog({
 
   useEffect(() => {
     if (!target) return;
-    setForm(target.mode === 'edit' ? formFromAgency(target.agency) : emptyForm(lockedCompanyId ?? defaultCompanyId ?? ''));
+    if (target.mode === 'edit') setForm(formFromAgency(target.agency));
+    else setForm({ ...emptyForm(lockedCompanyId ?? defaultCompanyId ?? ''), ...(target.preset ? { type: target.preset.type, parentId: target.preset.parentId ?? '' } : {}) });
   }, [target, lockedCompanyId, defaultCompanyId]);
 
   const wilayasQuery = useQuery({
@@ -129,12 +133,14 @@ export function AgencyDialog({
     enabled: !!target,
   });
 
-  // SEC-31 : candidates « agence parente » = agences de la MÊME compagnie (filtre réel de l'API).
-  const parentsQuery = useQuery({
-    queryKey: ['referential', 'agencies', 'parents', form.companyId],
-    queryFn: () => apiGet<Paginated<AgencyView>>('/referential/agencies', { page: 1, pageSize: 100, companyId: form.companyId }),
+  // SEC-31 : organisation = agences de la MÊME compagnie (filtre réel de l'API), toutes pages.
+  const orgQuery = useQuery({
+    queryKey: ['referential', 'agencies', 'org', form.companyId],
+    queryFn: () => fetchAllPages<AgencyView>('/referential/agencies', { companyId: form.companyId }),
     enabled: !!target && !!form.companyId,
   });
+  const orgAgencies = useMemo(() => orgQuery.data?.items ?? [], [orgQuery.data]);
+  const existingDg = orgAgencies.find((a) => a.type === 'DG' && a.id !== editing?.id && a.status !== 'EXCLU');
 
   const save = useMutation({
     mutationFn: (f: AgencyForm) =>
@@ -158,11 +164,23 @@ export function AgencyDialog({
     ...(editing?.wilayaCode ? [] : [none]),
     ...(wilayasQuery.data ?? []).map((w) => ({ value: w.code, label: w.name ? `${w.code} — ${w.name}` : w.code })),
   ];
+  // Rattachements compatibles avec le niveau choisi (DR → DG ; agence → DR ou DG), même compagnie.
   const parentOptions = [
-    ...(editing?.parentId ? [] : [none]),
-    ...(parentsQuery.data?.items ?? []).filter((a) => a.id !== editing?.id).map((a) => ({ value: a.id, label: `${a.code} — ${a.name} (${a.type})` })),
+    ...(editing?.parentId ? [] : [{ value: '', label: t('referential.org.parent.none') }]),
+    ...parentCandidates(form.type, orgAgencies, editing?.id).map((a) => ({ value: a.id, label: `${t(`referential.org.level.short.${a.type}` as TranslationKey)} · ${a.code} — ${a.name}` })),
   ];
-  const typeOptions = AGENCY_TYPES.map((v) => ({ value: v, label: t(`referential.agency.type.${v}` as TranslationKey) }));
+  const path = ancestry(form.parentId || undefined, orgAgencies);
+  const companyCode = companies.find((c) => c.id === form.companyId)?.code ?? '';
+
+  function chooseLevel(type: AgencyType) {
+    setForm((f) => {
+      const candidates = parentCandidates(type, orgAgencies, editing?.id);
+      const keep = candidates.some((a) => a.id === f.parentId);
+      // Une DR relève de la DG : rattachement proposé d'office quand elle existe.
+      const parentId = type === 'DG' ? '' : keep ? f.parentId : type === 'DR' && existingDg ? existingDg.id : '';
+      return { ...f, type, parentId };
+    });
+  }
   const statusOptions = AGENCY_STATUSES.map((v) => ({ value: v, label: t(`referential.status.${v}` as TranslationKey) }));
 
   const complete = !!form.name.trim() && (editing ? Object.keys(agencyUpdateBody(editing, form)).length > 0 : !!form.companyId && !!form.code.trim());
@@ -189,8 +207,35 @@ export function AgencyDialog({
         />
         <LabeledInput label={t('referential.agency.field.code')} value={form.code} required disabled={!!editing} onChange={(v) => setForm((f) => ({ ...f, code: v }))} />
         <LabeledInput label={t('referential.agency.field.name')} value={form.name} required onChange={(v) => setForm((f) => ({ ...f, name: v }))} />
-        <LabeledSelect label={t('referential.agency.field.type')} value={form.type} options={typeOptions} onChange={(v) => setForm((f) => ({ ...f, type: v as AgencyType }))} />
-        <LabeledSelect label={t('referential.agency.field.parent')} value={form.parentId} options={parentOptions} disabled={!form.companyId} onChange={(v) => setForm((f) => ({ ...f, parentId: v }))} />
+        <fieldset className="org-level" disabled={!form.companyId}>
+          <legend>{t('referential.org.level.legend')}</legend>
+          {AGENCY_TYPES.map((v) => {
+            const dgTaken = v === 'DG' && !!existingDg;
+            return (
+              <label key={v} className={`org-level-opt${form.type === v ? ' on' : ''}${dgTaken ? ' off' : ''}`}>
+                <input type="radio" name="agency-level" value={v} checked={form.type === v} disabled={dgTaken} onChange={() => chooseLevel(v)} />
+                <span className={`org-node-type org-type-${v}`}>{v}</span>
+                <span>
+                  <strong>{t(`referential.agency.type.${v}` as TranslationKey)}</strong>
+                  <small>{dgTaken ? `${t('referential.org.level.dgTaken')} ${existingDg!.code}` : t(`referential.org.level.desc.${v}` as TranslationKey)}</small>
+                </span>
+              </label>
+            );
+          })}
+        </fieldset>
+        {form.type !== 'DG' ? (
+          <LabeledSelect label={t('referential.org.parent.label')} value={form.parentId} options={parentOptions} disabled={!form.companyId} onChange={(v) => setForm((f) => ({ ...f, parentId: v }))} />
+        ) : null}
+        {form.companyId ? (
+          <p className="org-path" aria-live="polite">
+            <span>{t('referential.org.path')}</span> <strong>{companyCode}</strong>
+            {path.map((a) => (
+              <span key={a.id}> › {a.code}</span>
+            ))}
+            <span className="org-path-new"> › {form.code.trim() || t('referential.org.path.new')}</span>
+            {form.type !== 'DG' && !form.parentId ? <em> — {t('referential.org.path.unattached')}</em> : null}
+          </p>
+        ) : null}
         <LabeledSelect label={t('referential.agency.field.wilaya')} value={form.wilayaCode} options={wilayaOptions} onChange={(v) => setForm((f) => ({ ...f, wilayaCode: v }))} />
         <LabeledInput label={t('referential.agency.field.manager')} value={form.manager} onChange={(v) => setForm((f) => ({ ...f, manager: v }))} />
         <LabeledInput label={t('referential.agency.field.phone')} value={form.phone} type="tel" onChange={(v) => setForm((f) => ({ ...f, phone: v }))} />

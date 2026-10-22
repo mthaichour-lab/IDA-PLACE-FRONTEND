@@ -750,3 +750,15 @@
     background: var(--paper-2);
   }
 }
+
+/* Séparation des comptes : place / assurances */
+.pa-scope {
+  padding: 12px 16px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.pa-scope-note {
+  margin: 8px 0 12px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
