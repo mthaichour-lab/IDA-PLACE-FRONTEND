@@ -22,9 +22,11 @@ import {
   X,
 } from 'lucide-react';
 import { FolioHeader } from '@/components/FolioHeader';
+import { AgencyDialog, AgencyDialogTarget } from '@/components/referential/AgencyDialog';
 import { BaremeSection } from '@/components/referential/BaremeSection';
 import { CalendarSection } from '@/components/referential/CalendarSection';
-import { apiErrorMessage, LabeledInput, LabeledSelect } from '@/components/referential/fields';
+import { ExpertDialog, ExpertDialogTarget, useExpertStatusMutation } from '@/components/referential/ExpertDialog';
+import { apiErrorMessage, LabeledInput, LabeledSelect, RowAction, RowActions } from '@/components/referential/fields';
 import { GovernancePanel } from '@/components/referential/GovernancePanel';
 import { IrsamSection } from '@/components/referential/IrsamSection';
 import { MotifsSection } from '@/components/referential/MotifsSection';
@@ -148,6 +150,8 @@ export default function ReferentialPage() {
   const [editForm, setEditForm] = useState<CompanyForm>(EMPTY_FORM);
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState<CompanyForm>(EMPTY_FORM);
+  const [agencyTarget, setAgencyTarget] = useState<AgencyDialogTarget | null>(null);
+  const [expertTarget, setExpertTarget] = useState<ExpertDialogTarget | null>(null);
 
   const companiesQuery = useQuery({
     queryKey: ['referential', 'companies', companiesPage],
@@ -234,6 +238,17 @@ export default function ReferentialPage() {
   // SEC-04 : la gouvernance (demandes, quatre yeux) est consultable par les rôles place.
   const canSeeGovernance = !!me && !companyActor;
   const canDecideGovernance = canSeeGovernance && hasPrivilege('validateRef');
+
+  // Agences et experts : `@Privileges('refedit')` (POST/PUT). Miroir d'AFFICHAGE de B.7/SEC-14 — un
+  // rôle compagnie n'agit que sur SA compagnie ; l'API reste seule juge et ses refus sont affichés.
+  const canRefEdit = hasPrivilege('refedit');
+  const ownCompany = companyActor ? (companiesMapQuery.data?.items ?? []).find((c) => c.code === me?.company) : undefined;
+  const canCreateAgency = canRefEdit && (!companyActor || !!ownCompany);
+  const canEditAgency = (a: AgencyView) => canRefEdit && (!companyActor || a.companyId === ownCompany?.id);
+  const canCreateExpert = canRefEdit && (!companyActor || !!me?.company);
+  const canEditExpert = (e: ExpertView) => canRefEdit && (!companyActor || (!!me?.company && e.companies.includes(me.company)));
+  // SEC-14 : le statut d'un expert (suspension) est commun à toute la place — rôles place seulement.
+  const canSetExpertStatus = canRefEdit && !companyActor;
 
   const navItems: { key: SectionKey; icon: LucideIcon; title: string; subtitle: string }[] = [
     {
@@ -371,9 +386,21 @@ export default function ReferentialPage() {
               setAgencyCompany(null);
               setAgenciesPage(1);
             }}
+            onCreate={canCreateAgency ? () => setAgencyTarget({ mode: 'create' }) : undefined}
+            canEdit={canEditAgency}
+            onEdit={(agency) => setAgencyTarget({ mode: 'edit', agency })}
           />
         ) : section === 'experts' ? (
-          <ExpertsPanel query={expertsQuery} page={expertsPage} onPageChange={setExpertsPage} showRib={!companyActor} />
+          <ExpertsPanel
+            query={expertsQuery}
+            page={expertsPage}
+            onPageChange={setExpertsPage}
+            showRib={!companyActor}
+            onCreate={canCreateExpert ? () => setExpertTarget({ mode: 'create' }) : undefined}
+            canEdit={canEditExpert}
+            onEdit={(expert) => setExpertTarget({ mode: 'edit', expert })}
+            canSetStatus={canSetExpertStatus}
+          />
         ) : section === 'convention' ? (
           <ConventionPanel query={conventionQuery} />
         ) : section === 'calendar' ? (
@@ -432,6 +459,21 @@ export default function ReferentialPage() {
       >
         <CompanyFormFields form={createForm} setForm={setCreateForm} t={t} />
       </Modal>
+
+      <AgencyDialog
+        target={agencyTarget}
+        companies={companiesMapQuery.data?.items ?? []}
+        lockedCompanyId={companyActor ? ownCompany?.id : undefined}
+        defaultCompanyId={agencyCompany?.id}
+        onClose={() => setAgencyTarget(null)}
+      />
+
+      <ExpertDialog
+        target={expertTarget}
+        companies={companiesMapQuery.data?.items ?? []}
+        ownCompany={companyActor ? me?.company : undefined}
+        onClose={() => setExpertTarget(null)}
+      />
     </>
   );
 }
@@ -659,6 +701,9 @@ function AgenciesPanel({
   companyById,
   filterCompany,
   onClearFilter,
+  onCreate,
+  canEdit,
+  onEdit,
 }: {
   query: ReturnType<typeof useQuery<Paginated<AgencyView>>>;
   page: number;
@@ -666,8 +711,13 @@ function AgenciesPanel({
   companyById: Map<string, CompanyListItem>;
   filterCompany: CompanyListItem | null;
   onClearFilter: () => void;
+  /** `POST /referential/agencies` — absent sans le privilège `refedit`. */
+  onCreate?: () => void;
+  canEdit: (a: AgencyView) => boolean;
+  onEdit: (a: AgencyView) => void;
 }) {
   const { t } = useI18n();
+  const editable = (query.data?.items ?? []).some(canEdit);
 
   const columns: Column<AgencyView>[] = [
     { key: 'code', header: t('referential.agency.col.code'), render: (r) => r.code },
@@ -683,21 +733,45 @@ function AgenciesPanel({
     },
     { key: 'wilaya', header: t('referential.agency.col.wilaya'), render: (r) => r.wilayaCode ?? '—' },
     { key: 'status', header: t('referential.company.status'), render: (r) => <Tag tone={statusTone(r.status)}>{statusLabel(r.status, t)}</Tag> },
+    ...(editable
+      ? [
+          {
+            key: 'actions',
+            header: t('referential.col.actions'),
+            render: (r: AgencyView) =>
+              canEdit(r) ? (
+                <RowAction ariaLabel={`${t('referential.agency.edit.title')} ${r.code}`} onClick={() => onEdit(r)}>
+                  {t('referential.action.edit')}
+                </RowAction>
+              ) : null,
+          },
+        ]
+      : []),
   ];
 
   return (
     <div className="sheet rf-panel">
       <div className="sheet-head">
         <span>{t('referential.nav.agencies.title')}</span>
-        {filterCompany ? (
+        {filterCompany || onCreate ? (
           <span className="rf-head-actions">
-            <span className="rf-filter" aria-label={`${t('referential.agency.filter.company')} ${filterCompany.code}`}>
-              <CoChip code={filterCompany.code} color={filterCompany.color} />
-            </span>
-            <button type="button" className="rf-xl" onClick={onClearFilter}>
-              <X size={14} strokeWidth={2} aria-hidden="true" />
-              {t('referential.agency.filter.clear')}
-            </button>
+            {filterCompany ? (
+              <>
+                <span className="rf-filter" aria-label={`${t('referential.agency.filter.company')} ${filterCompany.code}`}>
+                  <CoChip code={filterCompany.code} color={filterCompany.color} />
+                </span>
+                <button type="button" className="rf-xl" onClick={onClearFilter}>
+                  <X size={14} strokeWidth={2} aria-hidden="true" />
+                  {t('referential.agency.filter.clear')}
+                </button>
+              </>
+            ) : null}
+            {onCreate ? (
+              <button type="button" className="btn-primary" onClick={onCreate}>
+                <Plus size={16} strokeWidth={2.2} aria-hidden="true" />
+                {t('referential.agency.create')}
+              </button>
+            ) : null}
           </span>
         ) : null}
       </div>
@@ -726,14 +800,26 @@ function ExpertsPanel({
   page,
   onPageChange,
   showRib,
+  onCreate,
+  canEdit,
+  onEdit,
+  canSetStatus,
 }: {
   query: ReturnType<typeof useQuery<Paginated<ExpertView>>>;
   page: number;
   onPageChange: (p: number) => void;
   /** SEC-14 : RIB masqué publié aux seuls rôles place (jamais en clair). */
   showRib: boolean;
+  /** `POST /referential/experts` — absent sans le privilège `refedit`. */
+  onCreate?: () => void;
+  canEdit: (e: ExpertView) => boolean;
+  onEdit: (e: ExpertView) => void;
+  /** SEC-14 : suspension / réactivation (statut global) réservée aux rôles place. */
+  canSetStatus: boolean;
 }) {
   const { t } = useI18n();
+  const statusMutation = useExpertStatusMutation();
+  const editable = (query.data?.items ?? []).some(canEdit);
 
   const columns: Column<ExpertView>[] = [
     { key: 'name', header: t('referential.expert.col.name'), render: (r) => r.name },
@@ -742,12 +828,45 @@ function ExpertsPanel({
     { key: 'companies', header: t('referential.expert.col.companies'), render: (r) => r.companies.join(', ') || '—' },
     ...(showRib ? [{ key: 'rib', header: t('referential.expert.col.rib'), render: (r: ExpertView) => <span className="mono">{r.ribMasked ?? '—'}</span> }] : []),
     { key: 'status', header: t('referential.company.status'), render: (r) => <Tag tone={statusTone(r.status)}>{statusLabel(r.status, t)}</Tag> },
+    ...(editable
+      ? [
+          {
+            key: 'actions',
+            header: t('referential.col.actions'),
+            render: (r: ExpertView) =>
+              canEdit(r) ? (
+                <RowActions>
+                  <RowAction ariaLabel={`${t('referential.expert.edit.title')} ${r.name}`} onClick={() => onEdit(r)}>
+                    {t('referential.action.edit')}
+                  </RowAction>
+                  {canSetStatus && r.status !== 'RADIE' ? (
+                    <RowAction
+                      ariaLabel={`${t(r.status === 'ACTIF' ? 'referential.expert.action.suspend' : 'referential.expert.action.reactivate')} ${r.name}`}
+                      disabled={statusMutation.isPending}
+                      onClick={() => statusMutation.mutate({ id: r.id, status: r.status === 'ACTIF' ? 'SUSPENDU' : 'ACTIF' })}
+                    >
+                      {t(r.status === 'ACTIF' ? 'referential.expert.action.suspend' : 'referential.expert.action.reactivate')}
+                    </RowAction>
+                  ) : null}
+                </RowActions>
+              ) : null,
+          },
+        ]
+      : []),
   ];
 
   return (
     <div className="sheet rf-panel">
       <div className="sheet-head">
         <span>{t('referential.nav.experts.title')}</span>
+        {onCreate ? (
+          <span className="rf-head-actions">
+            <button type="button" className="btn-primary" onClick={onCreate}>
+              <Plus size={16} strokeWidth={2.2} aria-hidden="true" />
+              {t('referential.expert.create')}
+            </button>
+          </span>
+        ) : null}
       </div>
       <div className="sheet-body">
         {query.isLoading ? (

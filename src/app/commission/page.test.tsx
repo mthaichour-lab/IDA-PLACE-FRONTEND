@@ -147,8 +147,8 @@ describe('Écran Commission (/commission)', () => {
     mockCommissionApi(ME_WITHOUT_PENALTY, [commissionCase()]);
     renderWithProviders(<CommissionPage />);
 
-    await waitFor(() => expect(screen.getByText('r-1')).toBeInTheDocument());
-    fireEvent.click(screen.getByText('r-1').closest('tr')!);
+    await waitFor(() => expect(within(table()).getByText('r-1')).toBeInTheDocument());
+    fireEvent.click(within(table()).getByText('r-1').closest('tr')!);
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Prononcer' })).toBeDisabled());
     expect(screen.getByRole('button', { name: 'Signer le PV' })).toBeDisabled();
@@ -170,12 +170,12 @@ describe('Écran Commission (/commission)', () => {
     }));
     renderWithProviders(<CommissionPage />);
 
-    await waitFor(() => expect(screen.getByText('r-1')).toBeInTheDocument());
-    fireEvent.click(screen.getByText('r-1').closest('tr')!);
+    await waitFor(() => expect(within(table()).getByText('r-1')).toBeInTheDocument());
+    fireEvent.click(within(table()).getByText('r-1').closest('tr')!);
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Prononcer' })).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText('Montant (DA)'), { target: { value: '50000' } });
-    fireEvent.change(screen.getByLabelText('Motif'), { target: { value: 'Retard' } });
+    fireEvent.change(document.getElementById('penalty-reason')!, { target: { value: 'Retard' } });
     fireEvent.click(screen.getByRole('button', { name: 'Prononcer' }));
 
     await waitFor(() => expect(screen.getByText('Pénalité proposée : elle sera prononcée après le contreseing d’un autre membre.')).toBeInTheDocument());
@@ -203,8 +203,8 @@ describe('Écran Commission (/commission)', () => {
     mockCommissionApi(ME_WITH_BOTH, [commissionCase()]);
     renderWithProviders(<CommissionPage />);
 
-    await waitFor(() => expect(screen.getByText('r-1')).toBeInTheDocument());
-    fireEvent.click(screen.getByText('r-1').closest('tr')!);
+    await waitFor(() => expect(within(table()).getByText('r-1')).toBeInTheDocument());
+    fireEvent.click(within(table()).getByText('r-1').closest('tr')!);
 
     await waitFor(() => expect(screen.getByText('Pièces jointes (PV de commission)')).toBeInTheDocument());
     await waitFor(() => expect(screen.getByText('Aucune pièce jointe.')).toBeInTheDocument());
@@ -214,7 +214,7 @@ describe('Écran Commission (/commission)', () => {
     mockCommissionApi(ME_WITH_BOTH, [commissionCase()], undefined, [sanction()]);
     renderWithProviders(<CommissionPage />);
 
-    await waitFor(() => expect(screen.getByText('r-1')).toBeInTheDocument());
+    await waitFor(() => expect(within(table()).getByText('r-1')).toBeInTheDocument());
     // Le bandeau d'onglets affiche désormais un compteur réel (fidélité à la
     // capture, écran 7) — l'intitulé exact n'est donc plus "Sanctions" seul.
     fireEvent.click(screen.getByRole('tab', { name: /Sanctions/ }));

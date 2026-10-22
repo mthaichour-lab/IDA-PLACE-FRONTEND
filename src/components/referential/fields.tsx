@@ -118,9 +118,9 @@ export function PrimaryButton({ children, onClick, disabled }: { children: React
 }
 
 /** Action de ligne de tableau (même rendu que les actions de l'écran Échanges). */
-export function RowAction({ children, onClick, disabled }: { children: React.ReactNode; onClick: () => void; disabled?: boolean }) {
+export function RowAction({ children, onClick, disabled, ariaLabel }: { children: React.ReactNode; onClick: () => void; disabled?: boolean; ariaLabel?: string }) {
   return (
-    <button type="button" className="tag a" disabled={disabled} onClick={onClick} style={{ border: 'none', cursor: disabled ? 'not-allowed' : 'pointer' }}>
+    <button type="button" className="tag a" disabled={disabled} onClick={onClick} aria-label={ariaLabel} style={{ border: 'none', cursor: disabled ? 'not-allowed' : 'pointer' }}>
       {children}
     </button>
   );

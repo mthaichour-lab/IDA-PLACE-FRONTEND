@@ -11,12 +11,13 @@ import { useI18n } from '@/i18n/provider';
 import { TranslationKey } from '@/i18n/translations';
 import { apiGet, apiPath } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
+import { isCompanyActor } from '@/lib/recours-actions';
 import { clearDevRole } from '@/lib/auth/dev-role';
 import { useRealtime, useRealtimeConnected } from '@/lib/realtime';
 import { CommissionSummary, MatchCounters, SettlementMonthlySummary } from '@/lib/types';
 import { FinLabMark } from './Brand';
 import { initials } from './Topbar';
-import { NAV_ITEMS, NavBadgeSource } from './nav-items';
+import { NavBadgeSource, visibleNavItems } from './nav-items';
 
 const BADGE_POLL_MS = 30_000;
 
@@ -42,7 +43,7 @@ function organisation(t: (k: TranslationKey) => string, role: string, company: s
 export function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavigate: () => void }) {
   const pathname = usePathname();
   const { t, locale } = useI18n();
-  const { me, mode, logout } = useAuth();
+  const { me, mode, logout, hasPrivilege } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -102,7 +103,7 @@ export function Sidebar({ collapsed, onNavigate }: { collapsed: boolean; onNavig
   return (
     <aside className={`sidebar${collapsed ? ' collapsed' : ''}`} aria-label={t('shell.navigation')}>
       <nav className="side-nav">
-        {NAV_ITEMS.map((item) => {
+        {visibleNavItems(isCompanyActor(me), hasPrivilege).map((item) => {
           const active = !!pathname?.startsWith(item.href);
           const Icon = item.icon;
           const count = item.badge ? badgeValue(item.badge) : 0;

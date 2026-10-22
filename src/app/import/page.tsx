@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useCallback, useRef, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
-import { Download, FileText, ShieldCheck, Upload } from 'lucide-react';
+import { BookOpen, Download, FileText, ShieldCheck, Upload } from 'lucide-react';
 import { Table, Column } from '@/components/ui/Table';
 import { Tag, TagTone } from '@/components/ui/Tag';
 import { useToast } from '@/components/ui/Toast';
@@ -15,6 +15,7 @@ import { useAuth } from '@/lib/auth-context';
 import { isCompanyRole } from '@/lib/auth/roles';
 import { useApiErrorMessage } from '@/lib/error-message';
 import { ClaimColumnDef, ClaimImportReport, ClaimImportRowResult, ClaimImportWarning, CompanyListItem, Paginated } from '@/lib/types';
+import { buildImportTemplateCsv, importDictionaryFileName, importTemplateFileName } from './import-template';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 
@@ -104,10 +105,18 @@ export default function ImportPage() {
     [ready, importMutation],
   );
 
+  /** Modèle à remplir : ligne d'en-tête des libellés de colonnes (format accepté par `POST /claims/import`). */
   function onDownloadTemplate(version: 'v1' | 'v2') {
     const cols = version === 'v1' ? columnsQuery.data : columnsV2Query.data;
     if (!cols) return;
-    downloadCsv(version === 'v1' ? 'modele-47-colonnes-IDA.csv' : `modele-v2-${cols.length}-colonnes-IDA.csv`, buildColumnsCsv(cols));
+    downloadCsv(importTemplateFileName(version, cols.length), buildImportTemplateCsv(cols));
+  }
+
+  /** Dictionnaire des colonnes (position, clé, libellé, groupe, type, valeurs admises) — v2 = les 47 colonnes v1 + 48 à 53. */
+  function onDownloadDictionary() {
+    const cols = columnsV2Query.data;
+    if (!cols) return;
+    downloadCsv(importDictionaryFileName(cols.length), buildColumnsCsv(cols));
   }
 
   const latestReport = journal[0];
@@ -152,7 +161,9 @@ export default function ImportPage() {
 
 
   // Boutons d'en-tête : v2 (modèle complet, barème Art. 14) en primaire, v1 en bouton fantôme —
-  // emplacement des « Modèle Excel / Modèle CSV » de la capture ; les deux sont des CSV d'en-têtes.
+  // emplacement des « Modèle Excel / Modèle CSV » de la capture. Chaque modèle est un CSV À REMPLIR
+  // (une ligne d'en-tête : les libellés des colonnes) ; le dictionnaire des colonnes reste
+  // téléchargeable par un lien distinct.
   const templates = [
     { version: 'v2', label: t('import.template.v2.short'), data: columnsV2Query.data, primary: true },
     { version: 'v1', label: t('import.template.v1.short'), data: columnsQuery.data, primary: false },
@@ -179,6 +190,16 @@ export default function ImportPage() {
                 {label}
               </button>
             ))}
+            <button
+              type="button"
+              className="im-link"
+              onClick={onDownloadDictionary}
+              disabled={!columnsV2Query.data}
+              title={t('import.dictionary.note')}
+            >
+              <BookOpen size={15} strokeWidth={2} aria-hidden="true" />
+              {t('import.dictionary.short')}
+            </button>
           </>
         }
       />

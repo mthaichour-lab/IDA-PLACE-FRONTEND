@@ -638,3 +638,60 @@
 .ex-sys .mono {
   color: var(--ink-2);
 }
+
+/* --- Nouveau recours (Annexe 2) --- */
+.ex-new {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: min(480px, 80vw);
+}
+
+.ex-new-intro {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+
+.ex-new-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.ex-new-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.ex-new-field {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.ex-new-hint {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.ex-new-hint.ko {
+  color: var(--ko);
+}
+
+.ex-new-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}

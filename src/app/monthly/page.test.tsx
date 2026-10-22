@@ -126,6 +126,10 @@ describe('Écran Cycle mensuel (/monthly)', () => {
     }));
     renderWithProviders(<MonthlyPage />);
 
+    // Mois en cours : non échu, la clôture n'est pas proposée (back : 409 PERIODE_NON_ECHUE).
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Générer le bordereau' })).toBeDisabled());
+    // Mois échu : clôture possible.
+    fireEvent.change(screen.getByLabelText('Période'), { target: { value: '2025-09' } });
     await waitFor(() => expect(screen.getByRole('button', { name: 'Générer le bordereau' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Générer le bordereau' }));
 

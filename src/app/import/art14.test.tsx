@@ -96,8 +96,47 @@ describe('Écran 3 — modèles v1/v2 et avertissements (décision PO §5)', () 
 
     expect(downloads.map((d) => d.name)).toEqual(['modele-v2-53-colonnes-IDA.csv', 'modele-47-colonnes-IDA.csv']);
     const [v2Csv, v1Csv] = await Promise.all(downloads.map((d) => readBlob(d.blob)));
-    expect(v2Csv).toContain('53;vehicleCategoryB;Catégorie véhicule B;BAREME_ART14');
-    expect(v1Csv).not.toContain('BAREME_ART14');
+    // Modèle À REMPLIR : une seule ligne d'en-tête, les LIBELLÉS des colonnes de l'API dans l'ordre, séparateur `;`.
+    const v2Lines = v2Csv.replace(/^﻿/, '').split('\r\n').filter(Boolean);
+    const v1Lines = v1Csv.replace(/^﻿/, '').split('\r\n').filter(Boolean);
+    expect(v2Lines).toEqual([V2.map((c) => c.label).join(';')]);
+    expect(v1Lines).toEqual([V1.map((c) => c.label).join(';')]);
+    expect(v2Lines[0].split(';')).toHaveLength(53);
+    expect(v1Lines[0].split(';')).toHaveLength(47);
+    // Plus le dictionnaire (index;key;label;…) à la place du modèle.
+    expect(v2Csv).not.toContain('index;key;label');
+    expect(v2Csv).not.toContain('BAREME_ART14');
+  });
+
+  it('le modèle est préfixé du BOM UTF-8 (accents lisibles dans Excel)', async () => {
+    mockApi();
+    renderWithProviders(<ImportPage />);
+    const user = userEvent.setup();
+    const v2 = await screen.findByRole('button', { name: 'Modèle v2 (.csv)' });
+    await waitFor(() => expect(v2).not.toBeDisabled());
+    await user.click(v2);
+    const bytes = await new Promise<Uint8Array>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+      reader.readAsArrayBuffer(downloads[0].blob);
+    });
+    expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+  });
+
+  it('le dictionnaire des colonnes reste téléchargeable par un lien distinct', async () => {
+    mockApi();
+    renderWithProviders(<ImportPage />);
+    const user = userEvent.setup();
+    const dictionary = await screen.findByRole('button', { name: 'Dictionnaire des colonnes' });
+    await waitFor(() => expect(dictionary).not.toBeDisabled());
+    await user.click(dictionary);
+
+    expect(downloads.map((d) => d.name)).toEqual(['dictionnaire-53-colonnes-IDA.csv']);
+    const csv = (await readBlob(downloads[0].blob)).replace(/^﻿/, '');
+    const lines = csv.split('\r\n');
+    expect(lines[0]).toBe('index;key;label;group;type;enumValues');
+    expect(lines).toHaveLength(54);
+    expect(csv).toContain('53;vehicleCategoryB;Catégorie véhicule B;BAREME_ART14');
   });
 
   it('affiche les avertissements (ligne, colonne, message) à part des motifs d’inéligibilité', async () => {

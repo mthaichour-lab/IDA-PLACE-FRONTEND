@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, Table2 } from 'lucide-react';
+import { FilePlus2, Search, Table2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { TruncationNote } from '@/components/ui/TruncationNote';
 import { FolioHeader } from '@/components/FolioHeader';
@@ -21,7 +21,9 @@ import { useApiErrorMessage } from '@/lib/error-message';
 import { useRealtime } from '@/lib/realtime';
 import { isCompanyActor, visibleRecoursActions } from '@/lib/recours-actions';
 import { buildRecoursExchangeEvents } from '@/lib/recours-timeline';
+import { CommissionSeizure } from './CommissionSeizure';
 import { DeadlineMeter } from './DeadlineMeter';
+import { NewRecoursDialog } from './NewRecoursDialog';
 import { RecoursThread } from './RecoursThread';
 import {
   CompanyListItem,
@@ -147,6 +149,9 @@ export default function ExchangesPage() {
   const isRegleFilter = filter === 'REGLE';
 
   const canTransition = hasPrivilege('exchange');
+  // Annexe 2 — ouverture d'un recours par l'assureur direct (`POST /recours`, privilège `insert`).
+  const canOpenRecours = hasPrivilege('insert');
+  const [newRecoursOpen, setNewRecoursOpen] = useState(false);
 
   const countersQuery = useQuery({
     queryKey: ['recours', 'counters'],
@@ -376,7 +381,7 @@ export default function ExchangesPage() {
               {r.reference}
             </span>
             <span className="mono ex-ref-sub" title={r.claimId}>
-              {r.claimId}
+              {shortId(r.claimId)}
             </span>
           </span>
         ),
@@ -434,11 +439,29 @@ export default function ExchangesPage() {
         title={t('exchanges.title')}
         subtitle={t('exchanges.subtitle')}
         actions={
-          <span className="btn-outline ex-register" title={t('exchanges.registerBadge.title')}>
-            <Table2 size={16} strokeWidth={2} aria-hidden="true" />
-            {t('exchanges.registerBadge.label')}
-          </span>
+          <>
+            {canOpenRecours ? (
+              <button type="button" className="btn-primary" onClick={() => setNewRecoursOpen(true)}>
+                <FilePlus2 size={16} strokeWidth={2} aria-hidden="true" />
+                {t('exchanges.newRecours.button')}
+              </button>
+            ) : null}
+            <span className="btn-outline ex-register" title={t('exchanges.registerBadge.title')}>
+              <Table2 size={16} strokeWidth={2} aria-hidden="true" />
+              {t('exchanges.registerBadge.label')}
+            </span>
+          </>
         }
+      />
+
+      <NewRecoursDialog
+        open={newRecoursOpen}
+        onClose={() => setNewRecoursOpen(false)}
+        onCreated={(r) => {
+          changeFilter('TOUS');
+          openRecours(r);
+        }}
+        companies={companiesQuery.data?.items ?? []}
       />
 
       <Tabs items={TABS.map((tab) => ({ key: tab.key, label: t(tab.label), count: countersQuery.data?.[tab.key] }))} activeKey={filter} onChange={changeFilter} />
@@ -565,7 +588,10 @@ export default function ExchangesPage() {
                   </div>
                   <div>
                     <dt>{t('exchanges.detail.claim')}</dt>
-                    <dd className="mono ex-break">{current.claimId}</dd>
+                    {/* Identifiant technique abrégé (valeur complète en infobulle) : le n° e-constat ci-dessous est la référence métier. */}
+                    <dd className="mono ex-break" title={current.claimId}>
+                      {shortId(current.claimId)}
+                    </dd>
                   </div>
                   {claim?.numEconstat ? (
                     <div>
@@ -685,6 +711,8 @@ export default function ExchangesPage() {
                   ) : null}
                 </div>
 
+                {current.state === 'COMMISSION' ? <CommissionSeizure recours={current} /> : null}
+
                 <section className="ex-block" aria-label={t('exchanges.detail.timeline')}>
                   <h2 className="ex-section-title">{t('exchanges.detail.timeline')}</h2>
                   <p className="ex-section-sub">{t('exchanges.detail.timeline.sub')}</p>
@@ -709,6 +737,11 @@ export default function ExchangesPage() {
       </div>
     </>
   );
+}
+
+/** Identifiant technique (UUID) abrégé à 8 caractères — valeur complète en infobulle ; les autres identifiants restent entiers. */
+function shortId(id: string): string {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ? id.slice(0, 8) : id;
 }
 
 /** Pastille d'état « • EN COMMISSION » (maquette) — teintes `.tag` existantes (ok/warn/ko/a). */

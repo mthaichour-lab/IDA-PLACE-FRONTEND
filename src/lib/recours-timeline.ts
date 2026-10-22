@@ -110,8 +110,10 @@ export function buildRecoursExchangeEvents(
       if (AUTOMATIC_RESOLUTION_KINDS.has(r.resolution.kind) || COMMISSION_RESOLUTION_KINDS.has(r.resolution.kind)) {
         events.push({ key: 'resolution', at: r.resolution.at, side: 'center', tone: 'neutral', label, body: r.resolution.note });
       } else {
-        const { side, tone } = sideToneFor(r.to, r, meCompany);
-        events.push({ key: 'resolution', at: r.resolution.at, side, tone, companyCode: r.to, label, body: r.resolution.note });
+        // Acceptation expresse : acte du débiteur (`to`) ; opposition levée : acte du créancier (`from`, qui renonce).
+        const actor = r.resolution.kind === 'OPPOSITION_LEVEE' ? r.from : r.to;
+        const { side, tone } = sideToneFor(actor, r, meCompany);
+        events.push({ key: 'resolution', at: r.resolution.at, side, tone, companyCode: actor, label, body: r.resolution.note });
       }
     }
   }

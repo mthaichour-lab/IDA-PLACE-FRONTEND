@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PipelineSection } from '@/components/settlement/PipelineSection';
@@ -35,6 +35,11 @@ describe('Compensation — périodes non échues et minimisation', () => {
     const user = userEvent.setup();
 
     expect(await screen.findByRole('columnheader', { name: 'Recours réglés' })).toBeInTheDocument();
+    // Mois en cours : bouton désactivé, avec la date à partir de laquelle la clôture est possible.
+    expect(screen.getByRole('button', { name: /bordereau/i })).toBeDisabled();
+    // Mois échu côté écran mais refusé par le serveur (horloges) : le 409 reste traduit.
+    fireEvent.change(screen.getByLabelText('Période'), { target: { value: '2025-09' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: /bordereau/i })).toBeEnabled());
     await user.click(screen.getByRole('button', { name: /bordereau/i }));
     expect(await screen.findByText('La période n’est pas échue : elle ne peut pas encore être clôturée.')).toBeInTheDocument();
   });

@@ -6,6 +6,7 @@ import { ArrowRight, Check, Gauge, Inbox, Link2, Pause, Play, Scale, Table2, Tim
 import { useCallback, useRef, useState } from 'react';
 import { FolioHeader } from '@/components/FolioHeader';
 import { PlaceOnlyGuard } from '@/components/PlaceOnlyGuard';
+import { useAuth } from '@/lib/auth-context';
 import { LineChart } from '@/components/ui/BarChart';
 import { CoChip } from '@/components/ui/CoChip';
 import { Kpi, KpiRow } from '@/components/ui/Kpi';
@@ -140,7 +141,7 @@ function ymdOf(d: Date): string {
 /** SEC-05/SEC-21 : écran réservé aux rôles de la place (403 pour un rôle compagnie). */
 export default function CockpitPage() {
   return (
-    <PlaceOnlyGuard titleKey="cockpit.title">
+    <PlaceOnlyGuard titleKey="cockpit.title" redirectCompany>
       <CockpitContent />
     </PlaceOnlyGuard>
   );
@@ -148,6 +149,7 @@ export default function CockpitPage() {
 
 function CockpitContent() {
   const { t, locale } = useI18n();
+  const { mode } = useAuth();
   const [live, setLive] = useState(false);
   const [paused, setPaused] = useState(false);
   const [feed, setFeed] = useState<FeedEntry[]>([]);
@@ -192,7 +194,9 @@ function CockpitContent() {
 
   const data = query.data;
 
-  const badge = `${new Date().toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' })} · ${t('cockpit.badge.demo')}`;
+  // « Démo » seulement en authentification de développement : avec Keycloak, les données sont réelles.
+  const today = new Date().toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
+  const badge = mode === 'dev' ? `${today} · ${t('cockpit.badge.demo')}` : today;
 
   return (
     <>

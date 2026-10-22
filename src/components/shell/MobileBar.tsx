@@ -5,16 +5,20 @@ import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { useI18n } from '@/i18n/provider';
 import { Modal } from '@/components/ui/Modal';
-import { MOBILE_PRIMARY_HREFS, NAV_ITEMS } from './nav-items';
+import { useAuth } from '@/lib/auth-context';
+import { isCompanyActor } from '@/lib/recours-actions';
+import { MOBILE_PRIMARY_HREFS, visibleNavItems } from './nav-items';
 
 /** Barre mobile inférieure (A.3) : 4 items principaux + menu "Plus". */
 export function MobileBar() {
   const pathname = usePathname();
   const { t } = useI18n();
+  const { me, hasPrivilege } = useAuth();
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const primary = NAV_ITEMS.filter((i) => MOBILE_PRIMARY_HREFS.includes(i.href));
-  const rest = NAV_ITEMS.filter((i) => !MOBILE_PRIMARY_HREFS.includes(i.href));
+  const items = visibleNavItems(isCompanyActor(me), hasPrivilege);
+  const primary = items.filter((i) => MOBILE_PRIMARY_HREFS.includes(i.href));
+  const rest = items.filter((i) => !MOBILE_PRIMARY_HREFS.includes(i.href));
 
   return (
     <>

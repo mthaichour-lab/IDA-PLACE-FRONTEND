@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useI18n } from '@/i18n/provider';
 import { apiGet, apiPath, apiPost } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
+import { isCompanyActor } from '@/lib/recours-actions';
 import { buildCsv, downloadCsv } from '@/lib/csv';
 import { describeApiError } from '@/lib/error-message';
 import { fetchAllPages } from '@/lib/paginate';
@@ -103,6 +104,20 @@ function lastDayOfPeriodIso(period: string): string {
 }
 
 /**
+ * Premier jour où la clôture est acceptée : le lendemain du dernier jour du
+ * mois — même règle que le back (`isPeriodElapsed` : aujourd'hui UTC >
+ * dernier jour), sinon 409 PERIODE_NON_ECHUE.
+ */
+function closableFromIso(period: string): string {
+  const [y, m] = period.split('-').map(Number);
+  return new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
+}
+
+function isPeriodElapsed(period: string): boolean {
+  return new Date().toISOString().slice(0, 10) > lastDayOfPeriodIso(period);
+}
+
+/**
  * Un recours réglé appartient-il au mois `period` (comparaison UTC
  * année/mois) ? Même convention que `isIsoDateInMonth` (back
  * `settlement.rules.ts`) — reproduite ici UNIQUEMENT pour regrouper
@@ -141,8 +156,9 @@ function companiesCsv(companies: SettlementMonthlyCompany[]): string {
 
 export default function MonthlyPage() {
   const { t, locale } = useI18n();
-  const { hasPrivilege } = useAuth();
+  const { me, hasPrivilege } = useAuth();
   const { toast } = useToast();
+  const lotCompany = isCompanyActor(me) ? me?.company : undefined;
   const queryClient = useQueryClient();
 
   const [period, setPeriod] = useState(currentPeriod);
@@ -151,6 +167,7 @@ export default function MonthlyPage() {
   const [annexe7Page, setAnnexe7Page] = useState(1);
 
   const canGenerate = hasPrivilege('synth');
+  const elapsed = isPeriodElapsed(period);
 
   const monthlyQuery = useQuery({
     queryKey: ['settlement', 'monthly', period],
@@ -207,12 +224,16 @@ export default function MonthlyPage() {
   const closedCount = companies.filter((c) => c.status === 'CLOTURE').length;
 
   const lotRows: LotRow[] = useMemo(() => {
+    // Même périmètre que `summary.settledCount` (back `monthlySummary`) : une
+    // compagnie ne saisit au titre de l'Art. 16 que les recours dont elle est
+    // CRÉANCIÈRE ; ceux où elle est débitrice figurent dans la synthèse de
+    // l'autre partie, pas dans son propre lot.
     const settled = (lotRegleQuery.data?.items ?? [])
-      .filter((r) => isInPeriod(r.settledAt ?? r.requestSentAt, period))
+      .filter((r) => isInPeriod(r.settledAt ?? r.requestSentAt, period) && (!lotCompany || r.from === lotCompany))
       .map((r) => ({ ...r, included: true as const }));
     const excluded = (lotOppositionQuery.data?.items ?? []).map((r) => ({ ...r, included: false as const }));
     return [...settled, ...excluded].sort((a, b) => (b.settledAt ?? b.createdAt).localeCompare(a.settledAt ?? a.createdAt));
-  }, [lotRegleQuery.data, lotOppositionQuery.data, period]);
+  }, [lotRegleQuery.data, lotOppositionQuery.data, period, lotCompany]);
   const lotPageRows = lotRows.slice((lotPage - 1) * PAGE_SIZE, lotPage * PAGE_SIZE);
 
   const annexe7Pairs = annexe7Query.data?.pairs ?? [];
@@ -255,9 +276,9 @@ export default function MonthlyPage() {
             <button
               type="button"
               className="btn-soft mo-action"
-              disabled={!canGenerate || closeMutation.isPending}
+              disabled={!canGenerate || !elapsed || closeMutation.isPending}
               onClick={() => closeMutation.mutate(r.code)}
-              title={!canGenerate ? t('common.forbidden') : undefined}
+              title={!canGenerate ? t('common.forbidden') : !elapsed ? `${t('monthly.progress.step2.deadlineLabel')} ${isoDate(closableFromIso(period), locale)}` : undefined}
             >
               <FileText size={14} strokeWidth={2} aria-hidden="true" />
               {t('monthly.action.generateBordereau')}
@@ -265,7 +286,7 @@ export default function MonthlyPage() {
           ),
       },
     ],
-    [t, locale, canGenerate, closeMutation],
+    [t, locale, canGenerate, closeMutation, elapsed, period],
   );
 
   const lotColumns: Column<LotRow>[] = useMemo(
@@ -424,7 +445,7 @@ export default function MonthlyPage() {
               <div className="mo-meter-dates mono">
                 <span>{isoDate(firstDayOfPeriodIso(period), locale)}</span>
                 <span>
-                  {t('monthly.progress.step2.deadlineLabel')} {isoDate(lastDayOfPeriodIso(period), locale)}
+                  {t('monthly.progress.step2.deadlineLabel')} {isoDate(closableFromIso(period), locale)}
                 </span>
               </div>
             </div>

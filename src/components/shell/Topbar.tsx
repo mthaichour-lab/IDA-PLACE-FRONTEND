@@ -10,10 +10,11 @@ import { useI18n } from '@/i18n/provider';
 import { Locale, TranslationKey } from '@/i18n/translations';
 import { apiGet } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
+import { isCompanyActor } from '@/lib/recours-actions';
 import { chosenDevRole, DEV_ROLES, setDevRole } from '@/lib/auth/dev-role';
 import { CockpitSummary } from '@/lib/types';
 import { FinLabLogo, IdaPlaceMark } from './Brand';
-import { currentNavItem, NAV_ITEMS } from './nav-items';
+import { currentNavItem, homePath, visibleNavItems } from './nav-items';
 
 /** Libellé d'un rôle (`params.role.<ROLE>`), repli sur le code brut. */
 export function roleLabel(t: (k: TranslationKey) => string, role: string): string {
@@ -85,7 +86,7 @@ export function Topbar({ onToggleNav }: { onToggleNav: () => void }) {
         </button>
         <FinLabLogo size={24} />
         <span className="tb-sep" aria-hidden="true" />
-        <Link href="/cockpit" className="ida-brand" aria-label={t('app.brand')}>
+        <Link href={homePath(isCompanyActor(me))} className="ida-brand" aria-label={t('app.brand')}>
           <IdaPlaceMark size={28} />
           <span className="ida-brand-text">
             <strong>{t('app.brand')}</strong>
@@ -141,6 +142,7 @@ export function Topbar({ onToggleNav }: { onToggleNav: () => void }) {
 /** Recherche d'écran : filtre les 14 écrans par libellé et y navigue (aucune donnée métier). */
 function ScreenSearch() {
   const { t } = useI18n();
+  const { me, hasPrivilege } = useAuth();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -149,8 +151,8 @@ function ScreenSearch() {
 
   const results = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return NAV_ITEMS.filter((i) => !needle || t(i.labelKey).toLowerCase().includes(needle));
-  }, [q, t]);
+    return visibleNavItems(isCompanyActor(me), hasPrivilege).filter((i) => !needle || t(i.labelKey).toLowerCase().includes(needle));
+  }, [q, t, me, hasPrivilege]);
 
   useEffect(() => {
     if (open) inputRef.current?.focus();

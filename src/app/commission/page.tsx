@@ -5,6 +5,7 @@ import { Download } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { ExchangeEvent, ExchangeThread } from '@/components/shared/ExchangeThread';
 import { FolioHeader } from '@/components/FolioHeader';
+import { DecisionBox, SanctionBox } from '@/components/commission/CaseDecisionBoxes';
 import { MembershipTab } from '@/components/commission/MembershipTab';
 import { AttachmentsPanel } from '@/components/documents/AttachmentsPanel';
 import { CoChip } from '@/components/ui/CoChip';
@@ -290,6 +291,7 @@ export default function CommissionPage() {
           </span>
         ),
       },
+      { key: 'type', header: t('commission.sanctions.col.type'), render: (s) => t(`commission.sanction.type.${s.type}` as TranslationKey) },
       { key: 'amount', header: t('commission.sanctions.col.amount'), render: (s) => <span className="mono">{s.amount !== undefined ? formatDzd(s.amount, locale) : '—'}</span> },
       { key: 'reason', header: t('commission.sanctions.col.reason'), render: (s) => s.reason },
       { key: 'orderedAt', header: t('commission.sanctions.col.orderedAt'), render: (s) => formatDay(s.orderedAt, locale) },
@@ -550,6 +552,8 @@ export default function CommissionPage() {
                   </div>
 
                   <div className="cm-decide">
+                    <DecisionBox commissionCase={selected} onUpdated={setSelected} />
+
                     <div className="cm-box">
                       <h3>{t('commission.action.penalty.title')}</h3>
                       <dl className="cm-dl">
@@ -557,8 +561,8 @@ export default function CommissionPage() {
                           <span className="mono">{formatDzd(selected.amount, locale)}</span>
                         </Field>
                         <Field label={t('commission.detail.recours')}>
-                          <span className="mono" title={selected.claimId}>
-                            {shortRef(selected.claimId)}
+                          <span className="mono" title={selected.recoursId}>
+                            {selected.recoursReference ?? shortRef(selected.recoursId)}
                           </span>
                         </Field>
                       </dl>
@@ -636,6 +640,8 @@ export default function CommissionPage() {
                       manuelles (PV de commission) attachées à CE dossier — jamais à un
                       Recours depuis cet écran (voir `AttachmentsPanel`).
                     */}
+                    <SanctionBox commissionCase={selected} />
+
                     <div className="cm-box">
                       <h3>{t('commission.detail.attachments')}</h3>
                       <AttachmentsPanel commissionCaseId={selected.id} />

@@ -12,6 +12,7 @@ import { useAuth } from '@/lib/auth-context';
 import { PopulationImportReport, PopulationImportRow, PopulationSourceType, WilayaPopulation, WilayaRef } from '@/lib/types';
 import { apiErrorMessage, FormStack, Hint, LabeledInput, LabeledSelect, PrimaryButton, QueryState, RowAction, SubTitle } from './fields';
 import { POPULATION_SOURCE_LABELS } from './labels';
+import { WilayaPerimeterSection } from './WilayaPerimeterSection';
 
 const PAGE_SIZE = 6; // pagination fixe 6/p — A.5
 
@@ -236,6 +237,8 @@ export function PopulationSection() {
             ) : null}
           </section>
         ) : null}
+
+        <WilayaPerimeterSection />
 
         <Hint>{t('referential.population.note')}</Hint>
       </div>

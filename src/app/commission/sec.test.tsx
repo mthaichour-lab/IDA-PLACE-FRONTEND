@@ -80,7 +80,8 @@ describe('Écran 7 — contreseing des sanctions et PV à quatre yeux (SEC-32)',
 
     await user.click(await screen.findByRole('tab', { name: /Sanctions/ }));
     const pendingRow = (await screen.findByText('Retard de réponse')).closest('tr')!;
-    const doneRow = screen.getByText('Avertissement').closest('tr')!;
+    // « Avertissement » est à la fois la mesure (colonne Mesure) et le motif de cette ligne.
+    const doneRow = screen.getAllByText('Avertissement')[0].closest('tr')!;
     expect(within(pendingRow).getByText('À contresigner')).toBeInTheDocument();
     expect(within(doneRow).getByText('Prononcée')).toBeInTheDocument();
     expect(within(doneRow).getByText('Contresignée par Membre 3')).toBeInTheDocument();

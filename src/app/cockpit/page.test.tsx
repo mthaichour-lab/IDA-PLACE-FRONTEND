@@ -173,7 +173,7 @@ describe('Écran Cockpit de place (/cockpit)', () => {
     expect(screen.getByText("Délai moyen d'appariement").closest('.kpi')).toHaveTextContent('1,3 j');
     expect(screen.getByText('Recours forclos').closest('.kpi')).toHaveTextContent('4');
     // Notation compacte (fidélité capture écran 1) : "1,27 M DA" / "1,23 M DA", jamais le groupement complet.
-    expect(screen.getByText('Compensation nette trimestrielle').closest('.kpi')).toHaveTextContent(/1,27\s?M\s?DA/);
+    expect(screen.getByText('Compensation nette bilatérale (trimestre)').closest('.kpi')).toHaveTextContent(/1,27\s?M\s?DA/);
     expect(screen.getByText('Pénalités de retard').closest('.kpi')).toHaveTextContent(/1,23\s?M\s?DA/);
     expect(screen.getByText('Experts actifs / suspendus').closest('.kpi')).toHaveTextContent('17 / 2');
     expect(screen.getByText('Adhérents actifs / suspendus').closest('.kpi')).toHaveTextContent('5 / 0');

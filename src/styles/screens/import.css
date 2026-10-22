@@ -52,6 +52,23 @@
   background: var(--paper-2);
 }
 
+/* Lien secondaire « Dictionnaire des colonnes » : description des colonnes, pas un modèle à remplir. */
+.im-screen .folio-actions > button.im-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--k-pri);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
 .im-screen .folio-actions > button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
