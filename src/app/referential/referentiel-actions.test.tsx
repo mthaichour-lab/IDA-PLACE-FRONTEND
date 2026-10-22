@@ -103,29 +103,32 @@ describe('Référentiel › Agences — création et modification (refedit)', ()
     expect(screen.queryByRole('button', { name: /modifier l'agence/i })).not.toBeInTheDocument();
   });
 
-  it('rôle place : crée une agence (POST /referential/agencies, corps du CreateAgencyDto)', async () => {
+  it('rôle place : crée une agence positionnée dans l’organisation (POST /referential/agencies)', async () => {
     const writes = mockApi(ME_OPERATOR);
     renderWithProviders(<ReferentialPage />);
     const user = await openSection('Agences');
     await user.click(await screen.findByRole('button', { name: /nouvelle agence/i }));
     const dialog = await screen.findByRole('dialog');
 
-    await user.selectOptions(within(dialog).getByLabelText('Compagnie'), within(dialog).getByRole('option', { name: 'SAA — SAA' }));
-    await user.type(within(dialog).getByLabelText(/code agence/i), 'SAA-BLIDA');
+    await user.selectOptions(within(dialog).getByLabelText('Compagnie'), within(dialog).getByRole('option', { name: /^CAAT — / }));
+    await user.type(within(dialog).getByLabelText(/code agence/i), 'CAAT-BLIDA');
     await user.type(within(dialog).getByLabelText('Nom'), 'Agence Blida');
-    await user.selectOptions(within(dialog).getByLabelText('Type'), 'DR');
+    // La compagnie a déjà sa Direction générale : le niveau DG n'est plus proposé.
+    await waitFor(() => expect(within(dialog).getByRole('radio', { name: /DG — Direction générale/ })).toBeDisabled());
+    await user.click(within(dialog).getByRole('radio', { name: /AG — Agence/ }));
+    // Organisation : une agence relève d'une DR ou de la DG de la MÊME compagnie (jamais d'une autre agence, ni d'une autre compagnie).
+    const dgOption = await within(dialog).findByRole('option', { name: 'DG · CAAT-DG — Direction générale CAAT' });
+    expect(within(dialog).queryByRole('option', { name: /SAA-ORAN/ })).not.toBeInTheDocument();
+    await user.selectOptions(within(dialog).getByLabelText('Rattachement'), dgOption);
+    expect(within(dialog).getByText(/CAAT-BLIDA/, { selector: '.org-path-new' })).toBeInTheDocument();
     await waitFor(() => expect(within(dialog).getByRole('option', { name: '09 — Blida' })).toBeInTheDocument());
     await user.selectOptions(within(dialog).getByLabelText('Wilaya'), '09');
-    // SEC-31 : seules les agences de la MÊME compagnie sont proposées comme parente.
-    await waitFor(() => expect(within(dialog).getByRole('option', { name: 'SAA-ORAN — Agence Oran (AG)' })).toBeInTheDocument());
-    expect(within(dialog).queryByRole('option', { name: /CAAT-DG/ })).not.toBeInTheDocument();
-    await user.selectOptions(within(dialog).getByLabelText(/agence parente/i), AGENCIES[1].id);
     await user.click(within(dialog).getByRole('button', { name: 'Enregistrer' }));
 
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(writes[0].method).toBe('POST');
     expect(writes[0].pathname).toBe('/api/v1/referential/agencies');
-    expect(writes[0].body).toEqual({ companyId: SAA_ID, code: 'SAA-BLIDA', name: 'Agence Blida', type: 'DR', wilayaCode: '09', parentId: AGENCIES[1].id });
+    expect(writes[0].body).toEqual({ companyId: CAAT_ID, code: 'CAAT-BLIDA', name: 'Agence Blida', type: 'AG', wilayaCode: '09', parentId: AGENCIES[0].id });
     expect(await screen.findByText('Agence créée.')).toBeInTheDocument();
   });
 

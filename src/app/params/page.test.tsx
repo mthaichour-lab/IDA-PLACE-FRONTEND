@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { mockFetchRouter, renderWithProviders } from '@/test/render';
@@ -171,10 +171,12 @@ describe('Écran Paramétrage (/params)', () => {
 
     await waitFor(() => expect(screen.getByText('Nadia')).toBeInTheDocument());
     // 4 utilisateurs (2 rôles dans MATRIX), dont 3 actifs et 1 suspendu — valeurs toutes distinctes pour éviter toute ambiguïté.
-    expect(screen.getByText('4')).toBeInTheDocument();
-    expect(screen.getByText('3')).toBeInTheDocument();
-    expect(screen.getByText('1')).toBeInTheDocument();
-    expect(screen.getByText('2')).toBeInTheDocument();
+    // Lues dans la rangée de KPI : les onglets place / assurances affichent aussi leurs compteurs.
+    const kpis = within(document.querySelector('.kpi-row') as HTMLElement);
+    expect(kpis.getByText('4')).toBeInTheDocument();
+    expect(kpis.getByText('3')).toBeInTheDocument();
+    expect(kpis.getByText('1')).toBeInTheDocument();
+    expect(kpis.getByText('2')).toBeInTheDocument();
     expect(screen.getByText('utilisateurs')).toBeInTheDocument();
     expect(screen.getByText('actifs')).toBeInTheDocument();
     expect(screen.getByText('suspendus')).toBeInTheDocument();
